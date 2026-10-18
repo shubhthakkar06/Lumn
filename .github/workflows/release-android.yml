@@ -35,6 +35,23 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Configure release signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.LUMN_SIGNING_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.LUMN_SIGNING_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.LUMN_SIGNING_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.LUMN_SIGNING_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$KEYSTORE_BASE64" || -z "$KEYSTORE_PASSWORD" || -z "$KEY_ALIAS" || -z "$KEY_PASSWORD" ]]; then
+            echo "Configure LUMN_SIGNING_KEYSTORE_BASE64, LUMN_SIGNING_KEYSTORE_PASSWORD, LUMN_SIGNING_KEY_ALIAS, and LUMN_SIGNING_KEY_PASSWORD in GitHub Actions secrets before creating a release tag." >&2
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/lumn-release.keystore"
+          echo "LUMN_KEYSTORE_PATH=$RUNNER_TEMP/lumn-release.keystore" >> "$GITHUB_ENV"
+          echo "LUMN_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "LUMN_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "LUMN_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+
       - name: Validate release tag and read version
         id: version
         shell: bash
@@ -53,10 +70,10 @@ jobs:
           echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
 
       - name: Run unit tests and build APK
-        run: ./gradlew --no-daemon testDebugUnitTest assembleDebug
+        run: ./gradlew --no-daemon testDebugUnitTest assembleRelease
 
       - name: Name release APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/Lumn.apk"
+        run: cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/Lumn.apk"
 
       - name: Publish GitHub Release with APK
         env:

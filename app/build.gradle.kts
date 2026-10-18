@@ -12,13 +12,26 @@ android {
         applicationId = "com.example.musicapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 15
-        versionName = "2.4"
+        versionCode = 16
+        versionName = "2.5"
+    }
+
+    signingConfigs {
+        create("release") {
+            val keystorePath = providers.environmentVariable("LUMN_KEYSTORE_PATH").orNull
+            if (keystorePath != null) {
+                storeFile = file(keystorePath)
+                storePassword = providers.environmentVariable("LUMN_KEYSTORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("LUMN_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("LUMN_KEY_PASSWORD").orNull
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

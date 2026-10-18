@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.FormBody
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.InetAddress
@@ -70,7 +71,7 @@ object SpotifyPlaylistImporter {
                     tracks += SpotifyImportedTrack(id.ifBlank { "${title}_$artists" }, title, artists)
                 }
             }
-            nextUrl = (page["next"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+            nextUrl = parseSpotifyNextPageUrl(page)
             pages++
         }
         if (tracks.isEmpty()) throw IllegalStateException("No playable tracks were found in that Spotify playlist.")
@@ -181,7 +182,12 @@ object SpotifyPlaylistImporter {
     }
 
     private fun apiGet(url: String, token: String): JsonObject {
-        val request = Request.Builder().url(url).header("Authorization", "Bearer $token").build()
+        val safeUrl = url.toHttpUrlOrNull()
+        require(safeUrl?.scheme == "https" && safeUrl.host == "api.spotify.com" &&
+            safeUrl.encodedPath.startsWith("/v1/playlists/")) {
+            "Spotify returned an invalid playlist page URL."
+        }
+        val request = Request.Builder().url(safeUrl).header("Authorization", "Bearer $token").build()
         http.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
