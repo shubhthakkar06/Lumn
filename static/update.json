@@ -1,7 +1,7 @@
 {
   "versionName": "2.5.5",
   "versionCode": 21,
-  "minimumVersionCode": 20,
+  "minimumVersionCode": 21,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
   "releaseNotes": "Sign-in now works without a local server. Guest mode can stream music while downloads and playlist creation require an account."
 }
