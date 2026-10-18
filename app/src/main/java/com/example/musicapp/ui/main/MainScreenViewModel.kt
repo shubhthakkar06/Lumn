@@ -135,8 +135,8 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
         }
         pending.forEach { song ->
             manager.downloadSong(song, streamUrlProvider = { track ->
-                dataRepository.getStreamUrl(track.videoId, track.title, track.artist)
-                    ?: dataRepository.getFallbackStreamUrl(track.videoId, track.title, track.artist)
+                dataRepository.getStreamUrl(track.videoId, track.title, track.artist, track.durationSeconds)
+                    ?: dataRepository.getFallbackStreamUrl(track.videoId, track.title, track.artist, track.durationSeconds)
             }, notify = false)
         }
         android.widget.Toast.makeText(context, "Downloading ${pending.size} album tracks", android.widget.Toast.LENGTH_SHORT).show()
@@ -377,7 +377,7 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
         _loadingSongVideoId.value = song.videoId
         viewModelScope.launch {
             val fallbackUrl = try {
-                dataRepository.getFallbackStreamUrl(song.videoId, song.title, song.artist)
+                dataRepository.getFallbackStreamUrl(song.videoId, song.title, song.artist, song.durationSeconds)
             } catch (_: Exception) {
                 null
             }
@@ -435,19 +435,19 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
                     // Resolve by ID through the repository so only a real downloaded file is
                     // used in offline mode, even when a search result carries a remote URL.
                     kotlinx.coroutines.withTimeoutOrNull(5_000L) {
-                        dataRepository.getStreamUrl(song.videoId, song.title, song.artist)
+                        dataRepository.getStreamUrl(song.videoId, song.title, song.artist, song.durationSeconds)
                     }
                 } else if (!song.audioStreamUrl.isNullOrBlank()) {
                     song.audioStreamUrl
                 } else {
                     kotlinx.coroutines.withTimeoutOrNull(12_000L) {
-                        dataRepository.getStreamUrl(song.videoId, song.title, song.artist)
+                        dataRepository.getStreamUrl(song.videoId, song.title, song.artist, song.durationSeconds)
                     }
                 }
                 if (!isActive || _currentSong.value?.videoId != song.videoId) return@launch
 
                 val url = if (offlineMode) preferredUrl else preferredUrl ?: kotlinx.coroutines.withTimeoutOrNull(25_000L) {
-                    dataRepository.getFallbackStreamUrl(song.videoId, song.title, song.artist)
+                    dataRepository.getFallbackStreamUrl(song.videoId, song.title, song.artist, song.durationSeconds)
                 }
                 if (!isActive || _currentSong.value?.videoId != song.videoId) return@launch
 

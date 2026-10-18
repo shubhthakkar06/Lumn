@@ -643,12 +643,15 @@ fun LibraryScreen(
                                             videoId = "spotify_$stableId",
                                             title = track.title,
                                             artist = track.artists,
-                                            albumArtUrl = ""
+                                            albumArtUrl = track.albumArtUrl.ifBlank { imported.coverUrl },
+                                            albumName = track.albumName,
+                                            durationSeconds = track.durationSeconds
                                         )
                                     }
                                     val playlist = playlistManager.createPlaylist(
                                         name = imported.name,
                                         creator = currentUser.name,
+                                        coverUrl = imported.coverUrl,
                                         songs = songs,
                                         sourceUrl = imported.spotifyUrl
                                     )

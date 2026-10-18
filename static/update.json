@@ -1,7 +1,7 @@
 {
-  "versionName": "2.5.1",
-  "versionCode": 17,
-  "minimumVersionCode": 17,
+  "versionName": "2.5.2",
+  "versionCode": 18,
+  "minimumVersionCode": 18,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
-  "releaseNotes": "Fixed Spotify playlist imports and pagination, with playback, search, and stability improvements."
+  "releaseNotes": "Spotify playlist imports now show artwork and match tracks more accurately using artist, version, and duration details."
 }

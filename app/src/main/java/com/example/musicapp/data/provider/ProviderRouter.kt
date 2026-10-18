@@ -171,6 +171,7 @@ class ProviderRouter(
         trackRef: String,
         title: String? = null,
         artist: String? = null,
+        durationSeconds: Long = 0L,
         excludedProviders: Set<String> = emptySet()
     ): StreamResult = withContext(Dispatchers.IO) {
         // Keep stream caches ID-specific. Two recordings can share title/artist text
@@ -205,7 +206,7 @@ class ProviderRouter(
             try {
                 val timeoutMs = if (provider.name == "YouTube") 6000L else 3000L
                 val result = withTimeoutOrNull(timeoutMs) {
-                    provider.resolveStream(trackRef, title, artist)
+                    provider.resolveStream(trackRef, title, artist, durationSeconds)
                 }
 
                 if (result is StreamResult.Success) {

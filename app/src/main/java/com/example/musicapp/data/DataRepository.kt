@@ -12,9 +12,9 @@ import java.util.concurrent.ConcurrentHashMap
 
 interface DataRepository {
     suspend fun searchSongs(query: String): List<SongInfo>
-    suspend fun getStreamUrl(videoId: String, songTitle: String? = null, artist: String? = null): String?
-    suspend fun getFallbackStreamUrl(videoId: String, songTitle: String? = null, artist: String? = null): String? =
-        getStreamUrl(videoId, songTitle, artist)
+    suspend fun getStreamUrl(videoId: String, songTitle: String? = null, artist: String? = null, durationSeconds: Long = 0L): String?
+    suspend fun getFallbackStreamUrl(videoId: String, songTitle: String? = null, artist: String? = null, durationSeconds: Long = 0L): String? =
+        getStreamUrl(videoId, songTitle, artist, durationSeconds)
     fun prefetchStreamUrls(songs: List<SongInfo>)
 }
 
@@ -39,7 +39,7 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
         return results
     }
 
-    override suspend fun getStreamUrl(videoId: String, songTitle: String?, artist: String?): String? {
+    override suspend fun getStreamUrl(videoId: String, songTitle: String?, artist: String?, durationSeconds: Long): String? {
         // 1. Instant check: If song is downloaded locally, play from disk
         val localFile = MusicDownloadManager.getInstance(context).getDownloadedFile(videoId)
         if (localFile != null) {
@@ -51,10 +51,10 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
             return null
         }
 
-        val cacheKey = requestKey(videoId, songTitle, artist)
+        val cacheKey = requestKey(videoId, songTitle, artist, durationSeconds)
         val deferred = inFlightRequests.computeIfAbsent(cacheKey) { _ ->
             scope.async {
-                when (val res = providerRouter.resolveStream(videoId, songTitle, artist)) {
+                when (val res = providerRouter.resolveStream(videoId, songTitle, artist, durationSeconds)) {
                     is StreamResult.Success -> {
                         providerByRequestKey[cacheKey] = res.providerName
                         res.streamUrl
@@ -71,9 +71,9 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
         }
     }
 
-    override suspend fun getFallbackStreamUrl(videoId: String, songTitle: String?, artist: String?): String? {
+    override suspend fun getFallbackStreamUrl(videoId: String, songTitle: String?, artist: String?, durationSeconds: Long): String? {
         if (SettingsManager.getInstance(context).offlineMode.value) return null
-        val key = requestKey(videoId, songTitle, artist)
+        val key = requestKey(videoId, songTitle, artist, durationSeconds)
         inFlightRequests.remove(key)?.cancel()
         providerRouter.invalidateCache(videoId, songTitle, artist)
         // Rotate away from the source that just failed. If the first URL came directly
@@ -89,6 +89,7 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
             videoId,
             songTitle,
             artist,
+            durationSeconds = durationSeconds,
             excludedProviders = listOfNotNull(previousProvider).toSet()
         )) {
             is StreamResult.Success -> {
@@ -99,14 +100,14 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
         }
     }
 
-    private fun requestKey(videoId: String, title: String?, artist: String?): String =
-        listOf(videoId, title.orEmpty().trim(), artist.orEmpty().trim()).joinToString("|")
+    private fun requestKey(videoId: String, title: String?, artist: String?, durationSeconds: Long): String =
+        listOf(videoId, title.orEmpty().trim(), artist.orEmpty().trim(), durationSeconds.toString()).joinToString("|")
 
     override fun prefetchStreamUrls(songs: List<SongInfo>) {
         songs.forEach { song ->
             if (!inFlightRequests.containsKey(song.videoId)) {
                 scope.launch {
-                    getStreamUrl(song.videoId, song.title, song.artist)
+                    getStreamUrl(song.videoId, song.title, song.artist, song.durationSeconds)
                 }
             }
         }

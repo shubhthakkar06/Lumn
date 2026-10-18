@@ -71,7 +71,8 @@ class JamendoProvider(
     override suspend fun resolveStream(
         trackRef: String,
         title: String?,
-        artist: String?
+        artist: String?,
+        durationSeconds: Long
     ): StreamResult = withContext(Dispatchers.IO) {
         if (trackRef.startsWith("jamendo_")) {
             val id = trackRef.removePrefix("jamendo_")

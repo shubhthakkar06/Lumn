@@ -129,7 +129,8 @@ class SaavnProvider(
     override suspend fun resolveStream(
         trackRef: String,
         title: String?,
-        artist: String?
+        artist: String?,
+        durationSeconds: Long
     ): StreamResult = withContext(Dispatchers.IO) {
         // 1. Check in-memory stream cache
         memoryStreamCache[trackRef]?.let {
@@ -181,8 +182,8 @@ class SaavnProvider(
                 val hit = items
                     .asSequence()
                     .filter { !it.audioStreamUrl.isNullOrBlank() }
-                    .map { it to matchConfidence(title.orEmpty(), artist.orEmpty(), it) }
-                    .filter { (_, score) -> score >= 0.68 }
+                    .map { it to matchConfidence(title.orEmpty(), artist.orEmpty(), durationSeconds, it) }
+                    .filter { (_, score) -> score >= 0.76 }
                     .maxByOrNull { (candidate, score) -> score + kotlin.math.ln1p(candidate.popularityScore.toDouble()) * 0.001 }
                     ?.first
                 if (hit != null && hit.audioStreamUrl != null) {
@@ -198,7 +199,7 @@ class SaavnProvider(
     }
 
     /** Reject near-by catalog hits with a different singer or recording. */
-    private fun matchConfidence(queryTitle: String, queryArtist: String, candidate: SongInfo): Double {
+    private fun matchConfidence(queryTitle: String, queryArtist: String, queryDuration: Long, candidate: SongInfo): Double {
         val wantedTitle = normalize(queryTitle)
         val actualTitle = normalize(candidate.title)
         val wantedArtist = normalize(queryArtist)
@@ -216,11 +217,32 @@ class SaavnProvider(
             actualArtist.contains(wantedArtist) || wantedArtist.contains(actualArtist) -> 0.9
             else -> tokenOverlap(wantedArtist, actualArtist)
         }
-        return titleScore * 0.72 + artistScore * 0.28
+        if (artistScore < 0.45) return 0.0
+
+        // Version words carry meaning (especially live/remix/slowed/garba edits). Ignore
+        // upload labels, but reject a candidate whose recording type conflicts with Spotify.
+        val versionWords = setOf("live", "remix", "slowed", "reverb", "acoustic", "instrumental", "karaoke", "cover", "sped", "lofi", "lo fi", "garba", "unplugged")
+        val wantedVersions = versionWords.filter { wantedTitle.contains(it) }
+        val candidateVersions = versionWords.filter { actualTitle.contains(it) }
+        if (candidateVersions.any { it !in wantedVersions }) return 0.0
+        if (wantedVersions.any { it !in candidateVersions }) return 0.0
+
+        val candidateDuration = candidate.durationSeconds
+        val durationScore = if (queryDuration > 0 && candidateDuration > 0) {
+            val difference = kotlin.math.abs(queryDuration - candidateDuration)
+            // Allow small provider edits/rounding, while excluding alternate cuts.
+            if (difference > maxOf(12L, (queryDuration * 0.12).toLong())) return 0.0
+            1.0 - (difference.toDouble() / maxOf(queryDuration, candidateDuration).toDouble())
+        } else 0.72
+        return titleScore * 0.62 + artistScore * 0.28 + durationScore * 0.10
     }
 
     private fun normalize(value: String): String = value.lowercase()
-        .replace(Regex("\\([^)]*\\)|\\[[^]]*]"), " ")
+        .replace(Regex("\\b(official|audio|video|lyrics?|lyric video|visuali[sz]er|hd|hq|4k)\\b", RegexOption.IGNORE_CASE), " ")
+        .replace(Regex("\\([^)]*\\)|\\[[^]]*]")) { match ->
+            val label = match.value.lowercase()
+            if (listOf("live", "remix", "slowed", "reverb", "acoustic", "instrumental", "karaoke", "cover", "sped", "lofi", "garba", "unplugged").any(label::contains)) label else " "
+        }
         .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
         .trim()
 

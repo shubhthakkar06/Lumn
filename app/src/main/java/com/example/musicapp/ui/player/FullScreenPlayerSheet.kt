@@ -341,7 +341,7 @@ fun FullScreenPlayerSheet(
                             if (downloadStatus is DownloadStatus.NotDownloaded) {
                                 downloadManager.downloadSong(song) { target ->
                                     val repo = com.example.musicapp.data.DefaultDataRepository(context)
-                                    repo.getStreamUrl(target.videoId, target.title, target.artist)
+                                    repo.getStreamUrl(target.videoId, target.title, target.artist, target.durationSeconds)
                                 }
                             }
                         }

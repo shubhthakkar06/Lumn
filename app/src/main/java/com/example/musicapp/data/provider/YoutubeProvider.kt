@@ -83,7 +83,8 @@ class YoutubeProvider : MusicProvider {
     override suspend fun resolveStream(
         trackRef: String,
         title: String?,
-        artist: String?
+        artist: String?,
+        durationSeconds: Long
     ): StreamResult = withContext(Dispatchers.IO) {
         // 1. Direct memory cache check
         memoryStreamCache[trackRef]?.let {
@@ -111,8 +112,8 @@ class YoutubeProvider : MusicProvider {
                 val wantedTitle = normalize(title.orEmpty())
                 val wantedArtist = normalize(artist.orEmpty())
                 val fallbackVid = searchResults
-                    .map { candidate -> candidate to titleMatch(wantedTitle, normalize(candidate.title), wantedArtist, normalize(candidate.artist)) }
-                    .filter { (_, score) -> score >= 0.62 }
+                    .map { candidate -> candidate to titleMatch(wantedTitle, normalize(candidate.title), wantedArtist, normalize(candidate.artist), durationSeconds, candidate.durationSeconds) }
+                    .filter { (_, score) -> score >= 0.77 }
                     .maxByOrNull { it.second }
                     ?.first?.videoId
                 if (!fallbackVid.isNullOrBlank() && fallbackVid != ytVideoId) {
@@ -140,11 +141,15 @@ class YoutubeProvider : MusicProvider {
     }
 
     private fun normalize(value: String): String = value.lowercase()
-        .replace(Regex("\\([^)]*\\)|\\[[^]]*]"), " ")
+        .replace(Regex("\\b(official|audio|video|lyrics?|visuali[sz]er|hd|hq|4k)\\b", RegexOption.IGNORE_CASE), " ")
+        .replace(Regex("\\([^)]*\\)|\\[[^]]*]")) { match ->
+            val label = match.value.lowercase()
+            if (listOf("live", "remix", "slowed", "reverb", "acoustic", "instrumental", "karaoke", "cover", "sped", "lofi", "garba", "unplugged").any(label::contains)) label else " "
+        }
         .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
         .trim()
 
-    private fun titleMatch(wantedTitle: String, actualTitle: String, wantedArtist: String, actualArtist: String): Double {
+    private fun titleMatch(wantedTitle: String, actualTitle: String, wantedArtist: String, actualArtist: String, wantedDuration: Long, actualDuration: Long): Double {
         if (wantedTitle.isBlank() || actualTitle.isBlank()) return 0.0
         val titleScore = when {
             wantedTitle == actualTitle -> 1.0
@@ -162,6 +167,13 @@ class YoutubeProvider : MusicProvider {
             else if (tokens.isEmpty()) 0.0
             else tokens.count { token -> actual.any { it == token || it.startsWith(token) } }.toDouble() / tokens.size
         }
-        return titleScore * 0.75 + artistScore * 0.25
+        val versionWords = listOf("live", "remix", "slowed", "reverb", "acoustic", "instrumental", "karaoke", "cover", "sped", "lofi", "garba", "unplugged")
+        if (versionWords.any { word -> actualTitle.contains(word) != wantedTitle.contains(word) }) return 0.0
+        val durationScore = if (wantedDuration > 0L && actualDuration > 0L) {
+            val difference = kotlin.math.abs(wantedDuration - actualDuration)
+            if (difference > maxOf(12L, (wantedDuration * 0.12).toLong())) return 0.0
+            1.0 - difference.toDouble() / maxOf(wantedDuration, actualDuration)
+        } else 0.72
+        return titleScore * 0.62 + artistScore * 0.28 + durationScore * 0.10
     }
 }

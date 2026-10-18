@@ -21,13 +21,21 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
 
-data class SpotifyImportedTrack(val id: String, val title: String, val artists: String)
+data class SpotifyImportedTrack(
+    val id: String,
+    val title: String,
+    val artists: String,
+    val albumName: String = "",
+    val albumArtUrl: String = "",
+    val durationSeconds: Long = 0L
+)
 
 data class SpotifyImportedPlaylist(
     val id: String,
     val name: String,
     val spotifyUrl: String,
-    val tracks: List<SpotifyImportedTrack>
+    val tracks: List<SpotifyImportedTrack>,
+    val coverUrl: String = ""
 )
 
 /**
@@ -52,6 +60,7 @@ object SpotifyPlaylistImporter {
         val token = authorize(context)
         val playlist = apiGet("https://api.spotify.com/v1/playlists/$playlistId?market=US", token)
         val name = (playlist["name"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() } ?: "Spotify Playlist"
+        val playlistCover = playlistImages(playlist)
 
         val tracks = mutableListOf<SpotifyImportedTrack>()
         var nextUrl: String? = "https://api.spotify.com/v1/playlists/$playlistId/items?limit=100&market=US"
@@ -67,8 +76,15 @@ object SpotifyPlaylistImporter {
                     (artist as? JsonObject)?.get("name")?.let { (it as? JsonPrimitive)?.content }
                 }?.filter { it.isNotBlank() }?.distinct()?.joinToString(", ").orEmpty()
                 val id = (item["id"] as? JsonPrimitive)?.content.orEmpty()
+                val album = item["album"] as? JsonObject
+                val albumName = (album?.get("name") as? JsonPrimitive)?.content.orEmpty()
+                val albumCover = album?.let(::playlistImages).orEmpty()
+                val durationMs = (item["duration_ms"] as? JsonPrimitive)?.content?.toLongOrNull() ?: 0L
                 if (title.isNotBlank() && artists.isNotBlank()) {
-                    tracks += SpotifyImportedTrack(id.ifBlank { "${title}_$artists" }, title, artists)
+                    tracks += SpotifyImportedTrack(
+                        id.ifBlank { "${title}_$artists" }, title, artists, albumName, albumCover,
+                        (durationMs / 1000L).takeIf { it > 0L } ?: 0L
+                    )
                 }
             }
             nextUrl = parseSpotifyNextPageUrl(page)
@@ -79,9 +95,14 @@ object SpotifyPlaylistImporter {
             id = playlistId,
             name = name,
             spotifyUrl = "https://open.spotify.com/playlist/$playlistId",
-            tracks = tracks.distinctBy { it.id }
+            tracks = tracks.distinctBy { it.id },
+            coverUrl = playlistCover
         )
     }
+
+    private fun playlistImages(obj: JsonObject): String =
+        ((obj["images"] as? JsonArray)?.firstOrNull() as? JsonObject)
+            ?.get("url")?.let { (it as? JsonPrimitive)?.content }.orEmpty()
 
     private fun extractPlaylistId(input: String): String? {
         val value = input.trim()

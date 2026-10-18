@@ -76,7 +76,8 @@ class AudiusProvider(
     override suspend fun resolveStream(
         trackRef: String,
         title: String?,
-        artist: String?
+        artist: String?,
+        durationSeconds: Long
     ): StreamResult = withContext(Dispatchers.IO) {
         if (trackRef.startsWith("audius_")) {
             val id = trackRef.removePrefix("audius_")

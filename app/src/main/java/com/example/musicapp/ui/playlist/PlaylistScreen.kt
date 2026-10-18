@@ -307,7 +307,7 @@ fun PlaylistScreen(
                             onClick = {
                                 downloadManager.downloadSong(song) { target ->
                                     val repo = com.example.musicapp.data.DefaultDataRepository(context)
-                                    repo.getStreamUrl(target.videoId, target.title, target.artist)
+                                    repo.getStreamUrl(target.videoId, target.title, target.artist, target.durationSeconds)
                                 }
                                 showSongMenu = false
                             },
@@ -519,7 +519,7 @@ fun PlaylistScreen(
                                 songsToDownload.forEach { s ->
                                     downloadManager.downloadSong(s) { target ->
                                         val repo = com.example.musicapp.data.DefaultDataRepository(context)
-                                        repo.getStreamUrl(target.videoId, target.title, target.artist)
+                                        repo.getStreamUrl(target.videoId, target.title, target.artist, target.durationSeconds)
                                     }
                                 }
                             },
