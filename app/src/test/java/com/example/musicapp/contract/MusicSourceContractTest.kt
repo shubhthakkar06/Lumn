@@ -8,6 +8,7 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Test
 import java.util.concurrent.TimeUnit
 
@@ -190,6 +191,9 @@ class MusicSourceContractTest {
 
     @Test
     fun testDirectCatalogYoutubeResolution() = runBlocking {
+        // This exercises a live third-party extractor and is unreliable from hosted CI networks.
+        // Keep it active for local playback checks, but don't let external throttling block releases.
+        assumeFalse("Live YouTube stream check is skipped in CI", System.getenv("CI") == "true")
         val ytProvider = com.example.musicapp.data.provider.YoutubeProvider()
         val testTracks = listOf(
             Triple("1G4isv_Fylg", "Sparks", "Coldplay"),
