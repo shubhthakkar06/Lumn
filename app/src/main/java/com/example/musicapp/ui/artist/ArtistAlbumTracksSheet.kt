@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.musicapp.data.network.MusicApiService
+import com.example.musicapp.data.auth.UserManager
 import com.example.musicapp.data.network.SongInfo
 import com.example.musicapp.data.provider.SearchResultDeduplicator
 import com.example.musicapp.ui.components.TrackArtwork
@@ -37,6 +38,8 @@ internal fun ArtistAlbumTracksSheet(
     viewModel: MainScreenViewModel,
     onDismiss: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val currentUser by remember { UserManager.getInstance(context).currentUser }.collectAsStateWithLifecycle()
     var albumSongs by remember(album.first, artistName) { mutableStateOf<List<SongInfo>>(emptyList()) }
     var loading by remember(album.first, artistName) { mutableStateOf(true) }
     val currentSong by viewModel.currentSong.collectAsStateWithLifecycle()
@@ -91,7 +94,7 @@ internal fun ArtistAlbumTracksSheet(
                     }
                     IconButton(
                         onClick = { viewModel.downloadAlbum(albumSongs) },
-                        enabled = albumSongs.isNotEmpty(),
+                        enabled = albumSongs.isNotEmpty() && !currentUser.isGuest,
                         modifier = Modifier.size(48.dp)
                     ) {
                         Icon(Icons.Default.Download, contentDescription = "Download album", tint = Color.White)

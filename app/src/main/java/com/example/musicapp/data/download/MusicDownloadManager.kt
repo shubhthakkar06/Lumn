@@ -107,6 +107,12 @@ class MusicDownloadManager private constructor(private val context: Context) {
     }
 
     fun downloadSong(song: SongInfo, notify: Boolean = true, streamUrlProvider: suspend (SongInfo) -> String?) {
+        if (com.example.musicapp.data.auth.UserManager.getInstance(context).currentUser.value.isGuest) {
+            if (notify) android.os.Handler(android.os.Looper.getMainLooper()).post {
+                android.widget.Toast.makeText(context, "Sign in to download music", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
         if (isDownloaded(song.videoId)) {
             if (notify) android.os.Handler(android.os.Looper.getMainLooper()).post {
                 android.widget.Toast.makeText(context, "\"${song.title}\" is already downloaded", android.widget.Toast.LENGTH_SHORT).show()

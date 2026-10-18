@@ -249,7 +249,7 @@ fun LibraryScreen(
                             modifier = Modifier.size(26.dp)
                         )
                     }
-                    IconButton(onClick = { showCreateSheet = true }) {
+                    IconButton(onClick = { showCreateSheet = true }, enabled = !currentUser.isGuest) {
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = "Create",
@@ -538,9 +538,12 @@ fun LibraryScreen(
                     item {
                         Spacer(modifier = Modifier.height(24.dp))
                         AddLibraryButton("+ Add artists") { showAddArtistsSheet = true }
-                        AddLibraryButton("+ Import your music") {
-                            playlistManager.createPlaylist("Imported Device Audio", currentUser.name)
-                            Toast.makeText(context, "Scanned and imported 12 local audio tracks!", Toast.LENGTH_SHORT).show()
+                        if (!currentUser.isGuest) {
+                            AddLibraryButton("+ Import your music") {
+                                playlistManager.createPlaylist("Imported Device Audio", currentUser.name)?.let {
+                                    Toast.makeText(context, "Scanned and imported 12 local audio tracks!", Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         }
                     }
                 }
@@ -592,9 +595,10 @@ fun LibraryScreen(
                     showSpotifyImportDialog = true
                 },
                 onCreateBlend = {
-                    val blend = playlistManager.createPlaylist("Blend Mix with Friend", currentUser.name)
-                    onNavigate(Screen.Playlist(blend.id, blend.name, blend.coverUrl, "Shared Blend • ${currentUser.name}"))
-                    Toast.makeText(context, "Created Blend Mix!", Toast.LENGTH_SHORT).show()
+                    playlistManager.createPlaylist("Blend Mix with Friend", currentUser.name)?.let { blend ->
+                        onNavigate(Screen.Playlist(blend.id, blend.name, blend.coverUrl, "Shared Blend • ${currentUser.name}"))
+                        Toast.makeText(context, "Created Blend Mix!", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 onDismiss = { showCreateSheet = false }
             )
@@ -655,9 +659,11 @@ fun LibraryScreen(
                                         songs = songs,
                                         sourceUrl = imported.spotifyUrl
                                     )
-                                    showSpotifyImportDialog = false
-                                    onNavigate(Screen.Playlist(playlist.id, playlist.name, playlist.coverUrl, "Imported from Spotify • ${playlist.creator}"))
-                                    Toast.makeText(context, "Imported ${songs.size} tracks", Toast.LENGTH_SHORT).show()
+                                    if (playlist != null) {
+                                        showSpotifyImportDialog = false
+                                        onNavigate(Screen.Playlist(playlist.id, playlist.name, playlist.coverUrl, "Imported from Spotify • ${playlist.creator}"))
+                                        Toast.makeText(context, "Imported ${songs.size} tracks", Toast.LENGTH_SHORT).show()
+                                    }
                                 } catch (e: Exception) {
                                     spotifyImportError = e.message ?: "Could not import this Spotify playlist."
                                 } finally {
@@ -731,10 +737,11 @@ fun LibraryScreen(
                         Button(
                             onClick = {
                                 if (newPlaylistName.isNotBlank()) {
-                                    val created = playlistManager.createPlaylist(newPlaylistName.trim(), currentUser.name)
-                                    showCreatePlaylistDialog = false
-                                    newPlaylistName = ""
-                                    onNavigate(Screen.Playlist(created.id, created.name, created.coverUrl, "Playlist • ${currentUser.name}"))
+                                    playlistManager.createPlaylist(newPlaylistName.trim(), currentUser.name)?.let { created ->
+                                        showCreatePlaylistDialog = false
+                                        newPlaylistName = ""
+                                        onNavigate(Screen.Playlist(created.id, created.name, created.coverUrl, "Playlist • ${currentUser.name}"))
+                                    }
                                 }
                             },
                             modifier = Modifier

@@ -47,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.musicapp.ui.components.TrackArtwork
 import com.example.musicapp.data.download.DownloadStatus
 import com.example.musicapp.data.download.MusicDownloadManager
+import com.example.musicapp.data.auth.UserManager
 import com.example.musicapp.data.lyrics.LyricLine
 import com.example.musicapp.data.lyrics.LyricsManager
 import com.example.musicapp.data.network.SongInfo
@@ -66,6 +67,7 @@ fun FullScreenPlayerSheet(
     val context = LocalContext.current
     val playlistManager = remember { PlaylistManager.getInstance(context) }
     val downloadManager = remember { MusicDownloadManager.getInstance(context) }
+    val currentUser by remember { UserManager.getInstance(context).currentUser }.collectAsStateWithLifecycle()
     val lyricsManager = remember { LyricsManager.getInstance(context) }
     val triviaManager = remember { SongTriviaManager.getInstance(context) }
 
@@ -321,6 +323,7 @@ fun FullScreenPlayerSheet(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // Like button with bouncy micro-interaction
                     IconButton(
+                        enabled = !currentUser.isGuest,
                         onClick = {
                             heartBounced = true
                             playlistManager.toggleLike(song)

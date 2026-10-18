@@ -36,7 +36,6 @@ class UserManager private constructor(private val context: Context) {
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
     private val accountsFile = File(context.filesDir, "accounts.json")
     private val prefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
-    private val apiClient = AuthApiClient()
 
     companion object {
         @Volatile
@@ -114,7 +113,10 @@ class UserManager private constructor(private val context: Context) {
         val activeId = prefs.getString("active_user_id", "") ?: ""
 
         val active = _allUsers.value.find { it.id == activeId }
-        if (active != null && savedLoggedIn) {
+        if (savedLoggedIn && activeId.startsWith("guest_")) {
+            _currentUser.value = defaultGuest
+            _isLoggedIn.value = true
+        } else if (active != null && savedLoggedIn) {
             _currentUser.value = active
             _isLoggedIn.value = true
         } else {
@@ -122,18 +124,6 @@ class UserManager private constructor(private val context: Context) {
             _isLoggedIn.value = false
         }
 
-        // Sync with PostgreSQL in background
-        scope.launch {
-            try {
-                val remote = apiClient.getAllUsers().getOrNull()
-                if (!remote.isNullOrEmpty()) {
-                    _allUsers.value = remote
-                    saveAccounts(remote)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
     }
 
     private fun saveAccounts(users: List<UserProfile>) {
@@ -187,24 +177,9 @@ class UserManager private constructor(private val context: Context) {
         }
 
         val passHash = hashPassword(password)
-        val remoteResult = apiClient.login(clean, passHash)
-
-        if (remoteResult.isSuccess) {
-            val user = remoteResult.getOrThrow()
-            applySession(user)
-            return@runBlocking Result.success(user)
-        }
-
-        val err = remoteResult.exceptionOrNull()
-        if (err?.message?.contains("No account found", ignoreCase = true) == true ||
-            err?.message?.contains("Incorrect password", ignoreCase = true) == true) {
-            return@runBlocking Result.failure(err)
-        }
-
-        // Fallback to local cache if offline
         val localUser = _allUsers.value.find {
             it.username.equals(clean, ignoreCase = true) || it.name.equals(clean, ignoreCase = true)
-        } ?: return@runBlocking Result.failure(err ?: Exception("No account found with username \"$clean\""))
+        } ?: return@runBlocking Result.failure(Exception("No account found with username \"$clean\" on this device"))
 
         if (localUser.passwordHash.isNotEmpty() && localUser.passwordHash != passHash) {
             return@runBlocking Result.failure(Exception("Incorrect password. Please try again."))
@@ -227,22 +202,14 @@ class UserManager private constructor(private val context: Context) {
         }
 
         val passHash = hashPassword(password)
-        val remoteResult = apiClient.signup(clean, passHash)
-
-        val profile = remoteResult.getOrElse { error ->
-            if (error.message?.contains("taken", ignoreCase = true) == true) {
-                return@runBlocking Result.failure(error)
-            }
-            // Fallback to local user creation if PostgreSQL server unreachable
-            val existingLocal = _allUsers.value.find {
-                it.username.equals(clean, ignoreCase = true) || it.name.equals(clean, ignoreCase = true)
-            }
-            if (existingLocal != null && !existingLocal.isGuest) {
-                return@runBlocking Result.failure(Exception("Username \"$clean\" is already taken. Please choose another."))
-            }
-            createLocalUser(clean, passHash)
+        val existingLocal = _allUsers.value.find {
+            it.username.equals(clean, ignoreCase = true) || it.name.equals(clean, ignoreCase = true)
+        }
+        if (existingLocal != null && !existingLocal.isGuest) {
+            return@runBlocking Result.failure(Exception("Username \"$clean\" is already taken. Please choose another."))
         }
 
+        val profile = createLocalUser(clean, passHash)
         applySession(profile)
         Result.success(profile)
     }
@@ -285,9 +252,6 @@ class UserManager private constructor(private val context: Context) {
         _allUsers.value = updatedList
         scope.launch {
             saveAccounts(updatedList)
-            if (!current.isGuest) {
-                apiClient.updateInterests(current.id, genres, artists)
-            }
         }
     }
 

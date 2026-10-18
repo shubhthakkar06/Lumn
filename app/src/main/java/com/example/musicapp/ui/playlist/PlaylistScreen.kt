@@ -570,9 +570,10 @@ fun PlaylistScreen(
                                         text = { Text("Save to Your Library", color = Color.White) },
                                         onClick = {
                                             showPlaylistMenu = false
-                                            val created = playlistManager.createPlaylist(title, creator, coverUrl)
-                                            filteredSongs.forEach { playlistManager.addSongToPlaylist(created.id, it) }
-                                            Toast.makeText(context, "Saved as custom playlist!", Toast.LENGTH_SHORT).show()
+                                            playlistManager.createPlaylist(title, creator, coverUrl)?.let { created ->
+                                                filteredSongs.forEach { playlistManager.addSongToPlaylist(created.id, it) }
+                                                Toast.makeText(context, "Saved as custom playlist!", Toast.LENGTH_SHORT).show()
+                                            }
                                         }
                                     )
                                 }

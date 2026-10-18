@@ -115,7 +115,13 @@ class PlaylistManager private constructor(private val context: Context) {
         coverUrl: String = "",
         songs: List<SongInfo> = emptyList(),
         sourceUrl: String = ""
-    ): UserPlaylist {
+    ): UserPlaylist? {
+        if (com.example.musicapp.data.auth.UserManager.getInstance(context).currentUser.value.isGuest) {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                android.widget.Toast.makeText(context, "Sign in to create playlists", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            return null
+        }
         val id = "pl_" + System.currentTimeMillis()
         val newPlaylist = UserPlaylist(
             id = id,
@@ -131,6 +137,7 @@ class PlaylistManager private constructor(private val context: Context) {
     }
 
     fun addSongToPlaylist(playlistId: String, song: SongInfo) {
+        if (com.example.musicapp.data.auth.UserManager.getInstance(context).currentUser.value.isGuest) return
         val updated = _playlists.value.map { pl ->
             if (pl.id == playlistId) {
                 if (pl.songs.none { it.videoId == song.videoId }) {

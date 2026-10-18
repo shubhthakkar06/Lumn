@@ -23,6 +23,7 @@ private enum class AuthScreenState {
 fun AuthFlowContainer(
     onAuthComplete: () -> Unit
 ) {
+    val context = LocalContext.current
     var currentScreen by remember { mutableStateOf(AuthScreenState.Landing) }
 
     BackHandler(enabled = currentScreen != AuthScreenState.Landing) {
@@ -45,7 +46,11 @@ fun AuthFlowContainer(
             AuthScreenState.Landing -> {
                 AuthLandingScreen(
                     onNavigateToSignUp = { currentScreen = AuthScreenState.SignUp },
-                    onNavigateToSignIn = { currentScreen = AuthScreenState.SignIn }
+                    onNavigateToSignIn = { currentScreen = AuthScreenState.SignIn },
+                    onContinueAsGuest = {
+                        UserManager.getInstance(context).loginAsGuest()
+                        onAuthComplete()
+                    }
                 )
             }
             AuthScreenState.SignUp -> {

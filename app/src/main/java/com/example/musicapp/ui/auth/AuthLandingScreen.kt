@@ -26,7 +26,8 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun AuthLandingScreen(
     onNavigateToSignUp: () -> Unit,
-    onNavigateToSignIn: () -> Unit
+    onNavigateToSignIn: () -> Unit,
+    onContinueAsGuest: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -112,7 +113,10 @@ fun AuthLandingScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            TextButton(onClick = onContinueAsGuest, modifier = Modifier.padding(top = 8.dp)) {
+                Text("Continue as guest", color = Color(0xFFB8C2D0), fontSize = 14.sp)
+            }
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 }

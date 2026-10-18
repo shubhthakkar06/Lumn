@@ -127,6 +127,10 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
 
     fun downloadAlbum(songs: List<SongInfo>) {
         if (songs.isEmpty()) return
+        if (com.example.musicapp.data.auth.UserManager.getInstance(context).currentUser.value.isGuest) {
+            android.widget.Toast.makeText(context, "Sign in to download music", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
         val manager = com.example.musicapp.data.download.MusicDownloadManager.getInstance(context)
         val pending = songs.filterNot { manager.isDownloaded(it.videoId) }
         if (pending.isEmpty()) {
