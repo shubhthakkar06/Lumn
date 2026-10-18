@@ -3,5 +3,5 @@
   "versionCode": 17,
   "minimumVersionCode": 17,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
-  "releaseNotes": "Reliable public update checks and the latest playback, search, and stability improvements."
+  "releaseNotes": "Fixed Spotify playlist imports and pagination, with playback, search, and stability improvements."
 }
