@@ -49,6 +49,15 @@ class AudioEffectManager(private val context: Context) {
     private var loudnessEnhancer: LoudnessEnhancer? = null
 
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private var deviceCallbackRegistered = false
+    private val deviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
+            runCatching { applyProfileForCurrentDevice() }
+        }
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+            runCatching { applyProfileForCurrentDevice() }
+        }
+    }
     private var currentSessionId: Int = -1
 
     private var currentPreset = EqPresetMode.ADAPTIVE
@@ -67,19 +76,15 @@ class AudioEffectManager(private val context: Context) {
     val activeProfile: StateFlow<ActiveAudioProfile> = _activeProfile.asStateFlow()
 
     init {
-        audioManager.registerAudioDeviceCallback(object : AudioDeviceCallback() {
-            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
-                applyProfileForCurrentDevice()
-            }
-            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
-                applyProfileForCurrentDevice()
-            }
-        }, null)
+        deviceCallbackRegistered = runCatching {
+            audioManager.registerAudioDeviceCallback(deviceCallback, null)
+            true
+        }.getOrDefault(false)
     }
 
     fun attachToSession(sessionId: Int) {
         if (sessionId == currentSessionId || sessionId == 0) return
-        release()
+        releaseEffects()
         currentSessionId = sessionId
         // Android devices do not all expose the same effect implementations. Create each
         // independently so an unsupported virtualizer, for example, cannot disable the EQ
@@ -429,10 +434,18 @@ class AudioEffectManager(private val context: Context) {
     }
 
     fun release() {
-        equalizer?.release()
-        bassBoost?.release()
-        virtualizer?.release()
-        loudnessEnhancer?.release()
+        releaseEffects()
+        if (deviceCallbackRegistered) {
+            runCatching { audioManager.unregisterAudioDeviceCallback(deviceCallback) }
+            deviceCallbackRegistered = false
+        }
+    }
+
+    private fun releaseEffects() {
+        equalizer?.let { runCatching { it.release() } }
+        bassBoost?.let { runCatching { it.release() } }
+        virtualizer?.let { runCatching { it.release() } }
+        loudnessEnhancer?.let { runCatching { it.release() } }
         equalizer = null
         bassBoost = null
         virtualizer = null

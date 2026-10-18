@@ -128,7 +128,7 @@ fun ArtistLikedSongsSheet(
                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    itemsIndexed(likedSongs, key = { _, s -> s.videoId }) { index, song ->
+                    itemsIndexed(likedSongs, key = { index, song -> "${song.videoId}-$index" }) { index, song ->
                         val isCurrent = currentSongId == song.videoId
                         Row(
                             modifier = Modifier

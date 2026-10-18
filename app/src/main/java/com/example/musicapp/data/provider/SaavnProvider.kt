@@ -82,6 +82,11 @@ class SaavnProvider(
                     val songName = obj["song"]?.let { (it as? JsonPrimitive)?.content } ?: ""
                     val primaryArtists = obj["primary_artists"]?.let { (it as? JsonPrimitive)?.content }
                         ?: obj["singers"]?.let { (it as? JsonPrimitive)?.content } ?: ""
+                    val moreInfo = obj["more_info"] as? JsonObject
+                    val albumName = (obj["album"] ?: moreInfo?.get("album"))
+                        ?.let { (it as? JsonPrimitive)?.content }.orEmpty()
+                    val durationSeconds = (obj["duration"] ?: moreInfo?.get("duration"))
+                        ?.let { (it as? JsonPrimitive)?.content?.toLongOrNull() } ?: 0L
                     val rawImg = obj["image"]?.let { (it as? JsonPrimitive)?.content } ?: ""
                     val highResImg = rawImg.replace("150x150.jpg", "500x500.jpg")
                         .replace("150x150.webp", "500x500.jpg")
@@ -107,7 +112,9 @@ class SaavnProvider(
                                 artist = cleanArtist,
                                 albumArtUrl = highResImg,
                                 audioStreamUrl = directStream,
-                                popularityScore = popularity
+                                albumName = albumName,
+                                popularityScore = popularity,
+                                durationSeconds = durationSeconds
                             )
                         )
                     }

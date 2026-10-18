@@ -154,12 +154,17 @@ class ProviderRouter(
 
         // Keep provider order as a tie-breaker, but prefer the most relevant title/artist
         // matches. Providers often return overlapping catalogs and duplicate editions.
-        resultsByProvider.flatMap { it.second }
-            // Duplicate IDs across providers can crash Compose LazyColumn's keyed list.
-            .distinctBy { it.videoId }
-            .sortedWith(compareByDescending<SongInfo> { relevance(query, it) }
-                .thenByDescending { it.popularityScore })
-            .take(40)
+        val ranked = resultsByProvider.flatMap { it.second }
+            .sortedWith(
+                compareByDescending<SongInfo> { relevance(query, it) }
+                    .thenByDescending { it.popularityScore }
+                    // When two providers return the same recording, keep a directly
+                    // playable catalog entry ahead of a URL that still needs resolving.
+                    .thenByDescending { !it.audioStreamUrl.isNullOrBlank() }
+            )
+        val uniqueIds = LinkedHashMap<String, SongInfo>()
+        ranked.forEach { song -> uniqueIds.putIfAbsent(song.videoId, song) }
+        SearchResultDeduplicator.deduplicate(uniqueIds.values.toList()).take(40)
     }
 
     suspend fun resolveStream(

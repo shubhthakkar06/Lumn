@@ -19,7 +19,9 @@ data class SongInfo(
     val albumArtUrl: String,
     val audioStreamUrl: String? = null,
     val albumName: String = "",
-    val popularityScore: Long = 0L
+    val popularityScore: Long = 0L,
+    /** Provider duration in whole seconds; zero means the provider did not report it. */
+    val durationSeconds: Long = 0L
 )
 
 class MusicApiService {
@@ -74,11 +76,13 @@ class MusicApiService {
                     val obj = element as? kotlinx.serialization.json.JsonObject ?: return@forEach
                     val id = obj["id"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: ""
                     val songName = obj["song"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: ""
-                    val albumName = obj["album"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-                        ?: obj["more_info"]?.let { it as? kotlinx.serialization.json.JsonObject }
-                            ?.get("album")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty()
                     val primaryArtists = obj["primary_artists"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
                         ?: obj["singers"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: ""
+                    val moreInfo = obj["more_info"] as? kotlinx.serialization.json.JsonObject
+                    val durationSeconds = (obj["duration"] ?: moreInfo?.get("duration"))
+                        ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() } ?: 0L
+                    val albumName = (obj["album"] ?: moreInfo?.get("album"))
+                        ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty()
                     val rawImg = obj["image"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: ""
                     val highResImg = rawImg.replace("150x150.jpg", "500x500.jpg")
                         .replace("150x150.webp", "500x500.jpg")
@@ -100,7 +104,8 @@ class MusicApiService {
                                 artist = cleanArtist,
                                 albumArtUrl = highResImg,
                                 audioStreamUrl = directStream,
-                                albumName = albumName
+                                albumName = albumName,
+                                durationSeconds = durationSeconds
                             )
                         )
                     }
@@ -128,7 +133,7 @@ class MusicApiService {
             val items = searchExtractor.initialPage.items
             for (item in items) {
                 if (item is StreamInfoItem) {
-                    val videoId = item.url.substringAfter("v=")
+                    val videoId = YouTubeVideoIdParser.parse(item.url) ?: continue
                     val bestThumb = item.thumbnails.maxByOrNull { it.height * it.width }?.url
                         ?: item.thumbnails.lastOrNull()?.url
                         ?: "https://i.ytimg.com/vi/${videoId}/hqdefault.jpg"
@@ -142,7 +147,8 @@ class MusicApiService {
                         title = item.name,
                         artist = item.uploaderName,
                         albumArtUrl = highResArt,
-                        audioStreamUrl = null
+                        audioStreamUrl = null,
+                        durationSeconds = item.duration.coerceAtLeast(0L)
                     ))
                 }
             }

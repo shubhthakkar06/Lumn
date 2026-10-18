@@ -46,6 +46,7 @@ class JamendoProvider(
                     val artistName = obj["artist_name"]?.let { (it as? JsonPrimitive)?.content } ?: "Jamendo Artist"
                     val image = obj["image"]?.let { (it as? JsonPrimitive)?.content } ?: ""
                     val audioUrl = obj["audio"]?.let { (it as? JsonPrimitive)?.content } ?: ""
+                    val durationSeconds = obj["duration"]?.let { (it as? JsonPrimitive)?.content?.toLongOrNull() } ?: 0L
 
                     if (id.isNotBlank() && name.isNotBlank()) {
                         results.add(
@@ -54,7 +55,8 @@ class JamendoProvider(
                                 title = name,
                                 artist = artistName,
                                 albumArtUrl = image,
-                                audioStreamUrl = audioUrl.ifBlank { null }
+                                audioStreamUrl = audioUrl.ifBlank { null },
+                                durationSeconds = durationSeconds
                             )
                         )
                     }

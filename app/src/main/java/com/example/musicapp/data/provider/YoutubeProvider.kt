@@ -2,6 +2,7 @@ package com.example.musicapp.data.provider
 
 import com.example.musicapp.data.network.OkHttpDownloader
 import com.example.musicapp.data.network.SongInfo
+import com.example.musicapp.data.network.YouTubeVideoIdParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
@@ -40,7 +41,7 @@ class YoutubeProvider : MusicProvider {
             searchExtractor.fetchPage()
             for (item in searchExtractor.initialPage.items) {
                 if (item is StreamInfoItem) {
-                    val videoId = item.url.substringAfter("v=")
+                    val videoId = YouTubeVideoIdParser.parse(item.url) ?: continue
                     val bestThumb = item.thumbnails.maxByOrNull { it.height * it.width }?.url
                         ?: item.thumbnails.lastOrNull()?.url
                         ?: "https://i.ytimg.com/vi/${videoId}/hqdefault.jpg"
@@ -55,7 +56,8 @@ class YoutubeProvider : MusicProvider {
                             title = item.name,
                             artist = item.uploaderName,
                             albumArtUrl = highResArt,
-                            audioStreamUrl = null
+                            audioStreamUrl = null,
+                            durationSeconds = item.duration.coerceAtLeast(0L)
                         )
                     )
                 }

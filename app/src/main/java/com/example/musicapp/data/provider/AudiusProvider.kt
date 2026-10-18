@@ -44,6 +44,7 @@ class AudiusProvider(
                     val obj = element as? JsonObject ?: return@forEach
                     val id = obj["id"]?.let { (it as? JsonPrimitive)?.content } ?: ""
                     val title = obj["title"]?.let { (it as? JsonPrimitive)?.content } ?: ""
+                    val durationSeconds = obj["duration"]?.let { (it as? JsonPrimitive)?.content?.toLongOrNull() } ?: 0L
                     val userObj = obj["user"] as? JsonObject
                     val artistName = userObj?.get("name")?.let { (it as? JsonPrimitive)?.content } ?: "Audius Artist"
                     val artworkObj = obj["artwork"] as? JsonObject
@@ -59,7 +60,8 @@ class AudiusProvider(
                                 title = title,
                                 artist = artistName,
                                 albumArtUrl = artUrl,
-                                audioStreamUrl = streamUrl
+                                audioStreamUrl = streamUrl,
+                                durationSeconds = durationSeconds
                             )
                         )
                     }

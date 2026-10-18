@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.musicapp.data.network.MusicApiService
 import com.example.musicapp.data.network.SongInfo
+import com.example.musicapp.data.provider.SearchResultDeduplicator
 import com.example.musicapp.ui.components.TrackArtwork
 import com.example.musicapp.ui.main.MainScreenViewModel
 
@@ -38,6 +40,9 @@ internal fun ArtistAlbumTracksSheet(
     var albumSongs by remember(album.first, artistName) { mutableStateOf<List<SongInfo>>(emptyList()) }
     var loading by remember(album.first, artistName) { mutableStateOf(true) }
     val currentSong by viewModel.currentSong.collectAsStateWithLifecycle()
+    val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
+    val currentTrackInAlbum = currentSong?.let { active -> albumSongs.any { it.videoId == active.videoId } } == true
+    val isAlbumPlaying = isPlaying && currentTrackInAlbum
 
     LaunchedEffect(album.first, artistName) {
         loading = true
@@ -51,7 +56,8 @@ internal fun ArtistAlbumTracksSheet(
         val exactAlbumMatches = artistMatches.filter {
             it.albumName.isBlank() || it.albumName.contains(album.first, ignoreCase = true)
         }
-        albumSongs = (exactAlbumMatches.ifEmpty { artistMatches }).distinctBy { it.videoId }
+        val exactIds = (exactAlbumMatches.ifEmpty { artistMatches }).distinctBy { it.videoId }
+        albumSongs = SearchResultDeduplicator.deduplicate(exactIds)
         loading = false
     }
 
@@ -91,11 +97,20 @@ internal fun ArtistAlbumTracksSheet(
                         Icon(Icons.Default.Download, contentDescription = "Download album", tint = Color.White)
                     }
                     FilledIconButton(
-                        onClick = { albumSongs.firstOrNull()?.let { viewModel.playSong(it, albumSongs) } },
+                        onClick = {
+                            if (currentTrackInAlbum) viewModel.togglePlayPause()
+                            else albumSongs.firstOrNull()?.let { viewModel.playSong(it, albumSongs) }
+                        },
                         enabled = albumSongs.isNotEmpty(),
                         modifier = Modifier.size(54.dp),
                         colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF48E6A0), contentColor = Color(0xFF07120D))
-                    ) { Icon(Icons.Default.PlayArrow, contentDescription = "Play album", modifier = Modifier.size(32.dp)) }
+                    ) {
+                        Icon(
+                            if (isAlbumPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isAlbumPlaying) "Pause album" else "Play album",
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
                 }
                 IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
@@ -109,7 +124,7 @@ internal fun ArtistAlbumTracksSheet(
                     Text("Tracks for this release could not be loaded right now.", color = Color(0xFFABB5C4))
                 }
                 else -> LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    itemsIndexed(albumSongs, key = { _, song -> song.videoId }) { index, track ->
+                    itemsIndexed(albumSongs, key = { index, song -> "${song.videoId}-$index" }) { index, track ->
                         Row(
                             Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { viewModel.playSong(track, albumSongs) }.padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically

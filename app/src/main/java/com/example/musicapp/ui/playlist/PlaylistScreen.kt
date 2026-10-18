@@ -121,6 +121,10 @@ fun PlaylistScreen(
         }
         list
     }
+    val currentTrackIsVisible = currentSong?.let { active ->
+        filteredSongs.any { it.videoId == active.videoId }
+    } == true
+    val isThisPlaylistPlaying = isPlaying && currentTrackIsVisible
     val filteredSongKeys = remember(filteredSongs) {
         val occurrences = mutableMapOf<String, Int>()
         filteredSongs.map { song ->
@@ -600,7 +604,7 @@ fun PlaylistScreen(
                                 )
                                 .clickable {
                                     playBounced = true
-                                    if (currentSong != null) {
+                                    if (currentTrackIsVisible) {
                                         viewModel.togglePlayPause()
                                     } else if (filteredSongs.isNotEmpty()) {
                                         viewModel.playSong(filteredSongs.first(), filteredSongs)
@@ -609,7 +613,7 @@ fun PlaylistScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                imageVector = if (isThisPlaylistPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = "Play/Pause",
                                 tint = Color(0xFF0A0E14),
                                 modifier = Modifier.size(32.dp)

@@ -414,7 +414,7 @@ fun ArtistScreen(
                 }
 
                 // Popular Tracks List (Top 5 or Expanded)
-                itemsIndexed(displayedTracks, key = { _, track -> track.videoId }) { index, track ->
+                itemsIndexed(displayedTracks, key = { index, track -> "${track.videoId}-$index" }) { index, track ->
                     val isCurrent = currentSong?.videoId == track.videoId
                     val isTrackLiked = playlistManager.isLiked(track.videoId)
                     val isLoading = loadingSongVideoId == track.videoId
@@ -904,7 +904,7 @@ fun ArtistScreen(
                             contentPadding = PaddingValues(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            items(artistData.similarArtists, key = { it.first }) { (name, art) ->
+                            itemsIndexed(artistData.similarArtists, key = { index, item -> "${item.first}-$index" }) { _, (name, art) ->
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier

@@ -46,6 +46,9 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController: MediaController? = null
+    private var controllerListener: Player.Listener? = null
+    private val nextTrackCallback: () -> Unit = { skipToNext() }
+    private val previousTrackCallback: () -> Unit = { skipToPrevious() }
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
@@ -140,26 +143,31 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
     }
 
     init {
-        PlaybackService.onNextTrackRequested = {
-            skipToNext()
-        }
-        PlaybackService.onPreviousTrackRequested = {
-            skipToPrevious()
-        }
+        PlaybackService.onNextTrackRequested = nextTrackCallback
+        PlaybackService.onPreviousTrackRequested = previousTrackCallback
 
         val sessionToken = SessionToken(context, ComponentName(context, PlaybackService::class.java))
-        controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
-        controllerFuture?.addListener(
-            { 
-                mediaController = controllerFuture?.get() 
-                mediaController?.addListener(object : Player.Listener {
+        val future = MediaController.Builder(context, sessionToken).buildAsync()
+        controllerFuture = future
+        future.addListener(
+            {
+                val controller = runCatching { future.get() }.getOrNull()
+                if (controller == null) {
+                    _isPlaying.value = false
+                    return@addListener
+                }
+                mediaController = controller
+                val listener = object : Player.Listener {
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         _isPlaying.value = isPlaying
                     }
+
+                    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                        syncPlaybackState(controller)
+                    }
+
                     override fun onPlaybackStateChanged(playbackState: Int) {
-                        mediaController?.let { c ->
-                            _duration.value = if (c.duration > 0) c.duration else 0L
-                        }
+                        syncPlaybackState(controller)
                         if (playbackState == Player.STATE_READY) {
                             bufferingWatchdog?.cancel()
                             _loadingSongVideoId.value = null
@@ -175,8 +183,8 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
                             // Only advance track if the song was genuinely played through to the end
                             if (curDuration > 5000L && curPos >= (curDuration - 3000L)) {
                                 if (_isRepeat.value) {
-                                    mediaController?.seekTo(0L)
-                                    mediaController?.play()
+                                    controller.seekTo(0L)
+                                    controller.play()
                                 } else {
                                     skipToNext()
                                 }
@@ -191,12 +199,14 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
                         newPosition: Player.PositionInfo,
                         reason: Int
                     ) {
-                        mediaController?.let { c ->
-                            _currentPosition.value = c.currentPosition
-                            if (c.duration > 0) _duration.value = c.duration
-                        }
+                        syncPlaybackState(controller)
                     }
-                })
+                }
+                controllerListener = listener
+                controller.addListener(listener)
+                // A ViewModel can reconnect to a player that is already running.
+                // Initialize all observable state instead of waiting for the next callback.
+                syncPlaybackState(controller)
             },
             ContextCompat.getMainExecutor(context)
         )
@@ -235,8 +245,40 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
     }
 
     override fun onCleared() {
+        controllerListener?.let { listener -> mediaController?.removeListener(listener) }
+        controllerListener = null
+        mediaController = null
+        if (PlaybackService.onNextTrackRequested === nextTrackCallback) PlaybackService.onNextTrackRequested = null
+        if (PlaybackService.onPreviousTrackRequested === previousTrackCallback) PlaybackService.onPreviousTrackRequested = null
         super.onCleared()
         controllerFuture?.let { MediaController.releaseFuture(it) }
+    }
+
+    private fun syncPlaybackState(controller: MediaController) {
+        _isPlaying.value = controller.isPlaying
+        _currentPosition.value = controller.currentPosition.coerceAtLeast(0L)
+        _duration.value = controller.duration.takeIf { it > 0L } ?: 0L
+
+        val item = controller.currentMediaItem ?: return
+        val mediaId = item.mediaId.takeIf { it.isNotBlank() } ?: return
+        val queuedSong = _currentQueue.value.firstOrNull { it.videoId == mediaId }
+        val activeSong = when {
+            queuedSong != null -> queuedSong
+            _currentSong.value?.videoId == mediaId -> _currentSong.value
+            else -> {
+                val metadata = item.mediaMetadata
+                SongInfo(
+                    videoId = mediaId,
+                    title = metadata.title?.toString().orEmpty(),
+                    artist = metadata.artist?.toString().orEmpty(),
+                    albumArtUrl = metadata.artworkUri?.toString().orEmpty(),
+                    durationSeconds = _duration.value / 1_000L
+                )
+            }
+        }
+        _currentSong.value = activeSong
+        val queueIndex = _currentQueue.value.indexOfFirst { it.videoId == mediaId }
+        if (queueIndex >= 0) currentQueueIndex = queueIndex
     }
 
     fun updateSearchQuery(query: String) {

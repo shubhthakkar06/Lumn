@@ -10,7 +10,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -366,7 +368,7 @@ fun LibraryScreen(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    items(dynamicItems, key = { it.id }) { item ->
+                    itemsIndexed(dynamicItems, key = { index, item -> "${item.id}-$index" }) { _, item ->
                         val isOwnedPlaylist = userPlaylists.any { it.id == item.id }
                         val canDelete = selectedFilter == "Downloaded" || isOwnedPlaylist
                         Column(
@@ -442,7 +444,7 @@ fun LibraryScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 120.dp)
                 ) {
-                    items(dynamicItems, key = { it.id }) { item ->
+                    itemsIndexed(dynamicItems, key = { index, item -> "${item.id}-$index" }) { _, item ->
                         val isOwnedPlaylist = userPlaylists.any { it.id == item.id }
                         val canDelete = selectedFilter == "Downloaded" || isOwnedPlaylist
                         Row(

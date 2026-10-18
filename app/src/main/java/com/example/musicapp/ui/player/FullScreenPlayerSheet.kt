@@ -707,7 +707,7 @@ fun FullScreenPlayerSheet(
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        items(songTrivia.relatedVideos, key = { it.id }) { video ->
+                        itemsIndexed(songTrivia.relatedVideos, key = { index, video -> "${video.id}-$index" }) { _, video ->
                             Column(
                                 modifier = Modifier
                                     .width(220.dp)

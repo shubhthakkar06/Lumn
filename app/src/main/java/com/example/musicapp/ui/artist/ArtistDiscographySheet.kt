@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -116,7 +117,7 @@ fun ArtistDiscographySheet(
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(filteredList, key = { it.title + it.typeAndYear }) { item ->
+                itemsIndexed(filteredList, key = { index, item -> "${item.title}-${item.typeAndYear}-$index" }) { _, item ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

@@ -447,7 +447,7 @@ fun HomeScreen(
                             val artists = currentUser.selectedArtists.map { name ->
                                 Pair(name, com.example.musicapp.data.MusicCatalog.getArtistImageUrl(name))
                             }
-                            items(artists.size, key = { artists[it].first }) { i ->
+                            items(artists.size, key = { "${artists[it].first}-$it" }) { i ->
                                 val (name, img) = artists[i]
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,

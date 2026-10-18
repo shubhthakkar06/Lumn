@@ -18,7 +18,7 @@ import java.io.File
 class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var exoPlayer: ExoPlayer? = null
-    private lateinit var audioEffectManager: AudioEffectManager
+    private var audioEffectManager: AudioEffectManager? = null
     
     companion object {
         private var downloadCache: SimpleCache? = null
@@ -43,7 +43,16 @@ class PlaybackService : MediaSessionService() {
         super.onCreate()
         currentInstance = this
         
-        val cacheDataSourceFactory = com.example.musicapp.data.cache.MediaCacheProvider.getCacheDataSourceFactory(this)
+        val cacheDataSourceFactory = runCatching {
+            com.example.musicapp.data.cache.MediaCacheProvider.getCacheDataSourceFactory(this)
+        }.onFailure {
+            android.util.Log.e("PlaybackService", "Media cache unavailable; continuing without cache", it)
+        }.getOrElse {
+            val httpFactory = DefaultHttpDataSource.Factory()
+                .setUserAgent("Mozilla/5.0 (Linux; Android 14; Mobile)")
+                .setAllowCrossProtocolRedirects(true)
+            androidx.media3.datasource.DefaultDataSource.Factory(applicationContext, httpFactory)
+        }
         val loadControl = com.example.musicapp.data.cache.MediaCacheProvider.createLoadControl()
 
         val player = ExoPlayer.Builder(this)
@@ -52,12 +61,14 @@ class PlaybackService : MediaSessionService() {
             .build()
         exoPlayer = player
             
-        audioEffectManager = AudioEffectManager(this)
+        audioEffectManager = runCatching { AudioEffectManager(this) }
+            .onFailure { android.util.Log.w("PlaybackService", "Audio effects could not initialize on this device", it) }
+            .getOrNull()
         activeAudioEffectManager = audioEffectManager
         
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
-                audioEffectManager.attachToSession(audioSessionId)
+                audioEffectManager?.attachToSession(audioSessionId)
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -189,7 +200,7 @@ class PlaybackService : MediaSessionService() {
     private fun attachAudioEffectsToCurrentSession(player: ExoPlayer) {
         val sessionId = player.audioSessionId
         if (sessionId > 0) {
-            audioEffectManager.attachToSession(sessionId)
+            audioEffectManager?.attachToSession(sessionId)
         }
     }
 
@@ -205,7 +216,8 @@ class PlaybackService : MediaSessionService() {
         if (activeAudioEffectManager == audioEffectManager) {
             activeAudioEffectManager = null
         }
-        audioEffectManager.release()
+        audioEffectManager?.release()
+        audioEffectManager = null
         super.onDestroy()
     }
 }
