@@ -30,7 +30,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val LUMN_UPDATE_MANIFEST = "https://lumn-updates.streamlit.app/app/static/update.json"
+private const val LUMN_UPDATE_MANIFEST = "https://lumnmusic.streamlit.app/app/static/update.json"
 
 private data class RequiredUpdate(val versionName: String, val apkUrl: String, val notes: String)
 
