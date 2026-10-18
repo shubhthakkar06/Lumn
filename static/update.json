@@ -1,0 +1,7 @@
+{
+  "versionName": "2.1",
+  "versionCode": 12,
+  "minimumVersionCode": 0,
+  "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
+  "releaseNotes": "Spotify playlist import and improvements to music search and playback."
+}

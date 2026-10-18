@@ -1,0 +1,110 @@
+package com.example.musicapp
+
+import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.example.musicapp.theme.MusicAppTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+
+private const val LUMN_UPDATE_MANIFEST = "https://lumn-updates.streamlit.app/app/static/update.json"
+
+private data class RequiredUpdate(val versionName: String, val apkUrl: String, val notes: String)
+
+class MainActivity : ComponentActivity() {
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+
+    enableEdgeToEdge()
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001)
+        }
+    }
+    setContent {
+      MusicAppTheme {
+        var requiredUpdate by remember { mutableStateOf<RequiredUpdate?>(null) }
+        LaunchedEffect(Unit) {
+          requiredUpdate = withContext(Dispatchers.IO) { fetchRequiredUpdate() }
+        }
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+          val update = requiredUpdate
+          if (update == null) MainNavigation() else RequiredUpdateScreen(update)
+        }
+      }
+    }
+  }
+
+  private fun fetchRequiredUpdate(): RequiredUpdate? = try {
+    val connection = (URL(LUMN_UPDATE_MANIFEST).openConnection() as HttpURLConnection).apply {
+      connectTimeout = 3500
+      readTimeout = 3500
+      requestMethod = "GET"
+      setRequestProperty("Accept", "application/json")
+    }
+    try {
+      if (connection.responseCode !in 200..299) return null
+      val manifest = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+      val requiredVersion = manifest.optLong("minimumVersionCode", 0L)
+      val installedVersion = if (android.os.Build.VERSION.SDK_INT >=  P) {
+        packageManager.getPackageInfo(packageName, 0).longVersionCode
+      } else @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0).versionCode.toLong()
+      val apkUrl = manifest.optString("apkUrl", "")
+      if (installedVersion >= requiredVersion || requiredVersion <= 0L || !apkUrl.startsWith("https://")) null
+      else RequiredUpdate(
+        versionName = manifest.optString("versionName", "Latest"),
+        apkUrl = apkUrl,
+        notes = manifest.optString("releaseNotes", "Install the latest Lumn update to continue.")
+      )
+    } finally {
+      connection.disconnect()
+    }
+  } catch (_: Exception) {
+    // The updater is best effort unless the service confirms a mandatory update.
+    null
+  }
+
+  @Composable
+  private fun RequiredUpdateScreen(update: RequiredUpdate) {
+    Column(
+      modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
+      verticalArrangement = Arrangement.Center,
+      horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+      Text("Lumn", style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary)
+      Text("Update required", modifier = Modifier.padding(top = 28.dp), style = MaterialTheme.typography.headlineSmall)
+      Text("Version ${update.versionName}", modifier = Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.secondary)
+      Text(update.notes, modifier = Modifier.padding(top = 16.dp), style = MaterialTheme.typography.bodyLarge)
+      Button(
+        onClick = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.apkUrl))) },
+        modifier = Modifier.padding(top = 28.dp)
+      ) { Text("Download update") }
+      Text("After download, tap the APK and approve the Android install prompt.", modifier = Modifier.padding(top = 14.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+  }
+}
+
+private const val P = android.os.Build.VERSION_CODES.P
