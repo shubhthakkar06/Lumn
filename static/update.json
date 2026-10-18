@@ -1,7 +1,7 @@
 {
-  "versionName": "2.4",
-  "versionCode": 15,
-  "minimumVersionCode": 15,
+  "versionName": "2.5.1",
+  "versionCode": 17,
+  "minimumVersionCode": 17,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
   "releaseNotes": "Reliable public update checks and the latest playback, search, and stability improvements."
 }
