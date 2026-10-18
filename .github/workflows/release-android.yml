@@ -1,0 +1,105 @@
+name: Build and publish Android release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate release tag and read version
+        id: version
+        shell: bash
+        run: |
+          VERSION_NAME="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          VERSION_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
+          if [[ -z "$VERSION_NAME" || -z "$VERSION_CODE" ]]; then
+            echo "Could not read versionName/versionCode from app/build.gradle.kts" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_NAME" != "v$VERSION_NAME" ]]; then
+            echo "Tag $GITHUB_REF_NAME must match versionName $VERSION_NAME" >&2
+            exit 1
+          fi
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Run unit tests and build APK
+        run: ./gradlew --no-daemon testDebugUnitTest assembleDebug
+
+      - name: Name release APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/Lumn.apk"
+
+      - name: Publish GitHub Release with APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/Lumn.apk" \
+            --title "Lumn ${{ steps.version.outputs.name }}" \
+            --notes "Lumn ${{ steps.version.outputs.name }} Android release. See the repository update notes for details."
+
+      - name: Update public app-update manifest on main
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "Release tag must point to a commit already on main" >&2
+            exit 1
+          }
+          git checkout -B update-release-manifest origin/main
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("static/update.json")
+          manifest = json.loads(path.read_text(encoding="utf-8"))
+          version_name = os.environ["VERSION_NAME"]
+          version_code = int(os.environ["VERSION_CODE"])
+          notes = manifest.get("releaseNotes", "Lumn Android performance and stability improvements.")
+          manifest.update(
+              versionName=version_name,
+              versionCode=version_code,
+              minimumVersionCode=version_code,
+              apkUrl="https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
+              releaseNotes=notes,
+          )
+          path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add static/update.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Update app manifest for Lumn $VERSION_NAME"
+            git push origin HEAD:main
+          fi
