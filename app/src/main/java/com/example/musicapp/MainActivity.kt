@@ -15,17 +15,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.musicapp.theme.MusicAppTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -40,6 +42,9 @@ private val LUMN_UPDATE_MANIFESTS = listOf(
 private data class RequiredUpdate(val versionName: String, val apkUrl: String, val notes: String)
 
 class MainActivity : ComponentActivity() {
+  private val requiredUpdate = MutableStateFlow<RequiredUpdate?>(null)
+  private var updateCheckJob: Job? = null
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
 
@@ -51,15 +56,23 @@ class MainActivity : ComponentActivity() {
     }
     setContent {
       MusicAppTheme {
-        var requiredUpdate by remember { mutableStateOf<RequiredUpdate?>(null) }
-        LaunchedEffect(Unit) {
-          requiredUpdate = withContext(Dispatchers.IO) { fetchRequiredUpdate() }
-        }
+        val update by requiredUpdate.collectAsState()
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-          val update = requiredUpdate
-          if (update == null) MainNavigation() else RequiredUpdateScreen(update)
+          val currentUpdate = update
+          if (currentUpdate == null) MainNavigation() else RequiredUpdateScreen(currentUpdate)
         }
       }
+    }
+  }
+
+  override fun onResume() {
+    super.onResume()
+    // The APK installer is opened outside this activity. When the user returns after
+    // installing, re-read PackageManager's version so we don't keep a stale forced-update
+    // screen alive in the resumed activity.
+    updateCheckJob?.cancel()
+    updateCheckJob = lifecycleScope.launch {
+      requiredUpdate.value = withContext(Dispatchers.IO) { fetchRequiredUpdate() }
     }
   }
 
