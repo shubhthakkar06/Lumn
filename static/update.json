@@ -1,7 +1,7 @@
 {
-  "versionName": "2.5.3",
-  "versionCode": 19,
-  "minimumVersionCode": 19,
+  "versionName": "2.5.4",
+  "versionCode": 20,
+  "minimumVersionCode": 20,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
-  "releaseNotes": "Rechecks the installed app version after returning from the APK installer, preventing a stale update prompt after installation."
+  "Updates are optional: dismiss the prompt to keep listening, or install the latest version."
 }

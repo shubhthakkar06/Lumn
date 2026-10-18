@@ -20,7 +20,7 @@ st.subheader(f"Latest version · {manifest['versionName']}")
 st.write(manifest.get("releaseNotes", "Performance and stability improvements."))
 st.link_button("Download Lumn for Android", manifest["apkUrl"], type="primary")
 st.info(
-    "For an update to become mandatory, publish the new APK as a GitHub Release, "
-    "then set minimumVersionCode in static/update.json to that release's version code."
+    "Updates are optional. Dismiss the in-app prompt to continue using Lumn; the app "
+    "checks for a newer release the next time you open it."
 )
 st.caption("The in-app update prompt requires Android to approve installation of the downloaded APK.")

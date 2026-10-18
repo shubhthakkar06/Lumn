@@ -6,18 +6,18 @@ import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -39,11 +39,13 @@ private val LUMN_UPDATE_MANIFESTS = listOf(
   "https://lumnmusic.streamlit.app/app/static/update.json"
 )
 
-private data class RequiredUpdate(val versionName: String, val apkUrl: String, val notes: String)
+private data class AvailableUpdate(val versionName: String, val versionCode: Long, val apkUrl: String, val notes: String)
 
 class MainActivity : ComponentActivity() {
-  private val requiredUpdate = MutableStateFlow<RequiredUpdate?>(null)
+  private val availableUpdate = MutableStateFlow<AvailableUpdate?>(null)
   private var updateCheckJob: Job? = null
+  private var hasShownUpdateThisLaunch = false
+  private var openingUpdateLink = false
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -56,10 +58,24 @@ class MainActivity : ComponentActivity() {
     }
     setContent {
       MusicAppTheme {
-        val update by requiredUpdate.collectAsState()
+        val update by availableUpdate.collectAsState()
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-          val currentUpdate = update
-          if (currentUpdate == null) MainNavigation() else RequiredUpdateScreen(currentUpdate)
+          MainNavigation()
+          update?.let { available ->
+            OptionalUpdateDialog(
+              update = available,
+              onLater = { availableUpdate.value = null },
+              onDownload = {
+                availableUpdate.value = null
+                runCatching {
+                  openingUpdateLink = true
+                  startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(available.apkUrl)))
+                }.onFailure {
+                  openingUpdateLink = false
+                }
+              }
+            )
+          }
         }
       }
     }
@@ -67,16 +83,27 @@ class MainActivity : ComponentActivity() {
 
   override fun onResume() {
     super.onResume()
-    // The APK installer is opened outside this activity. When the user returns after
-    // installing, re-read PackageManager's version so we don't keep a stale forced-update
-    // screen alive in the resumed activity.
+    openingUpdateLink = false
+    // Recheck after returning from a browser or APK installer, but only show one prompt
+    // during this app launch. Dismissing the prompt never blocks the music app.
     updateCheckJob?.cancel()
     updateCheckJob = lifecycleScope.launch {
-      requiredUpdate.value = withContext(Dispatchers.IO) { fetchRequiredUpdate() }
+      val update = withContext(Dispatchers.IO) { fetchAvailableUpdate() }
+      if (update == null) {
+        availableUpdate.value = null
+      } else if (!hasShownUpdateThisLaunch) {
+        hasShownUpdateThisLaunch = true
+        availableUpdate.value = update
+      }
     }
   }
 
-  private fun fetchRequiredUpdate(): RequiredUpdate? {
+  override fun onStop() {
+    if (!openingUpdateLink) hasShownUpdateThisLaunch = false
+    super.onStop()
+  }
+
+  private fun fetchAvailableUpdate(): AvailableUpdate? {
     val installedVersion = try {
       if (android.os.Build.VERSION.SDK_INT >= P) {
         packageManager.getPackageInfo(packageName, 0).longVersionCode
@@ -85,13 +112,16 @@ class MainActivity : ComponentActivity() {
       return null
     }
 
+    var newestUpdate: AvailableUpdate? = null
     for (manifestUrl in LUMN_UPDATE_MANIFESTS) {
       val connection = try {
         (URL(manifestUrl).openConnection() as HttpURLConnection).apply {
           connectTimeout = 3500
           readTimeout = 3500
           requestMethod = "GET"
+          useCaches = false
           setRequestProperty("Accept", "application/json")
+          setRequestProperty("Cache-Control", "no-cache")
         }
       } catch (_: Exception) {
         continue
@@ -99,14 +129,16 @@ class MainActivity : ComponentActivity() {
       try {
         if (connection.responseCode !in 200..299) continue
         val manifest = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-        val requiredVersion = manifest.optLong("minimumVersionCode", 0L)
+        val latestVersionCode = manifest.optLong("versionCode", 0L)
         val apkUrl = manifest.optString("apkUrl", "")
-        if (installedVersion >= requiredVersion || requiredVersion <= 0L || !apkUrl.startsWith("https://")) return null
-        return RequiredUpdate(
+        if (latestVersionCode <= installedVersion || latestVersionCode <= 0L || !apkUrl.startsWith("https://")) continue
+        val candidate = AvailableUpdate(
           versionName = manifest.optString("versionName", "Latest"),
+          versionCode = latestVersionCode,
           apkUrl = apkUrl,
-          notes = manifest.optString("releaseNotes", "Install the latest Lumn update to continue.")
+          notes = manifest.optString("releaseNotes", "A new Lumn version is ready when you are.")
         )
+        if (newestUpdate == null || candidate.versionCode > newestUpdate.versionCode) newestUpdate = candidate
       } catch (_: Exception) {
         // Fall through to the next public manifest host.
       } finally {
@@ -114,26 +146,28 @@ class MainActivity : ComponentActivity() {
       }
     }
     // The updater is best effort unless a valid manifest confirms a required update.
-    return null
+    return newestUpdate
   }
 
   @Composable
-  private fun RequiredUpdateScreen(update: RequiredUpdate) {
-    Column(
-      modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
-      verticalArrangement = Arrangement.Center,
-      horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-      Text("Lumn", style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary)
-      Text("Update required", modifier = Modifier.padding(top = 28.dp), style = MaterialTheme.typography.headlineSmall)
-      Text("Version ${update.versionName}", modifier = Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.secondary)
-      Text(update.notes, modifier = Modifier.padding(top = 16.dp), style = MaterialTheme.typography.bodyLarge)
-      Button(
-        onClick = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.apkUrl))) },
-        modifier = Modifier.padding(top = 28.dp)
-      ) { Text("Download update") }
-      Text("After download, tap the APK and approve the Android install prompt.", modifier = Modifier.padding(top = 14.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
+  private fun OptionalUpdateDialog(update: AvailableUpdate, onLater: () -> Unit, onDownload: () -> Unit) {
+    AlertDialog(
+      onDismissRequest = onLater,
+      title = { Text("Lumn ${update.versionName} is available") },
+      text = {
+        Column {
+          Text(update.notes)
+          Text(
+            "You can update now or keep listening and do it later.",
+            modifier = Modifier.padding(top = 12.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+          )
+        }
+      },
+      confirmButton = { Button(onClick = onDownload) { Text("Update") } },
+      dismissButton = { TextButton(onClick = onLater) { Text("Later") } }
+    )
   }
 }
 

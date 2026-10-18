@@ -107,6 +107,8 @@ jobs:
           manifest.update(
               versionName=version_name,
               versionCode=version_code,
+              # Kept for compatibility with pre-2.5.4 clients; new clients use versionCode
+              # only and always present updates as optional.
               minimumVersionCode=version_code,
               apkUrl="https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
               releaseNotes=notes,
