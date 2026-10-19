@@ -1068,9 +1068,20 @@ fun ArtistScreen(
 
         // Track Options Sheet
         if (trackForOptionsSheet != null) {
+            val song = trackForOptionsSheet!!
             PlayerOptionsSheet(
-                song = trackForOptionsSheet!!,
+                song = song,
                 onDismiss = { trackForOptionsSheet = null },
+                onPlayNext = {
+                    viewModel.playNext(song)
+                    android.widget.Toast.makeText(context, "Playing next: ${song.title}", android.widget.Toast.LENGTH_SHORT).show()
+                    trackForOptionsSheet = null
+                },
+                onAddToQueue = {
+                    viewModel.addToQueue(song)
+                    android.widget.Toast.makeText(context, "Added to queue: ${song.title}", android.widget.Toast.LENGTH_SHORT).show()
+                    trackForOptionsSheet = null
+                },
                 onViewArtist = { trackArtist ->
                     trackForOptionsSheet = null
                     onNavigate?.invoke(Screen.Artist(trackArtist, MusicCatalog.getArtistImageUrl(trackArtist)))

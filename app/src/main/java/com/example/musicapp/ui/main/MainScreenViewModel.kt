@@ -97,6 +97,47 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
         unshuffledQueue = queue.toList()
     }
 
+    fun playNext(song: SongInfo) {
+        val queue = _currentQueue.value.toMutableList()
+        val current = _currentSong.value
+        if (queue.isEmpty()) {
+            if (current != null) {
+                _currentQueue.value = listOf(current, song)
+                currentQueueIndex = 0
+            } else {
+                playSong(song)
+                return
+            }
+        } else {
+            val insertIndex = (currentQueueIndex + 1).coerceIn(0, queue.size)
+            queue.add(insertIndex, song)
+            _currentQueue.value = queue
+        }
+        // Manual "play next" takes precedence over random shuffle ordering
+        _isShuffle.value = false
+        unshuffledQueue = _currentQueue.value.toList()
+        dataRepository.prefetchStreamUrls(listOf(song))
+    }
+
+    fun addToQueue(song: SongInfo) {
+        val queue = _currentQueue.value.toMutableList()
+        val current = _currentSong.value
+        if (queue.isEmpty()) {
+            if (current != null) {
+                _currentQueue.value = listOf(current, song)
+                currentQueueIndex = 0
+            } else {
+                playSong(song)
+                return
+            }
+        } else {
+            queue.add(song)
+            _currentQueue.value = queue
+        }
+        unshuffledQueue = _currentQueue.value.toList()
+        dataRepository.prefetchStreamUrls(listOf(song))
+    }
+
     private val _activeAudioProfile = MutableStateFlow<com.example.musicapp.audio.ActiveAudioProfile?>(null)
     val activeAudioProfile: StateFlow<com.example.musicapp.audio.ActiveAudioProfile?> = _activeAudioProfile.asStateFlow()
 

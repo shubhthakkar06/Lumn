@@ -159,7 +159,8 @@ fun MainScreen(
                         creator = currentScreen.subtitle.removePrefix("Playlist • "),
                         savesAndDuration = currentScreen.saves,
                         viewModel = viewModel,
-                        onBack = { popBack() }
+                        onBack = { popBack() },
+                        onNavigate = { navigateTo(it) }
                     )
                     is Screen.Artist -> ArtistScreen(
                         artistName = currentScreen.artistName,

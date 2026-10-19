@@ -1,7 +1,7 @@
 {
-  "versionName": "2.5.6",
-  "versionCode": 22,
+  "versionName": "2.5.7",
+  "versionCode": 23,
   "minimumVersionCode": 22,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
-  "releaseNotes": "Spotify imports now match tracks to Lumn\u2019s catalog; add-to-playlist works, queue and playlist tracks can be long-press dragged, and song/playlist sharing carries playable metadata."
+  "releaseNotes": "Added Play Next and Add to Queue song options with full 3-dots actions (Play Next, Add to Queue, Add to Playlist, Like/Unlike, Download/Delete) across Search, Playlists, Albums, Artist pages, and Player."
 }

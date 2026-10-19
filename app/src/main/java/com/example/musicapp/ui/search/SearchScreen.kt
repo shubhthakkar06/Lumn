@@ -60,6 +60,7 @@ fun SearchScreen(
     val loadingSongVideoId by viewModel.loadingSongVideoId.collectAsStateWithLifecycle()
     val currentSong by viewModel.currentSong.collectAsStateWithLifecycle()
     var selectedFilterChip by remember { mutableStateOf(0) }
+    var selectedSongForOptions by remember { mutableStateOf<SongInfo?>(null) }
     val filterChips = listOf("All", "Songs", "Artists", "Albums")
 
     val categories = listOf(
@@ -370,18 +371,45 @@ fun SearchScreen(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                 }
-                                Icon(
-                                    Icons.Default.MoreVert,
-                                    contentDescription = null,
-                                    tint = Color(0xFF909AAB),
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                IconButton(
+                                    onClick = { selectedSongForOptions = song },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.MoreVert,
+                                        contentDescription = "Song options",
+                                        tint = Color(0xFF909AAB),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    if (selectedSongForOptions != null) {
+        val targetSong = selectedSongForOptions!!
+        com.example.musicapp.ui.player.PlayerOptionsSheet(
+            song = targetSong,
+            onDismiss = { selectedSongForOptions = null },
+            onPlayNext = {
+                viewModel.playNext(targetSong)
+                android.widget.Toast.makeText(context, "Playing next: ${targetSong.title}", android.widget.Toast.LENGTH_SHORT).show()
+                selectedSongForOptions = null
+            },
+            onAddToQueue = {
+                viewModel.addToQueue(targetSong)
+                android.widget.Toast.makeText(context, "Added to queue: ${targetSong.title}", android.widget.Toast.LENGTH_SHORT).show()
+                selectedSongForOptions = null
+            },
+            onViewArtist = { artistName ->
+                selectedSongForOptions = null
+                onNavigate(Screen.Artist(artistName))
+            }
+        )
     }
 }
 

@@ -10,6 +10,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import android.widget.Toast
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
@@ -32,6 +34,7 @@ import com.example.musicapp.data.history.PlayedSongRecord
 import com.example.musicapp.data.network.SongInfo
 import com.example.musicapp.ui.main.MainScreenViewModel
 import com.example.musicapp.ui.navigation.Screen
+import com.example.musicapp.ui.player.PlayerOptionsSheet
 import java.util.Calendar
 
 @Composable
@@ -45,6 +48,7 @@ fun RecentsScreen(
     val currentUser by userManager.currentUser.collectAsStateWithLifecycle()
     val historyManager = remember { PlayHistoryManager.getInstance(context) }
     val history by historyManager.history.collectAsStateWithLifecycle()
+    var selectedSongForOptions by remember { mutableStateOf<SongInfo?>(null) }
 
     val userHistory = remember(history, currentUser.id) {
         history.filter { it.userId == currentUser.id || it.userId.isEmpty() }
@@ -146,13 +150,11 @@ fun RecentsScreen(
                         SectionHeader("Today")
                     }
                     items(todayList, key = { it.id }) { rec ->
+                        val song = SongInfo(rec.videoId, rec.title, rec.artist, rec.albumArtUrl)
                         RecentTrackRow(
                             record = rec,
-                            onPlay = {
-                                viewModel?.playSong(
-                                    SongInfo(rec.videoId, rec.title, rec.artist, rec.albumArtUrl)
-                                )
-                            }
+                            onPlay = { viewModel?.playSong(song) },
+                            onOptions = { selectedSongForOptions = song }
                         )
                     }
                 }
@@ -162,13 +164,11 @@ fun RecentsScreen(
                         SectionHeader("Yesterday")
                     }
                     items(yesterdayList, key = { it.id }) { rec ->
+                        val song = SongInfo(rec.videoId, rec.title, rec.artist, rec.albumArtUrl)
                         RecentTrackRow(
                             record = rec,
-                            onPlay = {
-                                viewModel?.playSong(
-                                    SongInfo(rec.videoId, rec.title, rec.artist, rec.albumArtUrl)
-                                )
-                            }
+                            onPlay = { viewModel?.playSong(song) },
+                            onOptions = { selectedSongForOptions = song }
                         )
                     }
                 }
@@ -178,17 +178,37 @@ fun RecentsScreen(
                         SectionHeader("Earlier")
                     }
                     items(earlierList, key = { it.id }) { rec ->
+                        val song = SongInfo(rec.videoId, rec.title, rec.artist, rec.albumArtUrl)
                         RecentTrackRow(
                             record = rec,
-                            onPlay = {
-                                viewModel?.playSong(
-                                    SongInfo(rec.videoId, rec.title, rec.artist, rec.albumArtUrl)
-                                )
-                            }
+                            onPlay = { viewModel?.playSong(song) },
+                            onOptions = { selectedSongForOptions = song }
                         )
                     }
                 }
             }
+        }
+
+        if (selectedSongForOptions != null) {
+            val target = selectedSongForOptions!!
+            PlayerOptionsSheet(
+                song = target,
+                onDismiss = { selectedSongForOptions = null },
+                onPlayNext = {
+                    viewModel?.playNext(target)
+                    Toast.makeText(context, "Playing next: ${target.title}", Toast.LENGTH_SHORT).show()
+                    selectedSongForOptions = null
+                },
+                onAddToQueue = {
+                    viewModel?.addToQueue(target)
+                    Toast.makeText(context, "Added to queue: ${target.title}", Toast.LENGTH_SHORT).show()
+                    selectedSongForOptions = null
+                },
+                onViewArtist = { artistName ->
+                    selectedSongForOptions = null
+                    onNavigate?.invoke(Screen.Artist(artistName))
+                }
+            )
         }
     }
 }
@@ -206,7 +226,8 @@ private fun SectionHeader(title: String) {
 @Composable
 private fun RecentTrackRow(
     record: PlayedSongRecord,
-    onPlay: () -> Unit
+    onPlay: () -> Unit,
+    onOptions: () -> Unit
 ) {
     val relativeTime = remember(record.playedAtMs) {
         DateUtils.getRelativeTimeSpanString(
@@ -269,6 +290,18 @@ private fun RecentTrackRow(
                     modifier = Modifier.size(20.dp)
                 )
             }
+        }
+
+        IconButton(
+            onClick = onOptions,
+            modifier = Modifier.size(36.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.MoreVert,
+                contentDescription = "Song options",
+                tint = Color(0xFFA0AEC0),
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }

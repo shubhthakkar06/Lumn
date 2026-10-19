@@ -933,6 +933,16 @@ fun FullScreenPlayerSheet(
             PlayerOptionsSheet(
                 song = song,
                 onDismiss = { showOptionsDialog = false },
+                onPlayNext = {
+                    viewModel.playNext(song)
+                    android.widget.Toast.makeText(context, "Playing next: ${song.title}", android.widget.Toast.LENGTH_SHORT).show()
+                    showOptionsDialog = false
+                },
+                onAddToQueue = {
+                    viewModel.addToQueue(song)
+                    android.widget.Toast.makeText(context, "Added to queue: ${song.title}", android.widget.Toast.LENGTH_SHORT).show()
+                    showOptionsDialog = false
+                },
                 onViewArtist = { artistName ->
                     showOptionsDialog = false
                     onClose()

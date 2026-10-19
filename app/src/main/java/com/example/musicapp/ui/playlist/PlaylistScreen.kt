@@ -57,6 +57,8 @@ import com.example.musicapp.data.download.MusicDownloadManager
 import com.example.musicapp.data.network.SongInfo
 import com.example.musicapp.data.playlist.PlaylistManager
 import com.example.musicapp.ui.main.MainScreenViewModel
+import com.example.musicapp.ui.navigation.Screen
+import com.example.musicapp.ui.player.PlayerOptionsSheet
 import com.example.musicapp.ui.util.rememberDynamicGradient
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -68,7 +70,8 @@ fun PlaylistScreen(
     creator: String = "Shubh Thakkar",
     savesAndDuration: String = "774 saves • 3h 52min",
     viewModel: MainScreenViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigate: ((Screen) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val playlistManager = remember { PlaylistManager.getInstance(context) }
@@ -240,75 +243,32 @@ fun PlaylistScreen(
         )
     }
 
-    // Song Options BottomSheet / Dialog
+    // Song Options BottomSheet
     if (showSongMenu && selectedSongForMenu != null) {
         val song = selectedSongForMenu!!
-        val isDl = downloadStates[song.videoId] is DownloadStatus.Downloaded
-        AlertDialog(
-            onDismissRequest = { showSongMenu = false },
-            containerColor = Color(0xFF131A26),
-            titleContentColor = Color.White,
-            textContentColor = Color.White,
-            title = {
-                Text(
-                    text = song.title,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+        PlayerOptionsSheet(
+            song = song,
+            onDismiss = { showSongMenu = false },
+            onPlayNext = {
+                viewModel.playNext(song)
+                Toast.makeText(context, "Playing next: ${song.title}", Toast.LENGTH_SHORT).show()
+                showSongMenu = false
             },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (isUserPlaylist) {
-                        Text("Hold the drag handle on a song and move it to reorder.", color = Color(0xFFB8C2D0), style = MaterialTheme.typography.bodySmall)
-                        TextButton(
-                            onClick = {
-                                playlistManager.removeSongFromPlaylist(playlistId, song.videoId)
-                                Toast.makeText(context, "Removed from playlist", Toast.LENGTH_SHORT).show()
-                                showSongMenu = false
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("🗑️  Remove from this Playlist", color = Color(0xFFFF5252))
-                            }
-                        }
-                    }
-
-                    if (isDl) {
-                        TextButton(
-                            onClick = {
-                                downloadManager.deleteDownload(song.videoId)
-                                showSongMenu = false
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("❌  Delete Download", color = Color(0xFFFF5252))
-                            }
-                        }
-                    } else {
-                        TextButton(
-                            onClick = {
-                                downloadManager.downloadSong(song) { target ->
-                                    val repo = com.example.musicapp.data.DefaultDataRepository(context)
-                                    repo.getStreamUrl(target.videoId, target.title, target.artist, target.durationSeconds)
-                                }
-                                showSongMenu = false
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("⬇️  Download Track", color = Color(0xFF00F59B))
-                            }
-                        }
-                    }
-                }
+            onAddToQueue = {
+                viewModel.addToQueue(song)
+                Toast.makeText(context, "Added to queue: ${song.title}", Toast.LENGTH_SHORT).show()
+                showSongMenu = false
             },
-            confirmButton = {
-                TextButton(onClick = { showSongMenu = false }) {
-                    Text("Close", color = Color(0xFFA0A0A0))
+            onRemoveFromPlaylist = if (isUserPlaylist) {
+                {
+                    playlistManager.removeSongFromPlaylist(playlistId, song.videoId)
+                    Toast.makeText(context, "Removed from playlist", Toast.LENGTH_SHORT).show()
+                    showSongMenu = false
                 }
+            } else null,
+            onViewArtist = { artistName ->
+                showSongMenu = false
+                onNavigate?.invoke(Screen.Artist(artistName))
             }
         )
     }

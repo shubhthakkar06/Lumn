@@ -22,7 +22,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.musicapp.ui.player.PlayerOptionsSheet
 import com.example.musicapp.data.network.MusicApiService
 import com.example.musicapp.data.auth.UserManager
 import com.example.musicapp.data.network.SongInfo
@@ -42,6 +45,7 @@ internal fun ArtistAlbumTracksSheet(
     val currentUser by remember { UserManager.getInstance(context).currentUser }.collectAsStateWithLifecycle()
     var albumSongs by remember(album.first, artistName) { mutableStateOf<List<SongInfo>>(emptyList()) }
     var loading by remember(album.first, artistName) { mutableStateOf(true) }
+    var trackForOptions by remember { mutableStateOf<SongInfo?>(null) }
     val currentSong by viewModel.currentSong.collectAsStateWithLifecycle()
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     val currentTrackInAlbum = currentSong?.let { active -> albumSongs.any { it.videoId == active.videoId } } == true
@@ -143,10 +147,39 @@ internal fun ArtistAlbumTracksSheet(
                                 Text(track.title, color = if (currentSong?.videoId == track.videoId) Color(0xFF48E6A0) else Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(track.artist, color = Color(0xFF9FAABB), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
+                            IconButton(
+                                onClick = { trackForOptions = track },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "Song options",
+                                    tint = Color(0xFFA0AEC0),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
+        }
+
+        if (trackForOptions != null) {
+            val target = trackForOptions!!
+            PlayerOptionsSheet(
+                song = target,
+                onDismiss = { trackForOptions = null },
+                onPlayNext = {
+                    viewModel.playNext(target)
+                    Toast.makeText(context, "Playing next: ${target.title}", Toast.LENGTH_SHORT).show()
+                    trackForOptions = null
+                },
+                onAddToQueue = {
+                    viewModel.addToQueue(target)
+                    Toast.makeText(context, "Added to queue: ${target.title}", Toast.LENGTH_SHORT).show()
+                    trackForOptions = null
+                }
+            )
         }
     }
 }
