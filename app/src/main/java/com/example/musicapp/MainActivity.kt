@@ -28,6 +28,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import com.example.musicapp.data.network.SongInfo
+import com.example.musicapp.data.playlist.UserPlaylist
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.decodeFromString
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -43,12 +47,15 @@ private data class AvailableUpdate(val versionName: String, val versionCode: Lon
 
 class MainActivity : ComponentActivity() {
   private val availableUpdate = MutableStateFlow<AvailableUpdate?>(null)
+  private val pendingSharedSong = MutableStateFlow<SongInfo?>(null)
+  private val pendingSharedPlaylist = MutableStateFlow<UserPlaylist?>(null)
   private var updateCheckJob: Job? = null
   private var hasShownUpdateThisLaunch = false
   private var openingUpdateLink = false
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    acceptSharedSongIntent(intent)
 
     enableEdgeToEdge()
     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
@@ -59,8 +66,15 @@ class MainActivity : ComponentActivity() {
     setContent {
       MusicAppTheme {
         val update by availableUpdate.collectAsState()
+        val sharedSong by pendingSharedSong.collectAsState()
+        val sharedPlaylist by pendingSharedPlaylist.collectAsState()
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-          MainNavigation()
+          MainNavigation(
+            sharedSong = sharedSong,
+            onSharedSongHandled = { pendingSharedSong.value = null },
+            sharedPlaylist = sharedPlaylist,
+            onSharedPlaylistHandled = { pendingSharedPlaylist.value = null }
+          )
           update?.let { available ->
             OptionalUpdateDialog(
               update = available,
@@ -79,6 +93,38 @@ class MainActivity : ComponentActivity() {
         }
       }
     }
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    acceptSharedSongIntent(intent)
+  }
+
+  private fun acceptSharedSongIntent(intent: Intent?) {
+    val uri = intent?.data ?: return
+    if (uri.scheme != "lumn") return
+    if (uri.host == "playlist") {
+      val payload = uri.getQueryParameter("data") ?: return
+      val playlist = runCatching {
+        val bytes = android.util.Base64.decode(payload, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)
+        Json { ignoreUnknownKeys = true }.decodeFromString<UserPlaylist>(String(bytes, Charsets.UTF_8))
+      }.getOrNull() ?: return
+      pendingSharedPlaylist.value = playlist
+      pendingSharedSong.value = null
+      return
+    }
+    if (uri.host != "song") return
+    val id = uri.pathSegments.lastOrNull()?.takeIf { it.isNotBlank() } ?: return
+    pendingSharedSong.value = SongInfo(
+      videoId = id,
+      title = uri.getQueryParameter("title").orEmpty().ifBlank { "Shared song" },
+      artist = uri.getQueryParameter("artist").orEmpty().ifBlank { "Unknown artist" },
+      albumArtUrl = uri.getQueryParameter("art").orEmpty(),
+      albumName = uri.getQueryParameter("album").orEmpty(),
+      durationSeconds = uri.getQueryParameter("duration")?.toLongOrNull() ?: 0L
+    )
+    pendingSharedPlaylist.value = null
   }
 
   override fun onResume() {

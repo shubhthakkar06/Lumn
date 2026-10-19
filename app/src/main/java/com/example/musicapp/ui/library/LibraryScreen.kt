@@ -642,16 +642,19 @@ fun LibraryScreen(
                                 try {
                                     val imported = SpotifyPlaylistImporter.import(context, spotifyPlaylistUrl)
                                     val songs = imported.tracks.map { track ->
+                                        val match = track.resolvedSong
                                         val stableId = track.id.replace(Regex("[^A-Za-z0-9_-]"), "_")
                                         SongInfo(
-                                            videoId = "spotify_$stableId",
-                                            title = track.title,
-                                            artist = track.artists,
-                                            albumArtUrl = track.albumArtUrl.ifBlank { imported.coverUrl },
-                                            albumName = track.albumName,
-                                            durationSeconds = track.durationSeconds
+                                            videoId = match?.videoId ?: "spotify_$stableId",
+                                            title = match?.title ?: track.title,
+                                            artist = match?.artist ?: track.artists,
+                                            albumArtUrl = match?.albumArtUrl?.ifBlank { track.albumArtUrl.ifBlank { imported.coverUrl } }
+                                                ?: track.albumArtUrl.ifBlank { imported.coverUrl },
+                                            audioStreamUrl = match?.audioStreamUrl,
+                                            albumName = match?.albumName?.ifBlank { track.albumName } ?: track.albumName,
+                                            durationSeconds = match?.durationSeconds?.takeIf { it > 0L } ?: track.durationSeconds
                                         )
-                                    }
+                                    }.distinctBy { it.videoId }
                                     val playlist = playlistManager.createPlaylist(
                                         name = imported.name,
                                         creator = currentUser.name,
@@ -662,7 +665,14 @@ fun LibraryScreen(
                                     if (playlist != null) {
                                         showSpotifyImportDialog = false
                                         onNavigate(Screen.Playlist(playlist.id, playlist.name, playlist.coverUrl, "Imported from Spotify • ${playlist.creator}"))
-                                        Toast.makeText(context, "Imported ${songs.size} tracks", Toast.LENGTH_SHORT).show()
+                                        val matchedCount = imported.tracks.count { it.resolvedSong != null }
+                                        val unmatchedCount = imported.tracks.size - matchedCount
+                                        val message = if (unmatchedCount == 0) {
+                                            "Imported ${songs.size} playable tracks"
+                                        } else {
+                                            "Imported ${songs.size} tracks; $unmatchedCount couldn’t be matched in Lumn"
+                                        }
+                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                                     }
                                 } catch (e: Exception) {
                                     spotifyImportError = e.message ?: "Could not import this Spotify playlist."

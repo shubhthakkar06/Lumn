@@ -2,16 +2,20 @@ package com.example.musicapp.ui.player
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.example.musicapp.data.network.SongInfo
 import com.example.musicapp.data.playlist.PlaylistManager
+import com.example.musicapp.data.auth.UserManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,7 +42,11 @@ fun PlayerOptionsSheet(
 ) {
     val context = LocalContext.current
     val playlistManager = remember { PlaylistManager.getInstance(context) }
+    val userManager = remember { UserManager.getInstance(context) }
+    val currentUser by userManager.currentUser.collectAsStateWithLifecycle()
+    val playlists by playlistManager.playlists.collectAsStateWithLifecycle()
     var isLiked by remember(song.videoId) { mutableStateOf(playlistManager.isLiked(song.videoId)) }
+    var showPlaylistPicker by remember { mutableStateOf(false) }
     var showCreditsDialog by remember { mutableStateOf(false) }
     var showSleepTimerDialog by remember { mutableStateOf(false) }
 
@@ -117,8 +126,11 @@ fun PlayerOptionsSheet(
                 icon = Icons.Default.PlaylistAdd,
                 title = "Add to playlist",
                 onClick = {
-                    onDismiss()
-                    onAddToPlaylist()
+                    if (currentUser.isGuest) {
+                        Toast.makeText(context, "Sign in to create and edit playlists", Toast.LENGTH_SHORT).show()
+                    } else {
+                        showPlaylistPicker = true
+                    }
                 }
             )
 
@@ -144,10 +156,17 @@ fun PlayerOptionsSheet(
                 icon = Icons.Default.Share,
                 title = "Share",
                 onClick = {
+                    val link = Uri.Builder().scheme("lumn").authority("song").appendPath(song.videoId)
+                        .appendQueryParameter("title", song.title)
+                        .appendQueryParameter("artist", song.artist)
+                        .appendQueryParameter("art", song.albumArtUrl)
+                        .appendQueryParameter("album", song.albumName)
+                        .appendQueryParameter("duration", song.durationSeconds.toString())
+                        .build()
                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
                         putExtra(Intent.EXTRA_SUBJECT, song.title)
-                        putExtra(Intent.EXTRA_TEXT, "Listen to \"${song.title}\" by ${song.artist} on Lumn")
+                        putExtra(Intent.EXTRA_TEXT, "Listen to \"${song.title}\" by ${song.artist} on Lumn:\n$link")
                     }
                     context.startActivity(Intent.createChooser(shareIntent, "Share song via"))
                     onDismiss()
@@ -166,6 +185,42 @@ fun PlayerOptionsSheet(
                 onClick = { showCreditsDialog = true }
             )
         }
+    }
+
+    if (showPlaylistPicker) {
+        AlertDialog(
+            onDismissRequest = { showPlaylistPicker = false },
+            containerColor = Color(0xFF202A36),
+            title = { Text("Add to playlist", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                if (playlists.isEmpty()) {
+                    Text("You don’t have any playlists yet. Create one in Your Library, then add this song.", color = Color(0xFFCBD5E1))
+                } else {
+                    Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                        playlists.forEach { playlist ->
+                            TextButton(
+                                onClick = {
+                                    playlistManager.addSongToPlaylist(playlist.id, song)
+                                    Toast.makeText(context, "Added to ${playlist.name}", Toast.LENGTH_SHORT).show()
+                                    showPlaylistPicker = false
+                                    onDismiss()
+                                    onAddToPlaylist()
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.fillMaxWidth()) {
+                                    Text(playlist.name, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${playlist.songs.size} songs", color = Color(0xFF9AA8B8), style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPlaylistPicker = false }) { Text("Done", color = Color(0xFF00F59B)) }
+            }
+        )
     }
 
     if (showCreditsDialog) {

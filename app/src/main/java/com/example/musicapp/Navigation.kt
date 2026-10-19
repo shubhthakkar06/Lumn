@@ -14,6 +14,11 @@ import com.example.musicapp.data.auth.UserManager
 import com.example.musicapp.ui.auth.AuthFlowContainer
 import com.example.musicapp.ui.main.MainScreen
 import com.example.musicapp.ui.main.MainScreenViewModel
+import com.example.musicapp.data.network.SongInfo
+import com.example.musicapp.data.playlist.PlaylistManager
+import com.example.musicapp.data.playlist.UserPlaylist
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.setValue
 
 private enum class NavigationRootState {
     Auth,
@@ -22,7 +27,12 @@ private enum class NavigationRootState {
 }
 
 @Composable
-fun MainNavigation() {
+fun MainNavigation(
+    sharedSong: SongInfo? = null,
+    onSharedSongHandled: () -> Unit = {},
+    sharedPlaylist: UserPlaylist? = null,
+    onSharedPlaylistHandled: () -> Unit = {}
+) {
     val context = LocalContext.current
     val userManager = remember { UserManager.getInstance(context) }
     val isLoggedIn by userManager.isLoggedIn.collectAsStateWithLifecycle()
@@ -44,7 +54,32 @@ fun MainNavigation() {
                 val viewModel: MainScreenViewModel = viewModel {
                     MainScreenViewModel(DefaultDataRepository(context), context)
                 }
-                MainScreen(viewModel = viewModel, modifier = Modifier.fillMaxSize())
+                var playlistToOpen by remember { androidx.compose.runtime.mutableStateOf<UserPlaylist?>(null) }
+                LaunchedEffect(sharedSong) {
+                    sharedSong?.let {
+                        viewModel.playSong(it)
+                        onSharedSongHandled()
+                    }
+                }
+                LaunchedEffect(sharedPlaylist) {
+                    sharedPlaylist?.let { incoming ->
+                        val created = PlaylistManager.getInstance(context).createPlaylist(
+                            name = incoming.name,
+                            creator = incoming.creator,
+                            coverUrl = incoming.coverUrl,
+                            songs = incoming.songs,
+                            sourceUrl = incoming.sourceUrl
+                        )
+                        if (created != null) playlistToOpen = created
+                        onSharedPlaylistHandled()
+                    }
+                }
+                MainScreen(
+                    viewModel = viewModel,
+                    modifier = Modifier.fillMaxSize(),
+                    sharedPlaylist = playlistToOpen,
+                    onSharedPlaylistOpened = { playlistToOpen = null }
+                )
             }
             NavigationRootState.Interests -> {
                 com.example.musicapp.ui.auth.MusicInterestsScreen(

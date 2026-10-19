@@ -4,7 +4,14 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Base64
+import com.example.musicapp.data.DefaultDataRepository
+import com.example.musicapp.data.network.SongInfo
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -27,7 +34,8 @@ data class SpotifyImportedTrack(
     val artists: String,
     val albumName: String = "",
     val albumArtUrl: String = "",
-    val durationSeconds: Long = 0L
+    val durationSeconds: Long = 0L,
+    val resolvedSong: SongInfo? = null
 )
 
 data class SpotifyImportedPlaylist(
@@ -91,11 +99,30 @@ object SpotifyPlaylistImporter {
             pages++
         }
         if (tracks.isEmpty()) throw IllegalStateException("No playable tracks were found in that Spotify playlist.")
+        val repository = DefaultDataRepository(context.applicationContext)
+        val semaphore = Semaphore(3)
+        val matchedTracks = coroutineScope {
+            tracks.distinctBy { it.id }.map { track ->
+                async {
+                    semaphore.withPermit {
+                        val primary = runCatching {
+                            repository.searchSongs("${track.title} ${track.artists}")
+                        }.getOrDefault(emptyList())
+                        val firstMatch = SpotifyTrackMatcher.bestMatch(track, primary)
+                        val result = if (firstMatch != null) firstMatch else {
+                            val titleOnly = runCatching { repository.searchSongs(track.title) }.getOrDefault(emptyList())
+                            SpotifyTrackMatcher.bestMatch(track, titleOnly)
+                        }
+                        track.copy(resolvedSong = result)
+                    }
+                }
+            }.awaitAll()
+        }
         SpotifyImportedPlaylist(
             id = playlistId,
             name = name,
             spotifyUrl = "https://open.spotify.com/playlist/$playlistId",
-            tracks = tracks.distinctBy { it.id },
+            tracks = matchedTracks,
             coverUrl = playlistCover
         )
     }
@@ -229,5 +256,78 @@ object SpotifyPlaylistImporter {
     private fun randomUrlToken(bytes: Int): String {
         val random = ByteArray(bytes).also { SecureRandom().nextBytes(it) }
         return Base64.encodeToString(random, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+    }
+}
+
+/** Match Spotify's identity to Lumn's catalog without requiring identical artist spelling. */
+internal object SpotifyTrackMatcher {
+    private val distinctVersionTerms = setOf(
+        "remix", "live", "acoustic", "instrumental", "karaoke", "cover", "sped", "slowed", "garba", "unplugged"
+    )
+
+    fun bestMatch(track: SpotifyImportedTrack, candidates: List<SongInfo>): SongInfo? = candidates
+        .mapNotNull { candidate -> score(track, candidate)?.let { candidate to it } }
+        .maxWithOrNull(compareBy<Pair<SongInfo, Double>> { it.second }
+            .thenBy { !it.first.audioStreamUrl.isNullOrBlank() })
+        ?.first
+
+    private fun score(source: SpotifyImportedTrack, candidate: SongInfo): Double? {
+        val sourceTitle = normalize(source.title)
+        val candidateTitle = normalize(candidate.title)
+        if (sourceTitle.isBlank() || candidateTitle.isBlank()) return null
+
+        val sourceVersions = versionTerms(sourceTitle)
+        val candidateVersions = versionTerms(candidateTitle)
+        if (candidateVersions.any { it !in sourceVersions }) return null
+
+        val titleEdit = similarity(sourceTitle, candidateTitle)
+        val sourceTokens = sourceTitle.split(' ').filter(String::isNotBlank).toSet()
+        val candidateTokens = candidateTitle.split(' ').filter(String::isNotBlank).toSet()
+        val tokenCoverage = sourceTokens.intersect(candidateTokens).size.toDouble() / sourceTokens.size.coerceAtLeast(1)
+        val titleScore = titleEdit * 0.6 + tokenCoverage * 0.4
+        val artistTokens = normalize(source.artists).split(' ').filter { it.length > 1 }.toSet()
+        val candidateArtistTokens = normalize(candidate.artist).split(' ').filter { it.length > 1 }.toSet()
+        val artistOverlap = artistTokens.intersect(candidateArtistTokens).size.toDouble() / artistTokens.size.coerceAtLeast(1)
+        val durationDelta = if (source.durationSeconds > 0 && candidate.durationSeconds > 0) {
+            kotlin.math.abs(source.durationSeconds - candidate.durationSeconds)
+        } else null
+        val durationClose = durationDelta != null && durationDelta <= maxOf(8L, source.durationSeconds / 30L)
+
+        // Exact duration and title identity outweigh provider artist-credit variations.
+        if (titleScore < 0.78) return null
+        if (!durationClose && artistOverlap < 0.25 && titleScore < 0.96) return null
+        if (durationDelta != null && durationDelta > maxOf(18L, source.durationSeconds / 8L) && titleScore < 0.97) return null
+
+        val durationScore = when {
+            durationDelta == null -> 0.5
+            durationClose -> 1.0 - durationDelta.toDouble() / maxOf(8L, source.durationSeconds / 30L)
+            else -> (1.0 - durationDelta.toDouble() / maxOf(18L, source.durationSeconds / 8L)).coerceAtLeast(0.0)
+        }
+        return titleScore * 0.72 + durationScore * 0.18 + artistOverlap * 0.10
+    }
+
+    private fun normalize(value: String): String = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "")
+        .lowercase()
+        .replace(Regex("\\b(feat|featuring|ft)\\b.*$"), " ")
+        .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+        .trim()
+
+    private fun versionTerms(title: String): Set<String> = distinctVersionTerms.filterTo(mutableSetOf()) { term ->
+        Regex("\\b${Regex.escape(term)}\\b").containsMatchIn(title)
+    }
+
+    private fun similarity(a: String, b: String): Double {
+        val previous = IntArray(b.length + 1) { it }
+        for (i in a.indices) {
+            var diagonal = previous[0]
+            previous[0] = i + 1
+            for (j in b.indices) {
+                val old = previous[j + 1]
+                previous[j + 1] = minOf(previous[j + 1] + 1, previous[j] + 1, diagonal + if (a[i] == b[j]) 0 else 1)
+                diagonal = old
+            }
+        }
+        return 1.0 - previous[b.length].toDouble() / maxOf(a.length, b.length).coerceAtLeast(1)
     }
 }

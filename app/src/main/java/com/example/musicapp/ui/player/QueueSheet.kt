@@ -2,10 +2,12 @@ package com.example.musicapp.ui.player
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,10 +16,13 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -37,6 +42,10 @@ fun QueueSheet(
     onMoveItem: (fromIndex: Int, toIndex: Int) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var draggingIndex by remember { mutableIntStateOf(-1) }
+    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
+    val listState = rememberLazyListState()
+    val latestQueue by rememberUpdatedState(queue)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = Color(0xFF1E1E1E),
@@ -151,16 +160,21 @@ fun QueueSheet(
                     }
                 }
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 350.dp)
                 ) {
                     itemsIndexed(queue, key = { index, _ -> itemKeys[index] }) { index, song ->
+                        val latestIndex = rememberUpdatedState(index)
+                        val isDragging = draggingIndex == index
                         Row(
                             modifier = Modifier
                                 .animateItem()
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(6.dp))
+                                .background(if (isDragging) Color(0xFF263640) else Color.Transparent)
+                                .graphicsLayer { translationY = if (isDragging) dragOffsetPx else 0f }
                                 .clickable {
                                     onSongSelected(song)
                                     onDismiss()
@@ -199,14 +213,41 @@ fun QueueSheet(
                                 tint = Color(0xFF555555),
                                 modifier = Modifier.size(18.dp).padding(end = 0.dp)
                             )
-                            Column {
-                                IconButton(onClick = { onMoveItem(index, index - 1) }, enabled = index > 0, modifier = Modifier.size(30.dp)) {
-                                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move ${song.title} up", tint = if (index > 0) Color.White else Color(0xFF555555))
-                                }
-                                IconButton(onClick = { onMoveItem(index, index + 1) }, enabled = index < queue.lastIndex, modifier = Modifier.size(30.dp)) {
-                                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move ${song.title} down", tint = if (index < queue.lastIndex) Color.White else Color(0xFF555555))
-                                }
-                            }
+                            Icon(
+                                imageVector = Icons.Default.DragHandle,
+                                contentDescription = "Hold and drag to reorder ${song.title}",
+                                tint = if (isDragging) Color(0xFF00F59B) else Color(0xFF8793A2),
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .pointerInput(Unit) {
+                                        var activeIndex = 0
+                                        var draggedCenterY = 0f
+                                        detectDragGesturesAfterLongPress(
+                                            onDragStart = {
+                                                val startIndex = latestIndex.value
+                                                activeIndex = startIndex
+                                                draggingIndex = startIndex
+                                                dragOffsetPx = 0f
+                                                val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == startIndex }
+                                                draggedCenterY = (item?.offset ?: 0) + (item?.size ?: 0) / 2f
+                                            },
+                                            onDragEnd = { draggingIndex = -1; dragOffsetPx = 0f },
+                                            onDragCancel = { draggingIndex = -1; dragOffsetPx = 0f },
+                                            onDrag = { change, amount ->
+                                                change.consume()
+                                                draggedCenterY += amount.y
+                                                dragOffsetPx += amount.y
+                                                val target = listState.layoutInfo.visibleItemsInfo
+                                                    .minByOrNull { kotlin.math.abs(it.offset + it.size / 2f - draggedCenterY) }
+                                                    ?.index
+                                                if (target != null && target != activeIndex && target in latestQueue.indices) {
+                                                    onMoveItem(activeIndex, target)
+                                                    activeIndex = target
+                                                }
+                                            }
+                                        )
+                                    }
+                            )
                         }
                     }
                 }

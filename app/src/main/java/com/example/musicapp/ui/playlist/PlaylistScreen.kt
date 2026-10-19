@@ -12,11 +12,13 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Search
@@ -35,6 +38,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
@@ -133,6 +138,8 @@ fun PlaylistScreen(
             "${song.videoId}#$occurrence"
         }
     }
+    val latestFilteredSongKeys by rememberUpdatedState(filteredSongKeys)
+    val latestPlaylistSize by rememberUpdatedState(playlistSongs.size)
 
     var playBounced by remember { mutableStateOf(false) }
     val playScale by animateFloatAsState(
@@ -155,6 +162,9 @@ fun PlaylistScreen(
     var selectedSongForMenu by remember { mutableStateOf<SongInfo?>(null) }
     var selectedSongIndex by remember { mutableIntStateOf(-1) }
     var showSongMenu by remember { mutableStateOf(false) }
+    var draggingPlaylistIndex by remember { mutableIntStateOf(-1) }
+    var playlistDragOffsetPx by remember { mutableFloatStateOf(0f) }
+    val playlistListState = rememberLazyListState()
 
     // Rename Dialog
     if (showRenameDialog) {
@@ -250,32 +260,7 @@ fun PlaylistScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (isUserPlaylist) {
-                        if (selectedSongIndex > 0) {
-                            TextButton(
-                                onClick = {
-                                    playlistManager.moveSong(playlistId, selectedSongIndex, selectedSongIndex - 1)
-                                    showSongMenu = false
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Text("⬆️  Move Up in Playlist", color = Color.White)
-                                }
-                            }
-                        }
-                        if (selectedSongIndex < playlistSongs.size - 1) {
-                            TextButton(
-                                onClick = {
-                                    playlistManager.moveSong(playlistId, selectedSongIndex, selectedSongIndex + 1)
-                                    showSongMenu = false
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Text("⬇️  Move Down in Playlist", color = Color.White)
-                                }
-                            }
-                        }
+                        Text("Hold the drag handle on a song and move it to reorder.", color = Color(0xFFB8C2D0), style = MaterialTheme.typography.bodySmall)
                         TextButton(
                             onClick = {
                                 playlistManager.removeSongFromPlaylist(playlistId, song.videoId)
@@ -329,6 +314,7 @@ fun PlaylistScreen(
     }
 
     LazyColumn(
+        state = playlistListState,
         modifier = Modifier
             .fillMaxSize()
             .background(
@@ -551,6 +537,33 @@ fun PlaylistScreen(
                             ) {
                                 if (isUserPlaylist) {
                                     DropdownMenuItem(
+                                        text = { Text("Share playlist copy", color = Color.White) },
+                                        onClick = {
+                                            showPlaylistMenu = false
+                                            val shared = currentPlaylist ?: return@DropdownMenuItem
+                                            runCatching {
+                                                val portablePlaylist = shared.copy(
+                                                    songs = shared.songs.map { it.copy(audioStreamUrl = null) }
+                                                )
+                                                val serialized = kotlinx.serialization.json.Json.encodeToString(portablePlaylist)
+                                                val encoded = android.util.Base64.encodeToString(
+                                                    serialized.toByteArray(Charsets.UTF_8),
+                                                    android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
+                                                )
+                                                val link = Uri.Builder().scheme("lumn").authority("playlist")
+                                                    .appendQueryParameter("data", encoded).build()
+                                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                                    type = "text/plain"
+                                                    putExtra(Intent.EXTRA_SUBJECT, shared.name)
+                                                    putExtra(Intent.EXTRA_TEXT, "Open this playlist in Lumn (imports a local copy): ${shared.name}\n$link")
+                                                }
+                                                context.startActivity(Intent.createChooser(intent, "Share playlist"))
+                                            }.onFailure {
+                                                Toast.makeText(context, "Could not create a playlist share link", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    )
+                                    DropdownMenuItem(
                                         text = { Text("Rename Playlist", color = Color.White) },
                                         onClick = {
                                             showPlaylistMenu = false
@@ -663,6 +676,7 @@ fun PlaylistScreen(
 
         // Song Items
         itemsIndexed(filteredSongs, key = { index, _ -> filteredSongKeys[index] }) { index, song ->
+            val latestSongIndex = rememberUpdatedState(index)
             val isCurrent = currentSong?.videoId == song.videoId
             val isLoading = loadingSongVideoId == song.videoId
             val dlStatus = downloadStates[song.videoId] ?: DownloadStatus.NotDownloaded
@@ -671,6 +685,11 @@ fun PlaylistScreen(
                 modifier = Modifier
                     .animateItem()
                     .fillMaxWidth()
+                    .graphicsLayer {
+                        translationY = if (draggingPlaylistIndex == index) playlistDragOffsetPx else 0f
+                        shadowElevation = if (draggingPlaylistIndex == index) 18f else 0f
+                    }
+                    .background(if (draggingPlaylistIndex == index) Color(0x3321C9A5) else Color.Transparent)
                     .clickable { viewModel.playSong(song, filteredSongs) }
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -722,6 +741,46 @@ fun PlaylistScreen(
                         contentDescription = null,
                         tint = Color(0xFF00F59B),
                         modifier = Modifier.size(20.dp)
+                    )
+                }
+                if (isUserPlaylist && selectedVibe == "All" && playlistSearchQuery.isBlank()) {
+                    Icon(
+                        imageVector = Icons.Default.DragHandle,
+                        contentDescription = "Hold and drag to reorder",
+                        tint = if (draggingPlaylistIndex == index) Color(0xFF00F59B) else Color(0xFF8793A2),
+                        modifier = Modifier
+                            .size(40.dp)
+                            .pointerInput(playlistId) {
+                                var activeIndex = 0
+                                var draggedCenterY = 0f
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        val startIndex = latestSongIndex.value
+                                        activeIndex = startIndex
+                                        draggingPlaylistIndex = startIndex
+                                        playlistDragOffsetPx = 0f
+                                        val startKey = latestFilteredSongKeys.getOrNull(startIndex)
+                                        val item = playlistListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == startKey }
+                                        draggedCenterY = (item?.offset ?: 0) + (item?.size ?: 0) / 2f
+                                    },
+                                    onDragEnd = { draggingPlaylistIndex = -1; playlistDragOffsetPx = 0f },
+                                    onDragCancel = { draggingPlaylistIndex = -1; playlistDragOffsetPx = 0f },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        draggedCenterY += amount.y
+                                        playlistDragOffsetPx += amount.y
+                                        val targetKey = playlistListState.layoutInfo.visibleItemsInfo
+                                            .filter { info -> latestFilteredSongKeys.contains(info.key) }
+                                            .minByOrNull { kotlin.math.abs(it.offset + it.size / 2f - draggedCenterY) }
+                                            ?.key
+                                        val target = latestFilteredSongKeys.indexOf(targetKey)
+                                        if (target >= 0 && target != activeIndex && target in 0 until latestPlaylistSize) {
+                                            playlistManager.moveSong(playlistId, activeIndex, target)
+                                            activeIndex = target
+                                        }
+                                    }
+                                )
+                            }
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))

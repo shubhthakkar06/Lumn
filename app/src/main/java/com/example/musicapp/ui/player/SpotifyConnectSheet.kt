@@ -21,9 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -37,7 +35,6 @@ fun SpotifyConnectSheet(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
     val audioDeviceManager = remember { com.example.musicapp.ui.util.AudioDeviceManager.getInstance(context) }
     val devices by audioDeviceManager.devices.collectAsState()
     val activeDeviceId by audioDeviceManager.activeDeviceId.collectAsState()
@@ -352,7 +349,7 @@ fun SpotifyConnectSheet(
             text = {
                 Column {
                     Text(
-                        text = "Listen together with friends in real-time. Share this invite link:",
+                        text = "Invite friends to open this song in Lumn. Live synchronized playback needs a shared session server, which is not configured yet.",
                         color = Color(0xFFD0D0D0),
                         fontSize = 14.sp
                     )
@@ -365,8 +362,8 @@ fun SpotifyConnectSheet(
                             .border(1.dp, Color(0x3300F59B), RoundedCornerShape(8.dp))
                             .padding(12.dp)
                     ) {
-                        Text(
-                            text = "https://musicflow.app/jam/s24u-${song.videoId.take(6)}",
+                    Text(
+                        text = "${song.title} • ${song.artist}",
                             color = Color(0xFF00F59B),
                             fontWeight = FontWeight.Medium,
                             fontSize = 13.sp
@@ -377,12 +374,23 @@ fun SpotifyConnectSheet(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        clipboardManager.setText(AnnotatedString("https://musicflow.app/jam/s24u-${song.videoId.take(6)}"))
-                        Toast.makeText(context, "Jam link copied to clipboard!", Toast.LENGTH_SHORT).show()
+                        val link = android.net.Uri.Builder().scheme("lumn").authority("song").appendPath(song.videoId)
+                            .appendQueryParameter("title", song.title)
+                            .appendQueryParameter("artist", song.artist)
+                            .appendQueryParameter("art", song.albumArtUrl)
+                            .appendQueryParameter("album", song.albumName)
+                            .appendQueryParameter("duration", song.durationSeconds.toString())
+                            .build()
+                        val invite = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "Lumn Jam: ${song.title}")
+                            putExtra(Intent.EXTRA_TEXT, "Join me for ${song.title} by ${song.artist} on Lumn:\n$link")
+                        }
+                        context.startActivity(Intent.createChooser(invite, "Invite friends to Lumn"))
                         showJamDialog = false
                     }
                 ) {
-                    Text("Copy link", color = Color(0xFF00F59B), fontWeight = FontWeight.Bold)
+                    Text("Share invite", color = Color(0xFF00F59B), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {

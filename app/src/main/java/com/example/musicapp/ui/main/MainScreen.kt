@@ -48,6 +48,7 @@ import com.example.musicapp.ui.drawer.ProfileDrawerContent
 import com.example.musicapp.ui.home.HomeScreen
 import com.example.musicapp.ui.library.LibraryScreen
 import com.example.musicapp.ui.navigation.Screen
+import com.example.musicapp.data.playlist.UserPlaylist
 import com.example.musicapp.ui.player.FullScreenPlayerSheet
 import com.example.musicapp.ui.player.SpotifyConnectSheet
 import com.example.musicapp.ui.playlist.PlaylistScreen
@@ -59,7 +60,9 @@ import kotlinx.coroutines.launch
 @Composable
 fun MainScreen(
     viewModel: MainScreenViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    sharedPlaylist: UserPlaylist? = null,
+    onSharedPlaylistOpened: () -> Unit = {}
 ) {
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     val currentSong by viewModel.currentSong.collectAsStateWithLifecycle()
@@ -72,6 +75,16 @@ fun MainScreen(
 
     var isPlayerExpanded by remember { mutableStateOf(false) }
     var showConnectFromMini by remember { mutableStateOf(false) }
+
+    LaunchedEffect(sharedPlaylist) {
+        sharedPlaylist?.let { playlist ->
+            backstack = listOf(
+                Screen.Home,
+                Screen.Playlist(playlist.id, playlist.name, playlist.coverUrl, "Playlist • ${playlist.creator}")
+            )
+            onSharedPlaylistOpened()
+        }
+    }
 
     fun navigateTo(screen: Screen) {
         backstack = backstack + screen
