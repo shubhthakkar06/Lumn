@@ -5,18 +5,23 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -113,15 +118,30 @@ fun FullScreenPlayerSheet(
         lyrics = lyricsManager.getLyrics(song.title, song.artist)
     }
 
+    // Precision sync offset: ensures lyrics match vocalist timing accurately
+    val lyricSyncOffsetMs = 300L
     val activeLyricIndex = remember(lyrics, currentPosition) {
-        if (lyrics.isEmpty()) 0
-        else lyrics.indexOfLast { it.timestampMs <= currentPosition }.coerceAtLeast(0)
+        if (lyrics.isEmpty()) -1
+        else {
+            val adjustedPos = currentPosition - lyricSyncOffsetMs
+            val firstTimestamp = lyrics.firstOrNull()?.timestampMs ?: 0L
+            if (adjustedPos < firstTimestamp) {
+                -1
+            } else {
+                lyrics.indexOfLast { it.timestampMs <= adjustedPos }
+            }
+        }
     }
 
     val lyricsListState = rememberLazyListState()
     LaunchedEffect(activeLyricIndex, isLyricsExpanded) {
-        if (isLyricsExpanded && activeLyricIndex in lyrics.indices) {
-            lyricsListState.animateScrollToItem((activeLyricIndex - 1).coerceAtLeast(0))
+        if (isLyricsExpanded) {
+            if (activeLyricIndex in lyrics.indices) {
+                val targetIndex = (activeLyricIndex - 1).coerceAtLeast(0)
+                lyricsListState.animateScrollToItem(targetIndex)
+            } else if (activeLyricIndex < 0) {
+                lyricsListState.animateScrollToItem(0)
+            }
         }
     }
 
@@ -332,7 +352,17 @@ fun FullScreenPlayerSheet(
                 Spacer(modifier = Modifier.height(18.dp))
                 AnimatedContent(
                     targetState = activeSingleLyric,
-                    transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(200)) },
+                    transitionSpec = {
+                        (slideInVertically(
+                            animationSpec = tween(600, easing = FastOutSlowInEasing),
+                            initialOffsetY = { fullHeight -> fullHeight / 2 }
+                        ) + fadeIn(tween(600))).togetherWith(
+                            slideOutVertically(
+                                animationSpec = tween(500, easing = FastOutSlowInEasing),
+                                targetOffsetY = { fullHeight -> -fullHeight / 2 }
+                            ) + fadeOut(tween(400))
+                        )
+                    },
                     label = "SingleLineLyricPreview"
                 ) { lyricText ->
                     Text(
@@ -645,34 +675,60 @@ fun FullScreenPlayerSheet(
                     }
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    val activeText = lyrics.getOrNull(activeLyricIndex)?.text ?: "Tap to load lyrics..."
-                    val nextText = lyrics.getOrNull(activeLyricIndex + 1)?.text ?: ""
+                    AnimatedContent(
+                        targetState = activeLyricIndex,
+                        transitionSpec = {
+                            (slideInVertically(
+                                animationSpec = tween(600, easing = FastOutSlowInEasing),
+                                initialOffsetY = { fullHeight -> fullHeight / 3 }
+                            ) + fadeIn(tween(550))).togetherWith(
+                                slideOutVertically(
+                                    animationSpec = tween(450, easing = FastOutSlowInEasing),
+                                    targetOffsetY = { fullHeight -> -fullHeight / 3 }
+                                ) + fadeOut(tween(350))
+                            )
+                        },
+                        label = "PreviewCardLyricFlow"
+                    ) { targetIdx ->
+                        val activeText = if (targetIdx >= 0) {
+                            lyrics.getOrNull(targetIdx)?.text ?: "Tap to load lyrics..."
+                        } else {
+                            if (lyrics.isNotEmpty()) "♪ Instrumental ♪" else "Tap to load lyrics..."
+                        }
+                        val nextText = if (targetIdx >= 0) {
+                            lyrics.getOrNull(targetIdx + 1)?.text ?: ""
+                        } else {
+                            lyrics.firstOrNull()?.text ?: ""
+                        }
 
-                    Text(
-                        text = activeText,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontFamily = lyricStyle.fontFamily,
-                            fontStyle = lyricStyle.fontStyle,
-                            fontWeight = lyricStyle.activeWeight,
-                            letterSpacing = lyricStyle.letterSpacing,
-                            fontSize = 20.sp,
-                            lineHeight = 28.sp
-                        ),
-                        color = Color.White
-                    )
-                    if (nextText.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = nextText,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontFamily = lyricStyle.fontFamily,
-                                fontStyle = lyricStyle.fontStyle,
-                                fontWeight = lyricStyle.inactiveWeight,
-                                fontSize = 16.sp,
-                                lineHeight = 24.sp
-                            ),
-                            color = Color(0x88FFFFFF)
-                        )
+                        Column {
+                            Text(
+                                text = activeText,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontFamily = lyricStyle.fontFamily,
+                                    fontStyle = lyricStyle.fontStyle,
+                                    fontWeight = lyricStyle.activeWeight,
+                                    letterSpacing = lyricStyle.letterSpacing,
+                                    fontSize = 20.sp,
+                                    lineHeight = 28.sp
+                                ),
+                                color = Color.White
+                            )
+                            if (nextText.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = nextText,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontFamily = lyricStyle.fontFamily,
+                                        fontStyle = lyricStyle.fontStyle,
+                                        fontWeight = lyricStyle.inactiveWeight,
+                                        fontSize = 16.sp,
+                                        lineHeight = 24.sp
+                                    ),
+                                    color = Color(0x88FFFFFF)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -900,32 +956,59 @@ fun FullScreenPlayerSheet(
                     // Synchronized Interactive Lyrics List
                     LazyColumn(
                         state = lyricsListState,
+                        contentPadding = PaddingValues(top = 80.dp, bottom = 220.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .padding(vertical = 16.dp)
+                            .padding(vertical = 12.dp)
                     ) {
                         itemsIndexed(lyrics, key = { index, item -> "${item.timestampMs}_$index" }) { index, line ->
                             val isCurrent = index == activeLyricIndex
-                            Text(
-                                text = line.text,
-                                style = MaterialTheme.typography.headlineSmall.copy(
-                                    fontFamily = lyricStyle.fontFamily,
-                                    fontStyle = lyricStyle.fontStyle,
-                                    fontWeight = if (isCurrent) lyricStyle.activeWeight else lyricStyle.inactiveWeight,
-                                    letterSpacing = lyricStyle.letterSpacing,
-                                    fontSize = if (isCurrent) 26.sp else 20.sp,
-                                    lineHeight = if (isCurrent) 38.sp else 30.sp
-                                ),
-                                color = if (isCurrent) Color.White else Color(0x55FFFFFF),
+
+                            val animatedScale by animateFloatAsState(
+                                targetValue = if (isCurrent) 1.07f else 0.95f,
+                                animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessLow),
+                                label = "lyricScale"
+                            )
+                            val animatedAlpha by animateFloatAsState(
+                                targetValue = if (isCurrent) 1.0f else 0.35f,
+                                animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+                                label = "lyricAlpha"
+                            )
+                            val animatedColor by animateColorAsState(
+                                targetValue = if (isCurrent) Color.White else Color(0x66FFFFFF),
+                                animationSpec = tween(durationMillis = 400),
+                                label = "lyricColor"
+                            )
+
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .graphicsLayer {
+                                        scaleX = animatedScale
+                                        scaleY = animatedScale
+                                        alpha = animatedAlpha
+                                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
+                                    }
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable {
                                         // Tap any line to seek instantly!
                                         viewModel.seekTo(line.timestampMs)
                                     }
                                     .padding(vertical = 10.dp, horizontal = 4.dp)
-                            )
+                            ) {
+                                Text(
+                                    text = line.text,
+                                    style = MaterialTheme.typography.headlineSmall.copy(
+                                        fontFamily = lyricStyle.fontFamily,
+                                        fontStyle = lyricStyle.fontStyle,
+                                        fontWeight = if (isCurrent) lyricStyle.activeWeight else lyricStyle.inactiveWeight,
+                                        letterSpacing = lyricStyle.letterSpacing,
+                                        fontSize = 24.sp,
+                                        lineHeight = 34.sp
+                                    ),
+                                    color = animatedColor
+                                )
+                            }
                         }
                     }
 

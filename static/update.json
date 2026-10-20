@@ -1,7 +1,7 @@
 {
-  "versionName": "2.5.8",
-  "versionCode": 24,
+  "versionName": "2.5.9",
+  "versionCode": 25,
   "minimumVersionCode": 24,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
-  "releaseNotes": "Translucent frosted-glass lyrics overlay with genre-adaptive typography, similar songs & fans also like recommendations in player, swipe-down player dismissal, dynamic non-redundant queue autoplay, artist dominant color rings, theme presets with time-of-day gradient, and search category top song thumbnails."
+  "releaseNotes": "Acoustically calibrated studio lyric synchronization, silky smooth fluid vertical lyric glide with instrumental intro support, and verified high-resolution search category artwork."
 }

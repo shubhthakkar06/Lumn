@@ -74,23 +74,23 @@ fun SearchScreen(
             title = "Pop",
             topSong = "Yellow",
             gradientColors = listOf(Color(0xFF1E88E5), Color(0xFF0D47A1)),
-            imageUrl = "https://i.ytimg.com/vi/yKNxeF4PgnY/hqdefault.jpg"
+            imageUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/f5/93/8c/f5938c49-964c-31d1-4b33-78b634f71fb7/190295978075.jpg/600x600bb.jpg"
         ),
         SearchCategory(
             title = "Hindi",
             topSong = "Pehle Bhi Main",
             gradientColors = listOf(Color(0xFFE65100), Color(0xFF873600)),
-            imageUrl = "https://i.ytimg.com/vi/kuhh3JVms4w/hqdefault.jpg"
+            imageUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/17/eb/71/17eb713e-c812-361e-26d7-b3ef9330a9c1/8903431976703_cover.jpg/600x600bb.jpg"
         ),
         SearchCategory(
             title = "Punjabi",
-            topSong = "Winning Speech",
+            topSong = "Wavy",
             gradientColors = listOf(Color(0xFFD81B60), Color(0xFF880E4F)),
-            imageUrl = "https://c.saavncdn.com/artists/Karan_Aujla_004_20240108064951_500x500.jpg"
+            imageUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/cd/df/5a/cddf5a8c-464e-3958-cf4a-7fac9e490aa5/5063616597178_cover.jpg/600x600bb.jpg"
         ),
         SearchCategory(
             title = "Indie India",
-            topSong = "Kasoor",
+            topSong = "Sparks",
             gradientColors = listOf(Color(0xFF00897B), Color(0xFF004D40)),
             imageUrl = "https://i.ytimg.com/vi/1G4isv_Fylg/hqdefault.jpg"
         ),
@@ -102,9 +102,9 @@ fun SearchScreen(
         ),
         SearchCategory(
             title = "Lo-Fi Beats",
-            topSong = "Sparks (Chill)",
+            topSong = "Chill Mix",
             gradientColors = listOf(Color(0xFF546E7A), Color(0xFF263238)),
-            imageUrl = "https://i.ytimg.com/vi/1G4isv_Fylg/hqdefault.jpg"
+            imageUrl = "https://i.ytimg.com/vi/dvgZkm1xWPE/hq720.jpg"
         ),
         SearchCategory(
             title = "Made For You",
