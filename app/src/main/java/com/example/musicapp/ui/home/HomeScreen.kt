@@ -37,8 +37,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.musicapp.data.auth.UserManager
 import com.example.musicapp.data.network.SongInfo
 import com.example.musicapp.data.playlist.PlaylistManager
+import com.example.musicapp.data.settings.SettingsManager
+import com.example.musicapp.theme.AppThemeHelper
 import com.example.musicapp.ui.navigation.Screen
 import com.example.musicapp.ui.components.TrackArtwork
+import com.example.musicapp.ui.util.rememberDynamicGradient
 
 data class HeroVibeTrack(val title: String, val artist: String, val cover: String, val videoId: String)
 
@@ -69,19 +72,16 @@ fun HomeScreen(
         playHistoryManager.getUserHistory(currentUser.id)
     }
 
-    var selectedVibe by remember { mutableStateOf("⚡ All Waves") }
-    val vibeCategories = listOf("⚡ All Waves", "🌙 Late Night", "🔥 Heavy Rotation", "🎧 Deep Focus", "✨ Euphoria")
+    val settingsManager = remember { SettingsManager.getInstance(context) }
+    val appTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
+    val themeGradientColors = remember(appTheme) { AppThemeHelper.getThemeGradient(appTheme) }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF10253A),
-                        Color(0xFF17162A),
-                        Color(0xFF06090D)
-                    )
+                    colors = themeGradientColors
                 )
             )
     ) {
@@ -142,75 +142,15 @@ fun HomeScreen(
                     }
                 }
 
-            // 2. Vibe Filter Pills
+            // 2. Featured Hero Card (Stage)
             item {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(vibeCategories.size) { i ->
-                        val vibe = vibeCategories[i]
-                        val isSelected = selectedVibe == vibe
-                        Box(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(if (isSelected) Color(0xFF00F59B) else Color(0xFF131D2A))
-                                .border(
-                                    1.dp,
-                                    if (isSelected) Color(0xFF00F59B) else Color(0x33FFFFFF),
-                                    CircleShape
-                                )
-                                .clickable { selectedVibe = vibe }
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
-                        ) {
-                            Text(
-                                text = vibe,
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                color = if (isSelected) Color.Black else Color.White
-                            )
-                        }
-                    }
+                val heroRecord = userHistory.firstOrNull()
+                val (heroTitle, heroArtist, heroCover, heroVideoId) = if (heroRecord != null) {
+                    HeroVibeTrack(heroRecord.title, heroRecord.artist, heroRecord.albumArtUrl, heroRecord.videoId)
+                } else {
+                    val fallback = com.example.musicapp.data.MusicCatalog.mostFavSongs.first()
+                    HeroVibeTrack(fallback.title, fallback.artist, fallback.albumArtUrl, fallback.videoId)
                 }
-            }
-
-            // 3. Featured Hero Card (Stage)
-            item {
-                val heroTrack = when (selectedVibe) {
-                    "🌙 Late Night" -> HeroVibeTrack(
-                        "Sparks",
-                        "Coldplay",
-                        "https://i.ytimg.com/vi/1G4isv_Fylg/hqdefault.jpg",
-                        "1G4isv_Fylg"
-                    )
-                    "🔥 Heavy Rotation" -> HeroVibeTrack(
-                        "Shayad",
-                        "Pritam, Arijit Singh",
-                        "https://c.saavncdn.com/862/Love-Aaj-Kal-Hindi-2020-20200214140423-500x500.jpg",
-                        "saavn__rJmbKSP"
-                    )
-                    "🎧 Deep Focus" -> HeroVibeTrack(
-                        "Yellow",
-                        "Coldplay",
-                        "https://c.saavncdn.com/476/Parachutes-English-2000-20200522101229-500x500.jpg",
-                        "saavn_DXroj0Sq"
-                    )
-                    "✨ Euphoria" -> HeroVibeTrack(
-                        "Viva La Vida",
-                        "Coldplay",
-                        "https://i.ytimg.com/vi/dvgZkm1xWPE/hqdefault.jpg",
-                        "dvgZkm1xWPE"
-                    )
-                    else -> {
-                        val heroSong = userHistory.firstOrNull()
-                        HeroVibeTrack(
-                            heroSong?.title ?: "Kesariya",
-                            heroSong?.artist ?: "Arijit Singh, Pritam",
-                            heroSong?.albumArtUrl ?: "https://c.saavncdn.com/423/Arijit-Singh-All-Time-Best-Hindi-Hit-Love-Songs-Collection-Hindi-2026-20261008160834-500x500.jpg",
-                            heroSong?.videoId ?: "saavn_KGfDrbWe"
-                        )
-                    }
-                }
-                val (heroTitle, heroArtist, heroCover, heroVideoId) = heroTrack
 
                 Box(
                     modifier = Modifier
@@ -449,43 +389,11 @@ fun HomeScreen(
                             }
                             items(artists.size, key = { "${artists[it].first}-$it" }) { i ->
                                 val (name, img) = artists[i]
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier
-                                        .width(110.dp)
-                                        .clickable { onNavigate(Screen.Artist(name, img)) }
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(100.dp)
-                                            .clip(CircleShape)
-                                            .border(
-                                                2.dp,
-                                                Brush.sweepGradient(listOf(Color(0xFF00F59B), Color(0xFF00D2FF), Color(0xFF00F59B))),
-                                                CircleShape
-                                            )
-                                    ) {
-                                        TrackArtwork(
-                                            model = img,
-                                            contentDescription = name,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize().clip(CircleShape)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = name,
-                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "Verified",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color(0xFFA0AEC0)
-                                    )
-                                }
+                                ArtistCircleCard(
+                                    name = name,
+                                    img = img,
+                                    onClick = { onNavigate(Screen.Artist(name, img)) }
+                                )
                             }
                         }
                     }
@@ -673,6 +581,54 @@ fun GenZRecentCard(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(end = 8.dp)
+        )
+    }
+}
+
+@Composable
+private fun ArtistCircleCard(
+    name: String,
+    img: String,
+    onClick: () -> Unit
+) {
+    val dynamicColors = rememberDynamicGradient(img)
+    val ringColor = remember(dynamicColors) { dynamicColors.firstOrNull() ?: Color(0xFF00F59B) }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .width(110.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(100.dp)
+                .clip(CircleShape)
+                .border(
+                    2.5.dp,
+                    Brush.sweepGradient(listOf(ringColor, ringColor.copy(alpha = 0.5f), ringColor)),
+                    CircleShape
+                )
+        ) {
+            TrackArtwork(
+                model = img,
+                contentDescription = name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().clip(CircleShape)
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = name,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+            color = Color.White,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = "Verified",
+            style = MaterialTheme.typography.labelSmall,
+            color = Color(0xFFA0AEC0)
         )
     }
 }

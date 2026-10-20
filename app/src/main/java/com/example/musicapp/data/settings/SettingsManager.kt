@@ -42,6 +42,14 @@ class SettingsManager private constructor(private val context: Context) {
     private val _pushNotifications = MutableStateFlow(prefs.getBoolean(KEY_PUSH_NOTIF, true))
     val pushNotifications: StateFlow<Boolean> = _pushNotifications.asStateFlow()
 
+    private val _appTheme = MutableStateFlow(prefs.getString(KEY_THEME, "Dynamic Time") ?: "Dynamic Time")
+    val appTheme: StateFlow<String> = _appTheme.asStateFlow()
+
+    fun setAppTheme(theme: String) {
+        _appTheme.value = theme
+        prefs.edit().putString(KEY_THEME, theme).apply()
+    }
+
     fun cycleDataSaverMode(): String {
         val next = when (_dataSaverMode.value) {
             "Automatic" -> "On"
@@ -136,6 +144,7 @@ class SettingsManager private constructor(private val context: Context) {
         private const val KEY_DOWNLOAD_QUALITY = "key_download_quality"
         private const val KEY_CANVAS = "key_canvas"
         private const val KEY_PUSH_NOTIF = "key_push_notif"
+        private const val KEY_THEME = "key_app_theme"
 
         @Volatile
         private var instance: SettingsManager? = null

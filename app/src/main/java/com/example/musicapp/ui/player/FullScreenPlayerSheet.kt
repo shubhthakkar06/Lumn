@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
@@ -47,12 +48,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.musicapp.ui.components.TrackArtwork
 import com.example.musicapp.data.download.DownloadStatus
 import com.example.musicapp.data.download.MusicDownloadManager
+import com.example.musicapp.data.MusicCatalog
 import com.example.musicapp.data.auth.UserManager
 import com.example.musicapp.data.lyrics.LyricLine
 import com.example.musicapp.data.lyrics.LyricsManager
 import com.example.musicapp.data.network.SongInfo
 import com.example.musicapp.data.playlist.PlaylistManager
-import com.example.musicapp.data.trivia.SongTriviaManager
 import com.example.musicapp.ui.main.MainScreenViewModel
 import com.example.musicapp.ui.util.rememberDynamicGradient
 
@@ -69,7 +70,6 @@ fun FullScreenPlayerSheet(
     val downloadManager = remember { MusicDownloadManager.getInstance(context) }
     val currentUser by remember { UserManager.getInstance(context).currentUser }.collectAsStateWithLifecycle()
     val lyricsManager = remember { LyricsManager.getInstance(context) }
-    val triviaManager = remember { SongTriviaManager.getInstance(context) }
 
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     val currentPosition by viewModel.currentPosition.collectAsStateWithLifecycle()
@@ -95,6 +95,18 @@ fun FullScreenPlayerSheet(
     // Dynamic gradient extracted from artwork
     val gradientColors = rememberDynamicGradient(song.albumArtUrl)
 
+    // Genre-adaptive lyrics typography helper
+    val lyricStyle = remember(song.videoId) { LyricsTypographyHelper.getFontStyle(song) }
+
+    // Similar Songs & Fans Also Like
+    val artistCatalog = remember(song.artist) { MusicCatalog.getArtistData(song.artist) }
+    val similarSongs = remember(artistCatalog, song.videoId) {
+        val filtered = artistCatalog.topTracks.filter { it.videoId != song.videoId && !it.title.equals(song.title, ignoreCase = true) }
+        if (filtered.size >= 4) filtered.take(5)
+        else (filtered + MusicCatalog.hitsSongs.filter { it.videoId != song.videoId }).distinctBy { it.videoId }.take(5)
+    }
+    val similarArtists = remember(artistCatalog) { artistCatalog.similarArtists }
+
     // Lyrics State
     var lyrics by remember(song.videoId) { mutableStateOf<List<LyricLine>>(emptyList()) }
     LaunchedEffect(song.videoId) {
@@ -112,10 +124,6 @@ fun FullScreenPlayerSheet(
             lyricsListState.animateScrollToItem((activeLyricIndex - 1).coerceAtLeast(0))
         }
     }
-
-    // Trivia & Related Videos
-    val songTrivia = remember(song.videoId) { triviaManager.getTrivia(song) }
-    var triviaFeedback by remember(song.videoId) { mutableStateOf(triviaManager.getFeedback(song.videoId)) }
 
     val totalDuration = if (duration > 0) duration else 216000L
 
@@ -148,7 +156,7 @@ fun FullScreenPlayerSheet(
 
     var swipeOffsetY by remember { mutableStateOf(0f) }
     val animatedOffsetY by animateFloatAsState(targetValue = swipeOffsetY, label = "swipeDismiss")
-    val dismissThresholdPx = with(androidx.compose.ui.platform.LocalDensity.current) { 96.dp.toPx() }
+    val dismissThresholdPx = with(androidx.compose.ui.platform.LocalDensity.current) { 48.dp.toPx() }
     var horizontalDragArtwork by remember { mutableStateOf(0f) }
 
     Box(
@@ -190,11 +198,62 @@ fun FullScreenPlayerSheet(
                 .padding(horizontal = 24.dp)
                 .verticalScroll(rememberScrollState())
         ) {
+            // Drag Handle for intuitive swipe down minimize
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 4.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDrag = { change, dragAmount ->
+                                if (dragAmount.y > 0f || swipeOffsetY > 0f) {
+                                    change.consume()
+                                    swipeOffsetY = (swipeOffsetY + dragAmount.y).coerceAtLeast(0f)
+                                }
+                            },
+                            onDragEnd = {
+                                if (swipeOffsetY > dismissThresholdPx) {
+                                    onClose()
+                                } else {
+                                    swipeOffsetY = 0f
+                                }
+                            },
+                            onDragCancel = { swipeOffsetY = 0f }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 42.dp, height = 4.5.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x66FFFFFF))
+                )
+            }
+
             // Top Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp),
+                    .padding(vertical = 8.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDrag = { change, dragAmount ->
+                                if (dragAmount.y > 0f || swipeOffsetY > 0f) {
+                                    change.consume()
+                                    swipeOffsetY = (swipeOffsetY + dragAmount.y).coerceAtLeast(0f)
+                                }
+                            },
+                            onDragEnd = {
+                                if (swipeOffsetY > dismissThresholdPx) {
+                                    onClose()
+                                } else {
+                                    swipeOffsetY = 0f
+                                }
+                            },
+                            onDragCancel = { swipeOffsetY = 0f }
+                        )
+                    },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -279,8 +338,11 @@ fun FullScreenPlayerSheet(
                     Text(
                         text = lyricText,
                         style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
+                            fontFamily = lyricStyle.fontFamily,
+                            fontStyle = lyricStyle.fontStyle,
+                            fontWeight = lyricStyle.activeWeight,
+                            letterSpacing = lyricStyle.letterSpacing,
+                            fontSize = 17.sp
                         ),
                         color = Color.White,
                         maxLines = 1,
@@ -517,12 +579,20 @@ fun FullScreenPlayerSheet(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Real Synchronized Lyrics Card Preview (Matching Screenshot 133831)
+            // Translucent Frosted Glass Lyrics Card Preview with Genre Typography
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFF263845).copy(alpha = 0.95f))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                (gradientColors.firstOrNull() ?: Color(0xFF1B3B4B)).copy(alpha = 0.50f),
+                                Color(0xD9101622)
+                            )
+                        )
+                    )
+                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(16.dp))
                     .clickable { isLyricsExpanded = true }
                     .padding(20.dp)
             ) {
@@ -532,11 +602,32 @@ fun FullScreenPlayerSheet(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Lyrics",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
-                            color = Color.White
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Lyrics",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0x3300F59B))
+                                    .border(1.dp, Color(0x6600F59B), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = lyricStyle.genreLabel,
+                                    color = Color(0xFF00F59B),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontFamily = lyricStyle.fontFamily,
+                                        fontStyle = lyricStyle.fontStyle,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                )
+                            }
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             IconButton(
                                 onClick = { shareCurrentSong() },
@@ -560,7 +651,10 @@ fun FullScreenPlayerSheet(
                     Text(
                         text = activeText,
                         style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
+                            fontFamily = lyricStyle.fontFamily,
+                            fontStyle = lyricStyle.fontStyle,
+                            fontWeight = lyricStyle.activeWeight,
+                            letterSpacing = lyricStyle.letterSpacing,
                             fontSize = 20.sp,
                             lineHeight = 28.sp
                         ),
@@ -571,6 +665,9 @@ fun FullScreenPlayerSheet(
                         Text(
                             text = nextText,
                             style = MaterialTheme.typography.bodyMedium.copy(
+                                fontFamily = lyricStyle.fontFamily,
+                                fontStyle = lyricStyle.fontStyle,
+                                fontWeight = lyricStyle.inactiveWeight,
                                 fontSize = 16.sp,
                                 lineHeight = 24.sp
                             ),
@@ -582,12 +679,13 @@ fun FullScreenPlayerSheet(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // "About the song [Beta]" Card (Matching Screenshot 133915)
+            // Similar Songs Section
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFF1E1E1E))
+                    .background(Color(0xFF141922))
+                    .border(1.dp, Color(0xFF232B3A), RoundedCornerShape(16.dp))
                     .padding(20.dp)
             ) {
                 Column {
@@ -596,196 +694,140 @@ fun FullScreenPlayerSheet(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "About the song",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(Color(0xFF00F59B))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "Beta",
-                                    color = Color.Black,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
-                                )
-                            }
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Icon(Icons.Default.ChevronLeft, contentDescription = null, tint = Color(0xFFA0A0A0), modifier = Modifier.size(20.dp))
-                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0xFFA0A0A0), modifier = Modifier.size(20.dp))
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(
-                        text = songTrivia.text,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFD0D0D0),
-                        lineHeight = 22.sp
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
-                    // Source pill attribution
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF2C2C2C))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
                         Text(
-                            text = songTrivia.source,
-                            color = Color(0xFFA0A0A0),
-                            fontSize = 11.sp
+                            text = "Similar Songs",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White
                         )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            IconButton(
-                                onClick = {
-                                    triviaFeedback = true
-                                    triviaManager.setFeedback(song.videoId, true)
-                                    Toast.makeText(context, "Thanks for the feedback!", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ThumbUp,
-                                    contentDescription = "Thumbs Up",
-                                    tint = if (triviaFeedback == true) Color(0xFF00F59B) else Color(0xFFA0A0A0),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                            IconButton(
-                                onClick = {
-                                    triviaFeedback = false
-                                    triviaManager.setFeedback(song.videoId, false)
-                                    Toast.makeText(context, "Feedback recorded", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ThumbDown,
-                                    contentDescription = "Thumbs Down",
-                                    tint = if (triviaFeedback == false) Color(0xFFE91E63) else Color(0xFFA0A0A0),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
                         Text(
-                            text = "Summarised from third-party sources",
+                            text = "Based on this track",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF707070)
+                            color = Color(0xFF8793A2)
                         )
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    similarSongs.forEach { simSong ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { viewModel.playSong(simSong) }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TrackArtwork(
+                                model = simSong.albumArtUrl,
+                                contentDescription = simSong.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = simSong.title,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = simSong.artist,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFA0A0A0),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    viewModel.playNext(simSong)
+                                    Toast.makeText(context, "Playing next: ${simSong.title}", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlaylistAdd,
+                                    contentDescription = "Play Next",
+                                    tint = Color(0xFF00F59B),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // "Related videos" Horizontal Carousel (Matching Screenshot 133915)
+            // Fans Also Like Section (Similar Artists Carousel)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFF1E1E1E))
+                    .background(Color(0xFF141922))
+                    .border(1.dp, Color(0xFF232B3A), RoundedCornerShape(16.dp))
                     .padding(20.dp)
             ) {
                 Column {
-                    Text(
-                        text = "Related videos",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Fans Also Like",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Similar Artists",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF8793A2)
+                        )
+                    }
                     Spacer(modifier = Modifier.height(16.dp))
 
                     LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        itemsIndexed(songTrivia.relatedVideos, key = { index, video -> "${video.id}-$index" }) { _, video ->
+                        items(similarArtists) { (simName, simImg) ->
                             Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
-                                    .width(220.dp)
+                                    .width(90.dp)
                                     .clickable {
-                                        Toast.makeText(context, "Playing: ${video.title}", Toast.LENGTH_SHORT).show()
-                                        viewModel.playSong(
-                                            SongInfo(
-                                                videoId = video.id,
-                                                title = video.title,
-                                                artist = video.artist,
-                                                albumArtUrl = video.thumbnailUrl
-                                            )
-                                        )
+                                        onClose()
+                                        onNavigateToArtist?.invoke(simName)
                                     }
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(124.dp)
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .size(80.dp)
+                                        .clip(CircleShape)
+                                        .border(2.dp, Color(0xFF00F59B), CircleShape)
                                 ) {
                                     TrackArtwork(
-                                        model = video.thumbnailUrl,
-                                        contentDescription = video.title,
+                                        model = simImg,
+                                        contentDescription = simName,
                                         contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
+                                        modifier = Modifier.fillMaxSize().clip(CircleShape)
                                     )
-                                    // Duration chip top right
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .padding(6.dp)
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(Color(0xCC000000))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = video.duration,
-                                            color = Color.White,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                    // Play button overlay
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.Center)
-                                            .size(40.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(0xCCFFFFFF)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.PlayArrow,
-                                            contentDescription = "Play Video",
-                                            tint = Color.Black,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = video.title,
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    text = simName,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
                                     color = Color.White,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = video.artist,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFFA0A0A0),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    text = "Artist",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF8793A2)
                                 )
                             }
                         }
@@ -796,7 +838,7 @@ fun FullScreenPlayerSheet(
             Spacer(modifier = Modifier.height(48.dp))
         }
 
-        // Full Screen Synchronized Lyrics View with Auto-Scroll, Tap-to-Seek & Controls (Matching Screenshot 133846)
+        // Full Screen Translucent Synchronized Lyrics View with Genre Typography
         AnimatedVisibility(visible = isLyricsExpanded) {
             Box(
                 modifier = Modifier
@@ -804,8 +846,9 @@ fun FullScreenPlayerSheet(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                gradientColors.firstOrNull() ?: Color(0xFF1B3B4B),
-                                Color(0xFF121212)
+                                (gradientColors.firstOrNull() ?: Color(0xFF1B3B4B)).copy(alpha = 0.88f),
+                                Color(0xEE0A0E17),
+                                Color(0xF806080E)
                             )
                         )
                     )
@@ -826,18 +869,30 @@ fun FullScreenPlayerSheet(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 text = song.title,
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontFamily = lyricStyle.fontFamily,
+                                    fontStyle = lyricStyle.fontStyle,
+                                    fontWeight = FontWeight.Bold
+                                ),
                                 color = Color.White,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text(
-                                text = song.artist,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFA0A0A0),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = song.artist,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFA0A0A0),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "• ${lyricStyle.genreLabel}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF00F59B)
+                                )
+                            }
                         }
                         Spacer(modifier = Modifier.width(32.dp))
                     }
@@ -854,7 +909,10 @@ fun FullScreenPlayerSheet(
                             Text(
                                 text = line.text,
                                 style = MaterialTheme.typography.headlineSmall.copy(
-                                    fontWeight = if (isCurrent) FontWeight.ExtraBold else FontWeight.Bold,
+                                    fontFamily = lyricStyle.fontFamily,
+                                    fontStyle = lyricStyle.fontStyle,
+                                    fontWeight = if (isCurrent) lyricStyle.activeWeight else lyricStyle.inactiveWeight,
+                                    letterSpacing = lyricStyle.letterSpacing,
                                     fontSize = if (isCurrent) 26.sp else 20.sp,
                                     lineHeight = if (isCurrent) 38.sp else 30.sp
                                 ),

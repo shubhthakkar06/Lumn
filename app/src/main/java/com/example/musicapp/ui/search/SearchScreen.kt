@@ -64,14 +64,54 @@ fun SearchScreen(
     val filterChips = listOf("All", "Songs", "Artists", "Albums")
 
     val categories = listOf(
-        Triple("Bollywood", Color(0xFFC31010), "https://i.scdn.co/image/ab67706c0000bebb3e4ed06e6ff70ffdd7d825df"),
-        Triple("Pop", Color(0xFF2196F3), "https://i.scdn.co/image/ab67706f00000002b1c4b76e23414c9f20242268"),
-        Triple("Hindi", Color(0xFFBA5D00), "https://i.scdn.co/image/ab67616d00001e02a0a2f15a6b0cfa0b077f8d42"),
-        Triple("Punjabi", Color(0xFFE6007A), "https://i.scdn.co/image/ab67616d00001e021a8d057a62799c33bb3571d0"),
-        Triple("Indie India", Color(0xFF009688), "https://i.scdn.co/image/ab67706f000000023a7e583c7499f5ba7e56ea36"),
-        Triple("EDM & Dance", Color(0xFF673AB7), "https://i.scdn.co/image/ab67706f000000028e83348f95c4728cc5d0e092"),
-        Triple("Lo-Fi Beats", Color(0xFF607D8B), "https://i.scdn.co/image/ab67706f00000002c938361ea2a4f65c92c8172c"),
-        Triple("Made For You", Color(0xFF8A9CFF), "https://i.scdn.co/image/ab67616d00001e028b52c6b9bc4e43d873869699")
+        SearchCategory(
+            title = "Bollywood",
+            topSong = "Kesariya",
+            gradientColors = listOf(Color(0xFFC31010), Color(0xFF6B0808)),
+            imageUrl = "https://i.ytimg.com/vi/BddP6PYo2gs/hqdefault.jpg"
+        ),
+        SearchCategory(
+            title = "Pop",
+            topSong = "Yellow",
+            gradientColors = listOf(Color(0xFF1E88E5), Color(0xFF0D47A1)),
+            imageUrl = "https://i.ytimg.com/vi/yKNxeF4PgnY/hqdefault.jpg"
+        ),
+        SearchCategory(
+            title = "Hindi",
+            topSong = "Pehle Bhi Main",
+            gradientColors = listOf(Color(0xFFE65100), Color(0xFF873600)),
+            imageUrl = "https://i.ytimg.com/vi/kuhh3JVms4w/hqdefault.jpg"
+        ),
+        SearchCategory(
+            title = "Punjabi",
+            topSong = "Winning Speech",
+            gradientColors = listOf(Color(0xFFD81B60), Color(0xFF880E4F)),
+            imageUrl = "https://c.saavncdn.com/artists/Karan_Aujla_004_20240108064951_500x500.jpg"
+        ),
+        SearchCategory(
+            title = "Indie India",
+            topSong = "Kasoor",
+            gradientColors = listOf(Color(0xFF00897B), Color(0xFF004D40)),
+            imageUrl = "https://i.ytimg.com/vi/1G4isv_Fylg/hqdefault.jpg"
+        ),
+        SearchCategory(
+            title = "EDM & Dance",
+            topSong = "Faded",
+            gradientColors = listOf(Color(0xFF7E57C2), Color(0xFF311B92)),
+            imageUrl = "https://i.ytimg.com/vi/60ItHLz5WEA/hqdefault.jpg"
+        ),
+        SearchCategory(
+            title = "Lo-Fi Beats",
+            topSong = "Sparks (Chill)",
+            gradientColors = listOf(Color(0xFF546E7A), Color(0xFF263238)),
+            imageUrl = "https://i.ytimg.com/vi/1G4isv_Fylg/hqdefault.jpg"
+        ),
+        SearchCategory(
+            title = "Made For You",
+            topSong = "Tum Hi Ho",
+            gradientColors = listOf(Color(0xFF5C6BC0), Color(0xFF1A237E)),
+            imageUrl = "https://i.ytimg.com/vi/IJq0yyWug1k/hqdefault.jpg"
+        )
     )
 
     LazyColumn(
@@ -227,27 +267,23 @@ fun SearchScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            val (name1, color1, art1) = categories[i]
+                            val cat1 = categories[i]
                             CategoryCard(
-                                title = name1,
-                                color = color1,
-                                imageUrl = art1,
+                                category = cat1,
                                 modifier = Modifier.weight(1f),
                                 onClick = {
-                                    viewModel.updateSearchQuery(name1)
+                                    viewModel.updateSearchQuery(cat1.title)
                                     viewModel.search()
                                 }
                             )
 
                             if (i + 1 < categories.size) {
-                                val (name2, color2, art2) = categories[i + 1]
+                                val cat2 = categories[i + 1]
                                 CategoryCard(
-                                    title = name2,
-                                    color = color2,
-                                    imageUrl = art2,
+                                    category = cat2,
                                     modifier = Modifier.weight(1f),
                                     onClick = {
-                                        viewModel.updateSearchQuery(name2)
+                                        viewModel.updateSearchQuery(cat2.title)
                                         viewModel.search()
                                     }
                                 )
@@ -419,37 +455,66 @@ private fun splitArtistCredits(credit: String): List<String> = credit
     .map { it.trim() }
     .filter { it.isNotEmpty() }
 
+data class SearchCategory(
+    val title: String,
+    val topSong: String,
+    val gradientColors: List<Color>,
+    val imageUrl: String
+)
+
 @Composable
 fun CategoryCard(
-    title: String,
-    color: Color,
-    imageUrl: String,
+    category: SearchCategory,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Box(
         modifier = modifier
-            .height(100.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(color)
+            .height(108.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                Brush.linearGradient(category.gradientColors)
+            )
+            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            color = Color.White,
-            modifier = Modifier.padding(12.dp)
-        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(12.dp)
+        ) {
+            Text(
+                text = category.title,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = Color.White
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0x33000000))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "Top: ${category.topSong}",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+                    color = Color(0xFFE2E8F0),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
         TrackArtwork(
-            model = imageUrl,
-            contentDescription = null,
+            model = category.imageUrl,
+            contentDescription = category.topSong,
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .size(68.dp)
                 .align(Alignment.BottomEnd)
-                .offset(x = 12.dp, y = 6.dp)
-                .rotate(25f)
-                .clip(RoundedCornerShape(4.dp))
+                .offset(x = 10.dp, y = 6.dp)
+                .rotate(22f)
+                .clip(RoundedCornerShape(6.dp))
+                .border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(6.dp))
         )
     }
 }

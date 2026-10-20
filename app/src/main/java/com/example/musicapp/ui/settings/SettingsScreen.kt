@@ -3,9 +3,12 @@ package com.example.musicapp.ui.settings
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,16 +19,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.musicapp.data.auth.UserManager
 import com.example.musicapp.data.settings.SettingsManager
+import com.example.musicapp.theme.AppThemeHelper
 import com.example.musicapp.ui.auth.AuthDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,6 +43,8 @@ fun SettingsScreen(onBack: () -> Unit) {
 
     val dataSaver by settingsManager.dataSaverMode.collectAsStateWithLifecycle()
     val isOffline by settingsManager.offlineMode.collectAsStateWithLifecycle()
+    val appTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
+    val themeGradientColors = remember(appTheme) { AppThemeHelper.getThemeGradient(appTheme) }
 
     val gapless by settingsManager.gaplessPlayback.collectAsStateWithLifecycle()
     val automix by settingsManager.automix.collectAsStateWithLifecycle()
@@ -66,7 +74,11 @@ fun SettingsScreen(onBack: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0A0E14))
+            .background(
+                Brush.verticalGradient(
+                    colors = themeGradientColors
+                )
+            )
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -162,6 +174,99 @@ fun SettingsScreen(onBack: () -> Unit) {
                         },
                         modifier = Modifier.weight(1f)
                     )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // THEME & ATMOSPHERE SECTION
+            item {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Theme & Atmosphere",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White
+                        )
+                        Text(
+                            text = appTheme,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color(0xFF00F59B)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(AppThemeHelper.presets) { preset ->
+                            val isSelected = appTheme.equals(preset.id, ignoreCase = true)
+                            Box(
+                                modifier = Modifier
+                                    .width(150.dp)
+                                    .height(96.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(
+                                        Brush.verticalGradient(preset.gradientColors)
+                                    )
+                                    .border(
+                                        width = if (isSelected) 2.dp else 1.dp,
+                                        color = if (isSelected) Color(0xFF00F59B) else Color(0x33FFFFFF),
+                                        shape = RoundedCornerShape(14.dp)
+                                    )
+                                    .clickable {
+                                        settingsManager.setAppTheme(preset.id)
+                                        Toast.makeText(context, "Theme set: ${preset.name}", Toast.LENGTH_SHORT).show()
+                                    }
+                                    .padding(12.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(14.dp)
+                                                .clip(CircleShape)
+                                                .background(preset.accentColor)
+                                        )
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.CheckCircle,
+                                                contentDescription = "Selected",
+                                                tint = Color(0xFF00F59B),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                    Column {
+                                        Text(
+                                            text = preset.name,
+                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = preset.subtitle,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                            color = Color(0xFFA0AEC0),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
             }

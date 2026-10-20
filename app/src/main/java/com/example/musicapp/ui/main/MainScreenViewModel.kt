@@ -9,6 +9,7 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.example.musicapp.data.DataRepository
+import com.example.musicapp.data.MusicCatalog
 import com.example.musicapp.data.network.SongInfo
 import com.example.musicapp.service.PlaybackService
 import com.google.common.util.concurrent.ListenableFuture
@@ -440,6 +441,60 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
         }
     }
 
+    fun generateDynamicQueueFor(song: SongInfo, existingQueue: List<SongInfo> = emptyList()): List<SongInfo> {
+        val cleanExisting = existingQueue.distinctBy { it.videoId }
+        val seenIds = mutableSetOf(song.videoId)
+        seenIds.addAll(cleanExisting.map { it.videoId })
+        val seenNormalizedTitles = mutableSetOf(song.title.trim().lowercase())
+        seenNormalizedTitles.addAll(cleanExisting.map { it.title.trim().lowercase() })
+
+        val recommendations = mutableListOf<SongInfo>()
+
+        // 1. Artist's other top tracks from MusicCatalog
+        val artistData = MusicCatalog.getArtistData(song.artist)
+        for (track in artistData.topTracks) {
+            val normTitle = track.title.trim().lowercase()
+            if (!seenIds.contains(track.videoId) && !seenNormalizedTitles.contains(normTitle)) {
+                seenIds.add(track.videoId)
+                seenNormalizedTitles.add(normTitle)
+                recommendations.add(track)
+            }
+        }
+
+        // 2. Similar artists' tracks
+        for (similar in artistData.similarArtists.take(3)) {
+            val simData = MusicCatalog.getArtistData(similar.first)
+            for (track in simData.topTracks.take(2)) {
+                val normTitle = track.title.trim().lowercase()
+                if (!seenIds.contains(track.videoId) && !seenNormalizedTitles.contains(normTitle)) {
+                    seenIds.add(track.videoId)
+                    seenNormalizedTitles.add(normTitle)
+                    recommendations.add(track)
+                }
+            }
+        }
+
+        // 3. User history & curated catalog tracks matching taste
+        try {
+            val historyUserId = com.example.musicapp.data.auth.UserManager.getInstance(context).currentUser.value.id
+            val userHistory = com.example.musicapp.data.history.PlayHistoryManager.getInstance(context)
+                .getUserHistory(historyUserId)
+                .map { SongInfo(it.videoId, it.title, it.artist, it.albumArtUrl) }
+            val pool = (userHistory + MusicCatalog.hitsSongs + MusicCatalog.mostFavSongs)
+            for (track in pool) {
+                if (recommendations.size >= 12) break
+                val normTitle = track.title.trim().lowercase()
+                if (!seenIds.contains(track.videoId) && !seenNormalizedTitles.contains(normTitle)) {
+                    seenIds.add(track.videoId)
+                    seenNormalizedTitles.add(normTitle)
+                    recommendations.add(track)
+                }
+            }
+        } catch (_: Exception) {}
+
+        return cleanExisting.ifEmpty { listOf(song) } + recommendations
+    }
+
     fun playSong(song: SongInfo, queue: List<SongInfo> = emptyList()) {
         playJob?.cancel()
         fallbackAttemptedTrackIds.remove(song.videoId)
@@ -457,17 +512,28 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
         _currentSong.value = song
         _loadingSongVideoId.value = song.videoId
 
-        if (queue.isNotEmpty()) {
-            if (!_isShuffle.value) unshuffledQueue = queue
-            _currentQueue.value = queue
-            currentQueueIndex = queue.indexOfFirst { it.videoId == song.videoId }.coerceAtLeast(0)
-            val nextIndex = currentQueueIndex + 1
-            if (nextIndex < queue.size) {
-                dataRepository.prefetchStreamUrls(listOf(queue[nextIndex]))
+        val cleanQueue = queue.distinctBy { it.videoId }.filter { it.title.isNotBlank() }
+        val effectiveQueue = if (cleanQueue.size <= 1) {
+            generateDynamicQueueFor(song)
+        } else {
+            val deduplicated = mutableListOf<SongInfo>()
+            val seenTitles = mutableSetOf<String>()
+            for (item in cleanQueue) {
+                val norm = item.title.trim().lowercase()
+                if (item.videoId == song.videoId || !seenTitles.contains(norm)) {
+                    deduplicated.add(item)
+                    seenTitles.add(norm)
+                }
             }
-        } else if (_currentQueue.value.none { it.videoId == song.videoId }) {
-            _currentQueue.value = listOf(song)
-            currentQueueIndex = 0
+            deduplicated
+        }
+
+        if (!_isShuffle.value) unshuffledQueue = effectiveQueue
+        _currentQueue.value = effectiveQueue
+        currentQueueIndex = effectiveQueue.indexOfFirst { it.videoId == song.videoId }.coerceAtLeast(0)
+        val nextIndex = currentQueueIndex + 1
+        if (nextIndex < effectiveQueue.size) {
+            dataRepository.prefetchStreamUrls(listOf(effectiveQueue[nextIndex]))
         }
 
         playJob = viewModelScope.launch {
@@ -563,12 +629,25 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
             if (_isShuffle.value && queue.size > 1) {
                 val nextIdx = (0 until queue.size).filter { it != currentQueueIndex }.randomOrNull() ?: 0
                 currentQueueIndex = nextIdx
+                playSong(queue[currentQueueIndex], queue)
             } else if (currentQueueIndex + 1 < queue.size) {
                 currentQueueIndex++
+                playSong(queue[currentQueueIndex], queue)
             } else {
+                // End of queue reached! Dynamically generate more fresh songs instead of repeating
+                val lastSong = queue.getOrNull(currentQueueIndex) ?: _currentSong.value
+                if (lastSong != null) {
+                    val extendedQueue = generateDynamicQueueFor(lastSong, queue)
+                    if (extendedQueue.size > queue.size) {
+                        _currentQueue.value = extendedQueue
+                        currentQueueIndex = (currentQueueIndex + 1).coerceAtMost(extendedQueue.size - 1)
+                        playSong(extendedQueue[currentQueueIndex], extendedQueue)
+                        return
+                    }
+                }
                 currentQueueIndex = 0
+                playSong(queue[currentQueueIndex], queue)
             }
-            playSong(queue[currentQueueIndex], queue)
         }
     }
 

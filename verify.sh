@@ -6,7 +6,7 @@ echo "          CYBER-OBSIDIAN AUTOMATED VERIFICATION HARNESS (V1.0)           "
 echo "=========================================================================="
 
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-export PATH="$PATH:$HOME/Library/Android/sdk/platform-tools"
+export PATH="$JAVA_HOME/bin:$PATH:$HOME/Library/Android/sdk/platform-tools"
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"

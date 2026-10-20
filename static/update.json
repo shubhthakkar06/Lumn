@@ -1,7 +1,7 @@
 {
-  "versionName": "2.5.7",
-  "versionCode": 23,
+  "versionName": "2.5.8",
+  "versionCode": 24,
   "minimumVersionCode": 23,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
-  "releaseNotes": "Added Play Next and Add to Queue song options with full 3-dots actions (Play Next, Add to Queue, Add to Playlist, Like/Unlike, Download/Delete) across Search, Playlists, Albums, Artist pages, and Player."
+  "releaseNotes": "Translucent frosted-glass lyrics overlay with genre-adaptive typography, similar songs & fans also like recommendations in player, swipe-down player dismissal, dynamic non-redundant queue autoplay, artist dominant color rings, theme presets with time-of-day gradient, and search category top song thumbnails."
 }

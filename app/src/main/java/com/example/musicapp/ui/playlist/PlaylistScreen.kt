@@ -91,8 +91,6 @@ fun PlaylistScreen(
 
     var playlistSearchQuery by remember { mutableStateOf("") }
     var isPlaylistSearchOpen by remember { mutableStateOf(false) }
-    val vibeFilters = remember { listOf("All", "Energetic", "Chill", "Electronic", "Focus", "Vocal") }
-    var selectedVibe by remember { mutableStateOf("All") }
 
     val playlistSongs: List<SongInfo> = remember(playlistId, title, likedSongs, userPlaylists) {
         when {
@@ -105,29 +103,15 @@ fun PlaylistScreen(
         }
     }
 
-    val filteredSongs: List<SongInfo> = remember(playlistSongs, selectedVibe, playlistSearchQuery) {
-        var list = playlistSongs
-        if (selectedVibe != "All") {
-            list = list.filter { song ->
-                when (selectedVibe) {
-                    "Energetic" -> song.title.contains("remix", true) || song.title.contains("dance", true) || song.title.contains("club", true) || song.title.contains("beat", true) || song.artist.contains("Walker", true) || song.artist.contains("Garrix", true) || song.artist.contains("Avicii", true)
-                    "Chill" -> song.title.contains("chill", true) || song.title.contains("slow", true) || song.title.contains("acoustic", true) || song.title.contains("lofi", true) || song.title.contains("night", true) || song.title.contains("faded", true)
-                    "Electronic" -> song.artist.contains("Walker", true) || song.artist.contains("DJ", true) || song.title.contains("mix", true) || song.title.contains("electronic", true) || song.title.contains("spectre", true)
-                    "Focus" -> !song.title.contains("remix", true) && !song.title.contains("live", true)
-                    "Vocal" -> song.title.contains("feat", true) || song.title.contains("ft", true) || song.artist.contains("Arijit", true) || song.artist.contains("Taylor", true)
-                    else -> true
-                }
-            }.ifEmpty {
-                if (playlistSongs.size > 2) playlistSongs.take((playlistSongs.size / 2) + 1) else playlistSongs
-            }
-        }
-        if (playlistSearchQuery.isNotBlank()) {
-            list = list.filter {
+    val filteredSongs: List<SongInfo> = remember(playlistSongs, playlistSearchQuery) {
+        if (playlistSearchQuery.isBlank()) {
+            playlistSongs
+        } else {
+            playlistSongs.filter {
                 it.title.contains(playlistSearchQuery, ignoreCase = true) ||
                 it.artist.contains(playlistSearchQuery, ignoreCase = true)
             }
         }
-        list
     }
     val currentTrackIsVisible = currentSong?.let { active ->
         filteredSongs.any { it.videoId == active.videoId }
@@ -597,41 +581,7 @@ fun PlaylistScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Mood / Vibe Filter Pills
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(vibeFilters) { vibe ->
-                    val isSelected = selectedVibe == vibe
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(
-                                if (isSelected) Color(0xFF00F59B)
-                                else Color(0xFF161F2E)
-                            )
-                            .clickable {
-                                selectedVibe = vibe
-                            }
-                            .padding(horizontal = 14.dp, vertical = 7.dp)
-                    ) {
-                        Text(
-                            text = vibe,
-                            color = if (isSelected) Color(0xFF0A0E14) else Color(0xFFCBD5E1),
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                            )
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
         // Song Items
@@ -703,7 +653,7 @@ fun PlaylistScreen(
                         modifier = Modifier.size(20.dp)
                     )
                 }
-                if (isUserPlaylist && selectedVibe == "All" && playlistSearchQuery.isBlank()) {
+                if (isUserPlaylist && playlistSearchQuery.isBlank()) {
                     Icon(
                         imageVector = Icons.Default.DragHandle,
                         contentDescription = "Hold and drag to reorder",
