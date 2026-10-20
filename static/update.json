@@ -1,7 +1,7 @@
 {
   "versionName": "2.6.0",
   "versionCode": 26,
-  "minimumVersionCode": 25,
+  "minimumVersionCode": 26,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
   "releaseNotes": "Fix Coldplay thumbnail bug in artist About sections, robust queue auto-advance execution, Triband Arena 3D DSP audio engine with 32-bit float output, and hardware loudness enhancement."
 }
