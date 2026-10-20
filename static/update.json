@@ -1,7 +1,7 @@
 {
-  "versionName": "2.5.9",
-  "versionCode": 25,
+  "versionName": "2.6.0",
+  "versionCode": 26,
   "minimumVersionCode": 25,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
-  "releaseNotes": "Acoustically calibrated studio lyric synchronization, silky smooth fluid vertical lyric glide with instrumental intro support, and verified high-resolution search category artwork."
+  "releaseNotes": "Fix Coldplay thumbnail bug in artist About sections, robust queue auto-advance execution, Triband Arena 3D DSP audio engine with 32-bit float output, and hardware loudness enhancement."
 }

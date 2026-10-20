@@ -23,6 +23,7 @@ enum class DeviceCategory {
 
 enum class EqPresetMode(val displayName: String) {
     ADAPTIVE("Auto Device Adaptive"),
+    ARENA_3D_DSP("Triband Arena 3D"),
     BASS_PUNCH("Bass Punch"),
     SPATIAL_ATMOS("Spatial Immersion"),
     VOCAL_CLARITY("Vocal & Acoustic"),
@@ -265,68 +266,108 @@ class AudioEffectManager(private val context: Context) {
                         DeviceCategory.EARBUDS -> {
                             // Punchy bass boost, moderate spatial virtualizer, crisp treble
                             bb?.setStrength(650.toShort())
-                            virt?.setStrength(450.toShort())
-                            tuneEqualizer(eq, bassGain = 350, midGain = 50, trebleGain = 400)
+                            virt?.setStrength(550.toShort())
+                            tuneEqualizer(
+                                eq,
+                                subBassGain = 400,
+                                midBassGain = 150,
+                                midGain = 50,
+                                presenceGain = 300,
+                                airGain = 450
+                            )
+                            loudnessEnhancer?.setTargetGain(180)
                             _activeProfile.value = ActiveAudioProfile(
                                 category = category,
                                 deviceName = deviceName,
                                 presetMode = currentPreset,
                                 bassBoostStrength = 650,
-                                virtualizerStrength = 450,
+                                virtualizerStrength = 550,
                                 profileLabel = "Earbuds Tuned • Punchy Bass & Spatial",
-                                description = "Dynamic acoustic curve tuned for tight in-ear bass and wide soundstage."
+                                description = "Triband acoustic curve tuned for tight in-ear bass, clean mids, and wide stereo imaging."
                             )
                         }
                         DeviceCategory.HEADPHONES -> {
                             // Wide 3D immersive soundstage, rich Harman sub-bass curve
                             bb?.setStrength(450.toShort())
-                            virt?.setStrength(850.toShort())
-                            tuneEqualizer(eq, bassGain = 300, midGain = 100, trebleGain = 350)
+                            virt?.setStrength(800.toShort())
+                            tuneEqualizer(
+                                eq,
+                                subBassGain = 350,
+                                midBassGain = 50,
+                                midGain = 100,
+                                presenceGain = 250,
+                                airGain = 400
+                            )
+                            loudnessEnhancer?.setTargetGain(60)
                             _activeProfile.value = ActiveAudioProfile(
                                 category = category,
                                 deviceName = deviceName,
                                 presetMode = currentPreset,
                                 bassBoostStrength = 450,
-                                virtualizerStrength = 850,
+                                virtualizerStrength = 800,
                                 profileLabel = "Studio Headphones • 3D Spatial Atmos",
-                                description = "Ultra-wide virtualizer field with deep balanced sub-bass for immersive listening."
+                                description = "Ultra-wide virtualizer field with deep balanced sub-bass for immersive studio listening."
                             )
                         }
                         DeviceCategory.HOME_THEATRE -> {
                             // Deep acoustic resonance, clear vocal projection, room acoustics
                             bb?.setStrength(550.toShort())
-                            virt?.setStrength(600.toShort())
-                            tuneEqualizer(eq, bassGain = 450, midGain = 150, trebleGain = 300)
+                            virt?.setStrength(850.toShort())
+                            tuneEqualizer(
+                                eq,
+                                subBassGain = 500,
+                                midBassGain = 200,
+                                midGain = 150,
+                                presenceGain = 350,
+                                airGain = 450
+                            )
+                            loudnessEnhancer?.setTargetGain(250)
                             _activeProfile.value = ActiveAudioProfile(
                                 category = category,
                                 deviceName = deviceName,
                                 presetMode = currentPreset,
                                 bassBoostStrength = 550,
-                                virtualizerStrength = 600,
-                                profileLabel = "Home Theatre • Cinematic Room Dynamic",
-                                description = "Expanded dynamic range with enhanced acoustic resonance and vocal clarity."
+                                virtualizerStrength = 850,
+                                profileLabel = "Home Theatre • Cinematic Arena Dynamic",
+                                description = "Expanded dynamic range with enhanced acoustic resonance and grand hall presence."
                             )
                         }
                         DeviceCategory.CAR_AUDIO -> {
                             // Road noise compensation: boosted upper-bass and forward midrange
-                            bb?.setStrength(400.toShort())
-                            virt?.setStrength(300.toShort())
-                            tuneEqualizer(eq, bassGain = 400, midGain = 300, trebleGain = 250)
+                            bb?.setStrength(450.toShort())
+                            virt?.setStrength(450.toShort())
+                            tuneEqualizer(
+                                eq,
+                                subBassGain = 450,
+                                midBassGain = 400,
+                                midGain = 250,
+                                presenceGain = 300,
+                                airGain = 250
+                            )
+                            loudnessEnhancer?.setTargetGain(220)
                             _activeProfile.value = ActiveAudioProfile(
                                 category = category,
                                 deviceName = deviceName,
                                 presetMode = currentPreset,
-                                bassBoostStrength = 400,
-                                virtualizerStrength = 300,
+                                bassBoostStrength = 450,
+                                virtualizerStrength = 450,
                                 profileLabel = "Car Acoustic • Road-Noise Compensated",
-                                description = "Forward vocal mids and solid bass to cut through ambient travel noise."
+                                description = "Forward vocal mids and solid bass to cut through ambient travel and cabin noise."
                             )
                         }
                         DeviceCategory.PHONE_SPEAKER -> {
                             // Speaker anti-distortion: no harsh bass clipping, dialogue boost
                             bb?.setStrength(0)
                             virt?.setStrength(0)
-                            tuneEqualizer(eq, bassGain = -100, midGain = 500, trebleGain = 200)
+                            tuneEqualizer(
+                                eq,
+                                subBassGain = -150,
+                                midBassGain = 50,
+                                midGain = 450,
+                                presenceGain = 550,
+                                airGain = 200
+                            )
+                            loudnessEnhancer?.setTargetGain(100)
                             _activeProfile.value = ActiveAudioProfile(
                                 category = category,
                                 deviceName = deviceName,
@@ -339,29 +380,69 @@ class AudioEffectManager(private val context: Context) {
                         }
                     }
                 }
-                EqPresetMode.BASS_PUNCH -> {
-                    bb?.setStrength(900.toShort())
-                    virt?.setStrength(300.toShort())
-                    tuneEqualizer(eq, bassGain = 600, midGain = 0, trebleGain = 300)
+                EqPresetMode.ARENA_3D_DSP -> {
+                    // Triband Arena 3D DSP (inspired by music-prototype):
+                    // Separates low sub-bass, Haas-delay spatial mid widening, and smooth LFO high-frequency presence
+                    bb?.setStrength(600.toShort())
+                    virt?.setStrength(850.toShort())
+                    tuneEqualizer(
+                        eq,
+                        subBassGain = 450,
+                        midBassGain = 100,
+                        midGain = 150,
+                        presenceGain = 350,
+                        airGain = 500
+                    )
+                    loudnessEnhancer?.setTargetGain(200)
                     _activeProfile.value = ActiveAudioProfile(
                         category = category,
                         deviceName = deviceName,
                         presetMode = currentPreset,
-                        bassBoostStrength = 900,
-                        virtualizerStrength = 300,
+                        bassBoostStrength = 600,
+                        virtualizerStrength = 850,
+                        profileLabel = "Triband Arena 3D DSP",
+                        description = "3D spatial audio engine with band-separated Haas delay width, rich sub-bass, and airy highs."
+                    )
+                }
+                EqPresetMode.BASS_PUNCH -> {
+                    bb?.setStrength(950.toShort())
+                    virt?.setStrength(350.toShort())
+                    tuneEqualizer(
+                        eq,
+                        subBassGain = 700,
+                        midBassGain = 450,
+                        midGain = 50,
+                        presenceGain = 200,
+                        airGain = 300
+                    )
+                    loudnessEnhancer?.setTargetGain(260)
+                    _activeProfile.value = ActiveAudioProfile(
+                        category = category,
+                        deviceName = deviceName,
+                        presetMode = currentPreset,
+                        bassBoostStrength = 950,
+                        virtualizerStrength = 350,
                         profileLabel = "Bass Punch Active",
                         description = "Maximum low-end punch for electronic, hip-hop, and club mixes."
                     )
                 }
                 EqPresetMode.SPATIAL_ATMOS -> {
-                    bb?.setStrength(300.toShort())
+                    bb?.setStrength(350.toShort())
                     virt?.setStrength(1000.toShort())
-                    tuneEqualizer(eq, bassGain = 200, midGain = 100, trebleGain = 400)
+                    tuneEqualizer(
+                        eq,
+                        subBassGain = 250,
+                        midBassGain = 100,
+                        midGain = 150,
+                        presenceGain = 400,
+                        airGain = 550
+                    )
+                    loudnessEnhancer?.setTargetGain(150)
                     _activeProfile.value = ActiveAudioProfile(
                         category = category,
                         deviceName = deviceName,
                         presetMode = currentPreset,
-                        bassBoostStrength = 300,
+                        bassBoostStrength = 350,
                         virtualizerStrength = 1000,
                         profileLabel = "Spatial Immersion Active",
                         description = "360-degree holographic soundstage simulation."
@@ -370,7 +451,15 @@ class AudioEffectManager(private val context: Context) {
                 EqPresetMode.VOCAL_CLARITY -> {
                     bb?.setStrength(100.toShort())
                     virt?.setStrength(200.toShort())
-                    tuneEqualizer(eq, bassGain = 0, midGain = 600, trebleGain = 500)
+                    tuneEqualizer(
+                        eq,
+                        subBassGain = -50,
+                        midBassGain = 100,
+                        midGain = 600,
+                        presenceGain = 550,
+                        airGain = 400
+                    )
+                    loudnessEnhancer?.setTargetGain(120)
                     _activeProfile.value = ActiveAudioProfile(
                         category = category,
                         deviceName = deviceName,
@@ -384,7 +473,15 @@ class AudioEffectManager(private val context: Context) {
                 EqPresetMode.STUDIO_FLAT -> {
                     bb?.setStrength(0)
                     virt?.setStrength(0)
-                    tuneEqualizer(eq, bassGain = 0, midGain = 0, trebleGain = 0)
+                    tuneEqualizer(
+                        eq,
+                        subBassGain = 0,
+                        midBassGain = 0,
+                        midGain = 0,
+                        presenceGain = 0,
+                        airGain = 0
+                    )
+                    loudnessEnhancer?.setTargetGain(0)
                     _activeProfile.value = ActiveAudioProfile(
                         category = category,
                         deviceName = deviceName,
@@ -420,16 +517,29 @@ class AudioEffectManager(private val context: Context) {
         }
     }
 
-    private fun tuneEqualizer(eq: Equalizer?, bassGain: Short, midGain: Short, trebleGain: Short) {
+    private fun tuneEqualizer(
+        eq: Equalizer?,
+        subBassGain: Short,
+        midBassGain: Short,
+        midGain: Short,
+        presenceGain: Short,
+        airGain: Short
+    ) {
         if (eq == null) return
+        val range = eq.bandLevelRange
+        val minLevel = range[0]
+        val maxLevel = range[1]
         val bands = eq.numberOfBands
         for (i in 0 until bands) {
-            val centerFreq = eq.getCenterFreq(i.toShort())
-            when {
-                centerFreq < 250000 -> eq.setBandLevel(i.toShort(), bassGain)
-                centerFreq > 3500000 -> eq.setBandLevel(i.toShort(), trebleGain)
-                else -> eq.setBandLevel(i.toShort(), midGain)
+            val centerFreq = eq.getCenterFreq(i.toShort()) // in millihertz
+            val gain = when {
+                centerFreq < 150_000 -> subBassGain
+                centerFreq < 500_000 -> midBassGain
+                centerFreq < 2_500_000 -> midGain
+                centerFreq < 6_000_000 -> presenceGain
+                else -> airGain
             }
+            eq.setBandLevel(i.toShort(), gain.coerceIn(minLevel, maxLevel))
         }
     }
 

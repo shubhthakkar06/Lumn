@@ -101,6 +101,19 @@ fun ArtistScreen(
     }
     var dynamicAlbums by remember(artistName) { mutableStateOf(artistData.albums) }
 
+    val effectiveArtistHeroUrl = remember(artistName, dynamicAvatar, popularTracks, artistData) {
+        val nonColdplayHero = artistData.heroUrl.takeIf { !it.contains("dvgZkm1xWPE") || artistName.contains("Coldplay", ignoreCase = true) }
+        val nonColdplayAvatar = artistData.avatarUrl.takeIf { !it.contains("dvgZkm1xWPE") || artistName.contains("Coldplay", ignoreCase = true) }
+        val candidate = dynamicAvatar.ifEmpty {
+            nonColdplayHero ?: nonColdplayAvatar ?: popularTracks.firstOrNull()?.albumArtUrl?.ifEmpty { null } ?: MusicCatalog.getArtistImageUrl(artistName)
+        }
+        if (!artistName.contains("Coldplay", ignoreCase = true) && candidate.contains("dvgZkm1xWPE")) {
+            MusicCatalog.getArtistImageUrl(artistName)
+        } else {
+            candidate
+        }
+    }
+
     LaunchedEffect(artistName) {
         try {
             val repo = com.example.musicapp.data.DefaultDataRepository(context)
@@ -557,7 +570,7 @@ fun ArtistScreen(
                                 }
                         ) {
                             AsyncImage(
-                                model = spotlightSong?.albumArtUrl ?: artistData.heroUrl,
+                                model = spotlightSong?.albumArtUrl ?: effectiveArtistHeroUrl,
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
@@ -609,7 +622,7 @@ fun ArtistScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 AsyncImage(
-                                    model = spotlightSong?.albumArtUrl ?: artistData.heroUrl,
+                                    model = spotlightSong?.albumArtUrl ?: effectiveArtistHeroUrl,
                                     contentDescription = null,
                                     modifier = Modifier
                                         .size(46.dp)
@@ -749,7 +762,7 @@ fun ArtistScreen(
                         ) {
                             Column {
                                 AsyncImage(
-                                    model = artistData.heroUrl.ifEmpty { artistData.avatarUrl },
+                                    model = effectiveArtistHeroUrl,
                                     contentDescription = null,
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
@@ -1018,7 +1031,7 @@ fun ArtistScreen(
         // About Bottom Sheet
         if (showAboutSheet) {
             ArtistAboutSheet(
-                artistData = artistData,
+                artistData = artistData.copy(heroUrl = effectiveArtistHeroUrl, avatarUrl = effectiveArtistHeroUrl),
                 isFollowing = isFollowing,
                 onToggleFollow = {
                     val newState = followManager.toggleFollow(artistName)

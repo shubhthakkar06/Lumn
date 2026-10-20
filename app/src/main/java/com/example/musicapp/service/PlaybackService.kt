@@ -55,9 +55,19 @@ class PlaybackService : MediaSessionService() {
         }
         val loadControl = com.example.musicapp.data.cache.MediaCacheProvider.createLoadControl()
 
-        val player = ExoPlayer.Builder(this)
+        val audioAttributes = androidx.media3.common.AudioAttributes.Builder()
+            .setUsage(androidx.media3.common.C.USAGE_MEDIA)
+            .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MUSIC)
+            .build()
+
+        val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(this)
+            .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            .setEnableAudioFloatOutput(true)
+
+        val player = ExoPlayer.Builder(this, renderersFactory)
             .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(cacheDataSourceFactory))
             .setLoadControl(loadControl)
+            .setAudioAttributes(audioAttributes, true)
             .build()
         exoPlayer = player
             

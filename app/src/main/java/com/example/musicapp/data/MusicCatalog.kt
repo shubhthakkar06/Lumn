@@ -180,6 +180,12 @@ object MusicCatalog {
             lower.contains("shreya") -> "https://i.ytimg.com/vi/inEu2qQuGZ8/hqdefault.jpg"
             lower.contains("taylor") -> "https://c.saavncdn.com/artists/Taylor_Swift_003_20200226074119_500x500.jpg"
             lower.contains("weeknd") -> "https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg"
+            lower.contains("karan aujla") || lower.contains("aujla") -> "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/cd/df/5a/cddf5a8c-464e-3958-cf4a-7fac9e490aa5/5063616597178_cover.jpg/600x600bb.jpg"
+            lower.contains("sidhu") || lower.contains("moose") -> "https://i.ytimg.com/vi/a_wPfqc-fH8/hqdefault.jpg"
+            lower.contains("ed sheeran") || lower.contains("sheeran") -> "https://i.ytimg.com/vi/lp-EO5I60KA/hqdefault.jpg"
+            lower.contains("billie") || lower.contains("eilish") -> "https://i.ytimg.com/vi/viimfQi_pUw/hqdefault.jpg"
+            lower.contains("badshah") -> "https://i.ytimg.com/vi/y83x7MgzWOA/hqdefault.jpg"
+            lower.contains("drake") -> "https://i.ytimg.com/vi/uxpDa-c-4Mc/hqdefault.jpg"
             lower.contains("darshan") -> "https://i.ytimg.com/vi/V7LwfY5U5WI/hqdefault.jpg"
             lower.contains("vishal") -> "https://i.ytimg.com/vi/kuhh3JVms4w/hqdefault.jpg"
             lower.contains("jordana") -> "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/9b/ab/3b/9bab3bf7-d876-10ef-7e41-0a5efee154c1/196925002585.jpg/600x600bb.jpg"
@@ -573,60 +579,50 @@ object MusicCatalog {
                     ArtistCityListener("Dallas", "United States", "190,000 listeners")
                 )
             )
-            else -> ArtistData(
-                name = artistName,
-                verified = true,
-                monthlyListeners = "15.2M monthly listeners",
-                exactMonthlyListeners = "15,200,410 monthly listeners",
-                globalRank = "#65 in Top Artists",
-                avatarUrl = "https://i.ytimg.com/vi/dvgZkm1xWPE/hq720.jpg",
-                heroUrl = "https://i.ytimg.com/vi/dvgZkm1xWPE/hq720.jpg",
-                bio = "$artistName is a critically acclaimed music artist whose recordings and compositions are celebrated across streaming platforms worldwide.",
-                topTracks = listOf(
-                    SongInfo("yKNxeF4PgnY", "$artistName - Essential Hit", artistName, "https://i.ytimg.com/vi/yKNxeF4PgnY/hqdefault.jpg"),
-                    SongInfo("dvgZkm1xWPE", "$artistName - Top Anthem", artistName, "https://i.ytimg.com/vi/dvgZkm1xWPE/hqdefault.jpg"),
-                    SongInfo("1G4isv_Fylg", "$artistName - Acoustic Live", artistName, "https://i.ytimg.com/vi/1G4isv_Fylg/hqdefault.jpg"),
-                    SongInfo("FM7MFYoylPA", "$artistName - Radio Edit", artistName, "https://i.ytimg.com/vi/FM7MFYoylPA/hqdefault.jpg"),
-                    SongInfo("RB-RcX5DS5A", "$artistName - Remix", artistName, "https://i.ytimg.com/vi/RB-RcX5DS5A/hqdefault.jpg")
-                ),
-                playCounts = listOf("1,450,500,000", "1,120,200,000", "890,900,000", "740,400,000", "620,110,400"),
-                videoBadges = listOf(true, true, false, true, false),
-                albums = listOf(
-                    Triple("$artistName (Deluxe Edition)", "Album • 2023", "https://i.ytimg.com/vi/yKNxeF4PgnY/hqdefault.jpg"),
-                    Triple("The Singles Collection", "Compilation • 2021", "https://i.ytimg.com/vi/RB-RcX5DS5A/hqdefault.jpg")
-                ),
-                discography = listOf(
-                    ArtistDiscographyItem("$artistName (Deluxe Edition)", "Album • 2023", "https://i.ytimg.com/vi/yKNxeF4PgnY/hqdefault.jpg", "Albums", 12),
-                    ArtistDiscographyItem("The Singles Collection", "Compilation • 2021", "https://i.ytimg.com/vi/RB-RcX5DS5A/hqdefault.jpg", "Compilations", 10),
-                    ArtistDiscographyItem("Live in Concert", "EP • 2020", "https://i.ytimg.com/vi/yKNxeF4PgnY/hqdefault.jpg", "Singles and EPs", 4)
-                ),
-                featuring = listOf(
-                    ArtistFeaturingItem("THIS IS $artistName", "The essential tracks in one playlist", "https://i.ytimg.com/vi/VAdGW7QDJUI/hqdefault.jpg")
-                ),
-                musicVideos = listOf(
-                    ArtistVideoItem("yKNxeF4PgnY", "$artistName (Official Video)", artistName, "https://i.ytimg.com/vi/yKNxeF4PgnY/hq720.jpg", "3:45")
-                ),
-                artistPlaylists = listOf(
-                    ArtistPlaylistItem("$artistName Radio", artistName, "https://i.ytimg.com/vi/60v34b07P74/hqdefault.jpg")
-                ),
-                similarArtists = listOf(
-                    Pair("Coldplay", "https://i.ytimg.com/vi/dvgZkm1xWPE/hq720.jpg"),
-                    Pair("Arijit Singh", "https://i.ytimg.com/vi/Oextk-If8HQ/hqdefault.jpg"),
-                    Pair("Alan Walker", "https://i.ytimg.com/vi/BddP6PYo2gs/hqdefault.jpg")
-                ),
-                appearsOn = listOf(
-                    ArtistAppearsOnItem("Top Global Hits", "Worldwide • 2023", "https://i.ytimg.com/vi/yKNxeF4PgnY/hqdefault.jpg")
-                ),
-                topCities = listOf(
-                    ArtistCityListener("London", "United Kingdom", "2,100,000 listeners"),
-                    ArtistCityListener("New York", "United States", "1,800,000 listeners")
-                ),
-                tourEvents = listOf(
-                    ArtistEventItem("MAR", "12", "London", "Thu, 20:00 • The O2 Arena"),
-                    ArtistEventItem("MAR", "18", "New York", "Wed, 19:30 • Madison Square Garden"),
-                    ArtistEventItem("APR", "05", "Tokyo", "Sun, 18:00 • Tokyo Dome")
+            else -> {
+                val artistImg = getArtistImageUrl(artistName)
+                ArtistData(
+                    name = artistName,
+                    verified = true,
+                    monthlyListeners = "15.2M monthly listeners",
+                    exactMonthlyListeners = "15,200,410 monthly listeners",
+                    globalRank = "#65 in Top Artists",
+                    avatarUrl = artistImg,
+                    heroUrl = artistImg,
+                    bio = "$artistName is a celebrated music artist whose recordings, albums, and live performances resonate with listeners worldwide.",
+                    topTracks = listOf(
+                        SongInfo("yKNxeF4PgnY", "$artistName - Essential Hit", artistName, artistImg),
+                        SongInfo("dvgZkm1xWPE", "$artistName - Top Anthem", artistName, artistImg),
+                        SongInfo("1G4isv_Fylg", "$artistName - Acoustic Live", artistName, artistImg)
+                    ),
+                    playCounts = listOf("1,450,500,000", "1,120,200,000", "890,900,000", "740,400,000", "620,110,400"),
+                    videoBadges = listOf(true, true, false, true, false),
+                    albums = listOf(
+                        Triple("$artistName (Deluxe Edition)", "Album • 2023", artistImg),
+                        Triple("The Singles Collection", "Compilation • 2021", artistImg)
+                    ),
+                    discography = listOf(
+                        ArtistDiscographyItem("$artistName (Deluxe Edition)", "Album • 2023", artistImg, "Albums", 12),
+                        ArtistDiscographyItem("The Singles Collection", "Compilation • 2021", artistImg, "Compilations", 10),
+                        ArtistDiscographyItem("Live in Concert", "EP • 2020", artistImg, "Singles and EPs", 4)
+                    ),
+                    featuring = emptyList(),
+                    musicVideos = emptyList(),
+                    artistPlaylists = emptyList(),
+                    similarArtists = listOf(
+                        Pair("Arijit Singh", "https://c.saavncdn.com/artists/Arijit_Singh_004_20241118063717_500x500.jpg"),
+                        Pair("Diljit Dosanjh", "https://c.saavncdn.com/artists/Diljit_Dosanjh_004_20231024072818_500x500.jpg"),
+                        Pair("Coldplay", "https://c.saavncdn.com/artists/Coldplay_002_20241003070447_500x500.jpg")
+                    ),
+                    appearsOn = emptyList(),
+                    topCities = listOf(
+                        ArtistCityListener("Mumbai", "India", "1,420,000 listeners"),
+                        ArtistCityListener("Delhi", "India", "1,180,000 listeners"),
+                        ArtistCityListener("London", "United Kingdom", "650,000 listeners")
+                    ),
+                    tourEvents = emptyList()
                 )
-            )
+            }
         }
     }
 }

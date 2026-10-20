@@ -47,13 +47,21 @@ fun ArtistAboutSheet(
                 .verticalScroll(rememberScrollState())
         ) {
             // Hero Image with Scrim & Close Button
+            val displayImageUrl = remember(artistData) {
+                val hero = artistData.heroUrl.ifEmpty { artistData.avatarUrl }
+                if (!artistData.name.contains("Coldplay", ignoreCase = true) && hero.contains("dvgZkm1xWPE")) {
+                    MusicCatalog.getArtistImageUrl(artistData.name)
+                } else {
+                    hero
+                }
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(280.dp)
             ) {
                 AsyncImage(
-                    model = artistData.heroUrl.ifEmpty { artistData.avatarUrl },
+                    model = displayImageUrl,
                     contentDescription = artistData.name,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()

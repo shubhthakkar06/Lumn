@@ -224,16 +224,11 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
                             }
                         }
                         if (playbackState == Player.STATE_ENDED) {
-                            val curDuration = _duration.value
-                            val curPos = _currentPosition.value
-                            // Only advance track if the song was genuinely played through to the end
-                            if (curDuration > 5000L && curPos >= (curDuration - 3000L)) {
-                                if (_isRepeat.value) {
-                                    controller.seekTo(0L)
-                                    controller.play()
-                                } else {
-                                    skipToNext()
-                                }
+                            if (_isRepeat.value) {
+                                controller.seekTo(0L)
+                                controller.play()
+                            } else {
+                                skipToNext()
                             }
                         }
                     }
@@ -416,7 +411,13 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
         bufferingWatchdog?.cancel()
         if (!fallbackAttemptedTrackIds.add(song.videoId)) {
             _loadingSongVideoId.value = null
-            android.widget.Toast.makeText(context, "Couldn't play \"${song.title}\". Try another version or track.", android.widget.Toast.LENGTH_LONG).show()
+            android.widget.Toast.makeText(context, "Couldn't play \"${song.title}\". Skipping to next...", android.widget.Toast.LENGTH_SHORT).show()
+            if (_currentQueue.value.size > 1 && currentQueueIndex + 1 < _currentQueue.value.size) {
+                viewModelScope.launch {
+                    kotlinx.coroutines.delay(1200)
+                    skipToNext()
+                }
+            }
             return
         }
 
@@ -512,20 +513,15 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
         _currentSong.value = song
         _loadingSongVideoId.value = song.videoId
 
-        val cleanQueue = queue.distinctBy { it.videoId }.filter { it.title.isNotBlank() }
-        val effectiveQueue = if (cleanQueue.size <= 1) {
-            generateDynamicQueueFor(song)
+        val effectiveQueue = if (queue.isNotEmpty() && queue == _currentQueue.value) {
+            queue
         } else {
-            val deduplicated = mutableListOf<SongInfo>()
-            val seenTitles = mutableSetOf<String>()
-            for (item in cleanQueue) {
-                val norm = item.title.trim().lowercase()
-                if (item.videoId == song.videoId || !seenTitles.contains(norm)) {
-                    deduplicated.add(item)
-                    seenTitles.add(norm)
-                }
+            val cleanQueue = queue.distinctBy { it.videoId }.filter { it.title.isNotBlank() }
+            if (cleanQueue.size <= 1) {
+                generateDynamicQueueFor(song)
+            } else {
+                cleanQueue
             }
-            deduplicated
         }
 
         if (!_isShuffle.value) unshuffledQueue = effectiveQueue
@@ -585,9 +581,16 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
                     val message = if (offline) {
                         "Offline mode is on. Only downloaded music is available."
                     } else {
-                        "Couldn't find a playable stream for \"${song.title}\". Try another version or track."
+                        "Couldn't find a playable stream for \"${song.title}\"."
                     }
-                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+                    // Auto-advance so queue continues execution seamlessly
+                    if (_currentQueue.value.size > 1 && currentQueueIndex + 1 < _currentQueue.value.size) {
+                        viewModelScope.launch {
+                            kotlinx.coroutines.delay(1200)
+                            skipToNext()
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 if (isActive) android.widget.Toast.makeText(context, "Couldn't load \"${song.title}\". Please try again.", android.widget.Toast.LENGTH_LONG).show()
