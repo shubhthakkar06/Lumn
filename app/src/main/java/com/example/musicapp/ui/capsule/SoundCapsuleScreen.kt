@@ -153,7 +153,7 @@ fun SoundCapsuleScreen(
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_SUBJECT, title)
-            putExtra(Intent.EXTRA_TEXT, "$title\n$body\n\nTracked in my Lumn Sound Capsule ✨")
+            putExtra(Intent.EXTRA_TEXT, "$title\n$body\n\nTracked in my Lumnova Sound Capsule ✨")
         }
         context.startActivity(Intent.createChooser(shareIntent, "Share Sound Capsule via"))
     }

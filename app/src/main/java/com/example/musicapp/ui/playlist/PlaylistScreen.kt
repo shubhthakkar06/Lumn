@@ -71,7 +71,8 @@ fun PlaylistScreen(
     savesAndDuration: String = "774 saves • 3h 52min",
     viewModel: MainScreenViewModel,
     onBack: () -> Unit,
-    onNavigate: ((Screen) -> Unit)? = null
+    onNavigate: ((Screen) -> Unit)? = null,
+    unmatchedTracks: List<SongInfo> = emptyList()
 ) {
     val context = LocalContext.current
     val playlistManager = remember { PlaylistManager.getInstance(context) }
@@ -145,6 +146,36 @@ fun PlaylistScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf(title) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showUnmatchedTracksDialog by remember(unmatchedTracks) { mutableStateOf(unmatchedTracks.isNotEmpty()) }
+
+    if (showUnmatchedTracksDialog) {
+        AlertDialog(
+            onDismissRequest = { showUnmatchedTracksDialog = false },
+            containerColor = Color(0xFF131A26),
+            titleContentColor = Color.White,
+            textContentColor = Color(0xFFCBD5E1),
+            title = { Text("Some tracks need attention", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp)) {
+                    Text("${unmatchedTracks.size} tracks were kept in this playlist, but no confident Lumnova match was found. Tap a track to search again.")
+                    Spacer(Modifier.height(10.dp))
+                    LazyColumn {
+                        items(unmatchedTracks, key = { "unmatched_${it.videoId}_${it.title}" }) { track ->
+                            Column(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
+                                Text(track.title, color = Color.White, fontWeight = FontWeight.SemiBold)
+                                Text(track.artist, color = Color(0xFFAAB4C5), style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showUnmatchedTracksDialog = false }) {
+                    Text("View playlist", color = Color(0xFF00F59B), fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
 
     var selectedSongForMenu by remember { mutableStateOf<SongInfo?>(null) }
     var selectedSongIndex by remember { mutableIntStateOf(-1) }
@@ -499,7 +530,7 @@ fun PlaylistScreen(
                                                 val intent = Intent(Intent.ACTION_SEND).apply {
                                                     type = "text/plain"
                                                     putExtra(Intent.EXTRA_SUBJECT, shared.name)
-                                                    putExtra(Intent.EXTRA_TEXT, "Open this playlist in Lumn (imports a local copy): ${shared.name}\n$link")
+                                                    putExtra(Intent.EXTRA_TEXT, "Open this playlist in Lumnova (imports a local copy): ${shared.name}\n$link")
                                                 }
                                                 context.startActivity(Intent.createChooser(intent, "Share playlist"))
                                             }.onFailure {
@@ -619,6 +650,15 @@ fun PlaylistScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    if (song.importMatchFound == false) {
+                        Text(
+                            text = "No confident Lumnova match • tap to retry",
+                            color = Color(0xFFFFC66D),
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (dlStatus is DownloadStatus.Downloaded) {
                             Icon(

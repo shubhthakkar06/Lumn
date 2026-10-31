@@ -44,6 +44,7 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
     private var searchJob: kotlinx.coroutines.Job? = null
     private val fallbackAttemptedTrackIds = mutableSetOf<String>()
     private var bufferingWatchdog: kotlinx.coroutines.Job? = null
+    private var failedTrackSkipJob: kotlinx.coroutines.Job? = null
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController: MediaController? = null
@@ -302,7 +303,8 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
 
         val item = controller.currentMediaItem ?: return
         val mediaId = item.mediaId.takeIf { it.isNotBlank() } ?: return
-        val queuedSong = _currentQueue.value.firstOrNull { it.videoId == mediaId }
+        val queuedSong = _currentQueue.value.getOrNull(currentQueueIndex)?.takeIf { it.videoId == mediaId }
+            ?: _currentQueue.value.firstOrNull { it.videoId == mediaId }
         val activeSong = when {
             queuedSong != null -> queuedSong
             _currentSong.value?.videoId == mediaId -> _currentSong.value
@@ -318,8 +320,18 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
             }
         }
         _currentSong.value = activeSong
-        val queueIndex = _currentQueue.value.indexOfFirst { it.videoId == mediaId }
-        if (queueIndex >= 0) currentQueueIndex = queueIndex
+        if (_currentQueue.value.getOrNull(currentQueueIndex)?.videoId != mediaId) {
+            val queueIndex = _currentQueue.value.indexOfFirst { it.videoId == mediaId }
+            if (queueIndex >= 0) currentQueueIndex = queueIndex
+        }
+    }
+
+    fun playUpcomingQueueItem(upcomingIndex: Int) {
+        val absoluteIndex = currentQueueIndex + 1 + upcomingIndex
+        val queue = _currentQueue.value
+        if (absoluteIndex !in queue.indices) return
+        currentQueueIndex = absoluteIndex
+        playSong(queue[absoluteIndex], queue)
     }
 
     fun updateSearchQuery(query: String) {
@@ -371,7 +383,7 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
         val metadata = androidx.media3.common.MediaMetadata.Builder()
             .setTitle(song.title)
             .setArtist(song.artist)
-            .setAlbumTitle("Lumn")
+            .setAlbumTitle("Lumnova")
             .apply {
                 if (song.albumArtUrl.isNotBlank()) {
                     runCatching { setArtworkUri(android.net.Uri.parse(song.albumArtUrl)) }
@@ -412,12 +424,7 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
         if (!fallbackAttemptedTrackIds.add(song.videoId)) {
             _loadingSongVideoId.value = null
             android.widget.Toast.makeText(context, "Couldn't play \"${song.title}\". Skipping to next...", android.widget.Toast.LENGTH_SHORT).show()
-            if (_currentQueue.value.size > 1 && currentQueueIndex + 1 < _currentQueue.value.size) {
-                viewModelScope.launch {
-                    kotlinx.coroutines.delay(1200)
-                    skipToNext()
-                }
-            }
+            scheduleFailedTrackSkip(song)
             return
         }
 
@@ -497,6 +504,7 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
     }
 
     fun playSong(song: SongInfo, queue: List<SongInfo> = emptyList()) {
+        failedTrackSkipJob?.cancel()
         playJob?.cancel()
         fallbackAttemptedTrackIds.remove(song.videoId)
         
@@ -526,7 +534,11 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
 
         if (!_isShuffle.value) unshuffledQueue = effectiveQueue
         _currentQueue.value = effectiveQueue
-        currentQueueIndex = effectiveQueue.indexOfFirst { it.videoId == song.videoId }.coerceAtLeast(0)
+        val indexStillPointsAtSong = queue === effectiveQueue &&
+            effectiveQueue.getOrNull(currentQueueIndex)?.videoId == song.videoId
+        if (!indexStillPointsAtSong) {
+            currentQueueIndex = effectiveQueue.indexOfFirst { it.videoId == song.videoId }.coerceAtLeast(0)
+        }
         val nextIndex = currentQueueIndex + 1
         if (nextIndex < effectiveQueue.size) {
             dataRepository.prefetchStreamUrls(listOf(effectiveQueue[nextIndex]))
@@ -584,16 +596,13 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
                         "Couldn't find a playable stream for \"${song.title}\"."
                     }
                     android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
-                    // Auto-advance so queue continues execution seamlessly
-                    if (_currentQueue.value.size > 1 && currentQueueIndex + 1 < _currentQueue.value.size) {
-                        viewModelScope.launch {
-                            kotlinx.coroutines.delay(1200)
-                            skipToNext()
-                        }
-                    }
+                    scheduleFailedTrackSkip(song)
                 }
             } catch (e: Exception) {
-                if (isActive) android.widget.Toast.makeText(context, "Couldn't load \"${song.title}\". Please try again.", android.widget.Toast.LENGTH_LONG).show()
+                if (isActive) {
+                    android.widget.Toast.makeText(context, "Couldn't load \"${song.title}\". Please try again.", android.widget.Toast.LENGTH_LONG).show()
+                    scheduleFailedTrackSkip(song)
+                }
             } finally {
                 // Media3 owns the spinner after it receives the source. Before that, every
                 // timeout, cancellation, or thrown error must release the row loading state.
@@ -601,6 +610,15 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
                     _loadingSongVideoId.value = null
                 }
             }
+        }
+    }
+
+    private fun scheduleFailedTrackSkip(song: SongInfo) {
+        if (_currentSong.value?.videoId != song.videoId || currentQueueIndex + 1 >= _currentQueue.value.size) return
+        if (failedTrackSkipJob?.isActive == true) return
+        failedTrackSkipJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(1_000)
+            if (_currentSong.value?.videoId == song.videoId) skipToNext()
         }
     }
 

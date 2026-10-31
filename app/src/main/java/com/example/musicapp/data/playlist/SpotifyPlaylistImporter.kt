@@ -4,9 +4,10 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Base64
-import com.example.musicapp.data.DefaultDataRepository
 import com.example.musicapp.data.network.SongInfo
+import com.example.musicapp.data.provider.ProviderRouter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -61,7 +62,11 @@ object SpotifyPlaylistImporter {
         .callTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    suspend fun import(context: Context, playlistUrl: String): SpotifyImportedPlaylist = withContext(Dispatchers.IO) {
+    suspend fun import(
+        context: Context,
+        playlistUrl: String,
+        onProgress: (completed: Int, total: Int) -> Unit = { _, _ -> }
+    ): SpotifyImportedPlaylist = withContext(Dispatchers.IO) {
         require(CLIENT_ID.isNotBlank()) { "Spotify is not configured yet." }
         val playlistId = extractPlaylistId(playlistUrl)
             ?: throw IllegalArgumentException("Paste a Spotify playlist link, such as open.spotify.com/playlist/…")
@@ -71,9 +76,9 @@ object SpotifyPlaylistImporter {
         val playlistCover = playlistImages(playlist)
 
         val tracks = mutableListOf<SpotifyImportedTrack>()
-        var nextUrl: String? = "https://api.spotify.com/v1/playlists/$playlistId/items?limit=100&market=US"
+        var nextUrl: String? = "https://api.spotify.com/v1/playlists/$playlistId/items?limit=50&market=US"
         var pages = 0
-        while (nextUrl != null && pages < 20) {
+        while (nextUrl != null && pages < 40) {
             val page = apiGet(nextUrl, token)
             val entries = page["items"] as? JsonArray ?: JsonArray(emptyList())
             entries.forEach { entry ->
@@ -99,24 +104,36 @@ object SpotifyPlaylistImporter {
             pages++
         }
         if (tracks.isEmpty()) throw IllegalStateException("No playable tracks were found in that Spotify playlist.")
-        val repository = DefaultDataRepository(context.applicationContext)
+        // Keep network work bounded. Hundreds of eager searches used to overwhelm older phones,
+        // and the repository's offline-mode filter incorrectly made every remote match disappear.
+        val router = ProviderRouter()
         val semaphore = Semaphore(3)
-        val matchedTracks = coroutineScope {
-            tracks.distinctBy { it.id }.map { track ->
-                async {
-                    semaphore.withPermit {
-                        val primary = runCatching {
-                            repository.searchSongs("${track.title} ${track.artists}")
-                        }.getOrDefault(emptyList())
-                        val firstMatch = SpotifyTrackMatcher.bestMatch(track, primary)
-                        val result = if (firstMatch != null) firstMatch else {
-                            val titleOnly = runCatching { repository.searchSongs(track.title) }.getOrDefault(emptyList())
-                            SpotifyTrackMatcher.bestMatch(track, titleOnly)
+        val uniqueTracks = tracks.distinctBy { it.id }
+        val completed = java.util.concurrent.atomic.AtomicInteger(0)
+        val resolvedUniqueTracks = coroutineScope {
+            uniqueTracks.chunked(24).flatMap { batch ->
+                batch.map { track ->
+                    async {
+                        semaphore.withPermit {
+                            val primary = searchSafely(router, "${track.title} ${track.artists}")
+                            val firstMatch = SpotifyTrackMatcher.bestMatch(track, primary)
+                            val result = if (firstMatch != null) firstMatch else {
+                                val titleOnly = searchSafely(router, track.title)
+                                SpotifyTrackMatcher.bestMatch(track, titleOnly)
+                            }
+                            val done = completed.incrementAndGet()
+                            withContext(Dispatchers.Main) { onProgress(done, uniqueTracks.size) }
+                            track.copy(resolvedSong = result)
                         }
-                        track.copy(resolvedSong = result)
                     }
-                }
-            }.awaitAll()
+                }.awaitAll()
+            }
+        }
+        val resolvedBySpotifyId = resolvedUniqueTracks.associateBy { it.id }
+        // Keep repeated tracks and their original order in Spotify playlists, while matching each
+        // unique Spotify recording only once to limit memory and provider traffic.
+        val matchedTracks = tracks.map { track ->
+            track.copy(resolvedSong = resolvedBySpotifyId[track.id]?.resolvedSong)
         }
         SpotifyImportedPlaylist(
             id = playlistId,
@@ -130,6 +147,14 @@ object SpotifyPlaylistImporter {
     private fun playlistImages(obj: JsonObject): String =
         ((obj["images"] as? JsonArray)?.firstOrNull() as? JsonObject)
             ?.get("url")?.let { (it as? JsonPrimitive)?.content }.orEmpty()
+
+    private suspend fun searchSafely(router: ProviderRouter, query: String): List<SongInfo> = try {
+        router.search(query)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        emptyList()
+    }
 
     private fun extractPlaylistId(input: String): String? {
         val value = input.trim()
@@ -181,7 +206,7 @@ object SpotifyPlaylistImporter {
                         val requestTarget = requestLine.split(' ').getOrNull(1)
                             ?: throw IllegalStateException("Spotify returned an invalid sign-in response.")
                         val callback = Uri.parse("http://127.0.0.1$requestTarget")
-                        val html = "<html><body style='font-family:sans-serif;background:#10151f;color:white;padding:32px'><h2>Lumn connected</h2><p>You can return to Lumn to finish importing your playlist.</p></body></html>"
+                        val html = "<html><body style='font-family:sans-serif;background:#10151f;color:white;padding:32px'><h2>Lumnova connected</h2><p>You can return to Lumnova to finish importing your playlist.</p></body></html>"
                         val body = html.toByteArray(Charsets.UTF_8)
                         val output = client.getOutputStream()
                         output.write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray(Charsets.US_ASCII))
@@ -241,7 +266,7 @@ object SpotifyPlaylistImporter {
             if (!response.isSuccessful) {
                 val message = when (response.code) {
                     401 -> "Spotify sign-in expired. Please try again."
-                    403 -> "Spotify only allows importing playlists you own or collaborate on."
+                    403 -> "Spotify denied access to this playlist. Confirm the signed-in account owns it or has edit access as a collaborator. If it does, check that the account is added as an allowed tester in your Spotify Developer Dashboard and meets Spotify's developer-mode requirements."
                     404 -> "That Spotify playlist could not be found."
                     429 -> "Spotify is rate limiting requests. Please wait and retry."
                     else -> "Spotify playlist request failed (${response.code})."
@@ -259,7 +284,7 @@ object SpotifyPlaylistImporter {
     }
 }
 
-/** Match Spotify's identity to Lumn's catalog without requiring identical artist spelling. */
+/** Match Spotify's identity to Lumnova's catalog without requiring identical artist spelling. */
 internal object SpotifyTrackMatcher {
     private val distinctVersionTerms = setOf(
         "remix", "live", "acoustic", "instrumental", "karaoke", "cover", "sped", "slowed", "garba", "unplugged"

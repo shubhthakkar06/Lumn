@@ -81,7 +81,7 @@ fun SignUpScreen(
                 ) {
                     Image(
                         painter = painterResource(com.example.musicapp.R.drawable.lumn_launcher_icon),
-                        contentDescription = "Lumn app logo",
+                        contentDescription = "Lumnova app logo",
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -208,7 +208,7 @@ fun SignUpScreen(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "I agree to the Lumn Terms of Service and Privacy Policy.",
+                    text = "I agree to the Lumnova Terms of Service and Privacy Policy.",
                     color = Color.White,
                     fontSize = 12.sp,
                     lineHeight = 16.sp

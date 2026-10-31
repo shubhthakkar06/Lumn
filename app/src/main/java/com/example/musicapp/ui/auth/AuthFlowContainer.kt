@@ -50,7 +50,8 @@ fun AuthFlowContainer(
                     onContinueAsGuest = {
                         UserManager.getInstance(context).loginAsGuest()
                         onAuthComplete()
-                    }
+                    },
+                    onGoogleSignInSuccess = onAuthComplete
                 )
             }
             AuthScreenState.SignUp -> {

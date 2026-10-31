@@ -115,11 +115,11 @@ fun FullScreenPlayerSheet(
     // Lyrics State
     var lyrics by remember(song.videoId) { mutableStateOf<List<LyricLine>>(emptyList()) }
     LaunchedEffect(song.videoId) {
-        lyrics = lyricsManager.getLyrics(song.title, song.artist)
+        lyrics = lyricsManager.getLyrics(song.title, song.artist, song.albumName, song.durationSeconds)
     }
 
-    // Precision sync offset: ensures lyrics match vocalist timing accurately
-    val lyricSyncOffsetMs = 300L
+    // LRCLIB timestamps are used directly; a fixed offset desynchronizes alternate recordings.
+    val lyricSyncOffsetMs = 0L
     val activeLyricIndex = remember(lyrics, currentPosition) {
         if (lyrics.isEmpty()) -1
         else {
@@ -691,9 +691,9 @@ fun FullScreenPlayerSheet(
                         label = "PreviewCardLyricFlow"
                     ) { targetIdx ->
                         val activeText = if (targetIdx >= 0) {
-                            lyrics.getOrNull(targetIdx)?.text ?: "Tap to load lyrics..."
+                            lyrics.getOrNull(targetIdx)?.text ?: "Synced lyrics unavailable for this version"
                         } else {
-                            if (lyrics.isNotEmpty()) "♪ Instrumental ♪" else "Tap to load lyrics..."
+                            if (lyrics.isNotEmpty()) "♪ Instrumental ♪" else "Synced lyrics unavailable for this version"
                         }
                         val nextText = if (targetIdx >= 0) {
                             lyrics.getOrNull(targetIdx + 1)?.text ?: ""
@@ -902,9 +902,9 @@ fun FullScreenPlayerSheet(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                (gradientColors.firstOrNull() ?: Color(0xFF1B3B4B)).copy(alpha = 0.88f),
-                                Color(0xEE0A0E17),
-                                Color(0xF806080E)
+                                (gradientColors.firstOrNull() ?: Color(0xFF1B3B4B)).copy(alpha = 0.97f),
+                                Color(0xF70A0E17),
+                                Color(0xFC06080E)
                             )
                         )
                     )
@@ -1097,7 +1097,7 @@ fun FullScreenPlayerSheet(
             QueueSheet(
                 currentSong = song,
                 queue = upcomingQueue,
-                onSongSelected = { viewModel.playSong(it, currentQueue) },
+                onSongSelected = { index, _ -> viewModel.playUpcomingQueueItem(index) },
                 onMoveItem = viewModel::moveUpcomingQueueItem,
                 onDismiss = { showQueueDialog = false }
             )

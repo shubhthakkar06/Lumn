@@ -13,6 +13,9 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.security.MessageDigest
+import com.google.firebase.auth.FirebaseAuth
+import androidx.credentials.ClearCredentialStateRequest
+import androidx.credentials.CredentialManager
 
 @Serializable
 data class UserProfile(
@@ -214,6 +217,36 @@ class UserManager private constructor(private val context: Context) {
         Result.success(profile)
     }
 
+    /** Creates or restores this device's Lumnova profile after Firebase verifies the Google identity. */
+    fun loginWithGoogle(uid: String, email: String, displayName: String): UserProfile {
+        require(uid.isNotBlank()) { "Google did not return a valid account ID." }
+        val profileId = "google_$uid"
+        val existing = _allUsers.value.firstOrNull { it.id == profileId }
+        val resolvedName = displayName.trim().ifBlank { email.substringBefore('@').ifBlank { "Listener" } }
+        val usernameBase = email.substringBefore('@').lowercase()
+            .replace(Regex("[^a-z0-9_.]"), "_")
+            .take(20)
+            .ifBlank { "listener" }
+        val avatarColors = listOf("#1DB954", "#00A8E8", "#9C27B0", "#FF5722")
+        val profile = existing?.copy(
+            name = resolvedName,
+            email = email,
+            avatarLetter = resolvedName.firstOrNull()?.uppercaseChar()?.toString() ?: "L",
+            isGuest = false
+        ) ?: UserProfile(
+            id = profileId,
+            username = "${usernameBase}_${uid.takeLast(5)}",
+            name = resolvedName,
+            email = email,
+            avatarLetter = resolvedName.firstOrNull()?.uppercaseChar()?.toString() ?: "L",
+            avatarColorHex = avatarColors[_allUsers.value.size % avatarColors.size],
+            isGuest = false,
+            hasCompletedOnboarding = false
+        )
+        applySession(profile)
+        return profile
+    }
+
     fun loginAsGuest(): UserProfile {
         val guestId = "guest_" + System.currentTimeMillis()
         val guest = UserProfile(
@@ -266,8 +299,15 @@ class UserManager private constructor(private val context: Context) {
     }
 
     fun logout() {
+        val signedInWithGoogle = _currentUser.value.id.startsWith("google_")
         _isLoggedIn.value = false
         _currentUser.value = defaultGuest
         prefs.edit().putBoolean("is_logged_in", false).apply()
+        if (signedInWithGoogle) scope.launch {
+            runCatching { FirebaseAuth.getInstance().signOut() }
+            runCatching {
+                CredentialManager.create(context).clearCredentialState(ClearCredentialStateRequest())
+            }
+        }
     }
 }

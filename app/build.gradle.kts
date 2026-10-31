@@ -3,6 +3,7 @@ plugins {
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.roborazzi)
+  alias(libs.plugins.google.services)
 }
 
 android {
@@ -12,8 +13,8 @@ android {
         applicationId = "com.example.musicapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 26
-        versionName = "2.6.0"
+        versionCode = 27
+        versionName = "2.7.0"
     }
 
     signingConfigs {
@@ -139,4 +140,11 @@ dependencies {
     
     implementation("androidx.palette:palette-ktx:1.0.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1")
+
+  // Google sign-in through Credential Manager and Firebase Authentication.
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.auth)
+  implementation(libs.androidx.credentials)
+  implementation(libs.androidx.credentials.play.services.auth)
+  implementation(libs.googleid)
 }

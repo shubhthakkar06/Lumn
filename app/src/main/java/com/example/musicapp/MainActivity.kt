@@ -182,7 +182,7 @@ class MainActivity : ComponentActivity() {
           versionName = manifest.optString("versionName", "Latest"),
           versionCode = latestVersionCode,
           apkUrl = apkUrl,
-          notes = manifest.optString("releaseNotes", "A new Lumn version is ready when you are.")
+          notes = manifest.optString("releaseNotes", "A new Lumnova version is ready when you are.")
         )
         if (newestUpdate == null || candidate.versionCode > newestUpdate.versionCode) newestUpdate = candidate
       } catch (_: Exception) {
@@ -199,7 +199,7 @@ class MainActivity : ComponentActivity() {
   private fun OptionalUpdateDialog(update: AvailableUpdate, onLater: () -> Unit, onDownload: () -> Unit) {
     AlertDialog(
       onDismissRequest = onLater,
-      title = { Text("Lumn ${update.versionName} is available") },
+      title = { Text("Lumnova ${update.versionName} is available") },
       text = {
         Column {
           Text(update.notes)

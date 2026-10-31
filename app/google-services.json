@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "795278271413",
+    "project_id": "lumn-24ba5",
+    "storage_bucket": "lumn-24ba5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:795278271413:android:c0a4916df67ada1041effc",
+        "android_client_info": {
+          "package_name": "com.example.musicapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "795278271413-m5h44n64ql54bpaasvrp88damtd2p8rd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.musicapp",
+            "certificate_hash": "434fa0de0ef52481a7115c39e8b3e5b2322a570e"
+          }
+        },
+        {
+          "client_id": "795278271413-hb1dnvhhfrf22af1601m9sl2miqrm1lp.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCBFXfcc7hZGnMytYkRBs1ax6RDidCDUUs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "795278271413-hb1dnvhhfrf22af1601m9sl2miqrm1lp.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

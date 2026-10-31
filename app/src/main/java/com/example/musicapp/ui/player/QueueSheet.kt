@@ -38,7 +38,7 @@ import com.example.musicapp.data.network.SongInfo
 fun QueueSheet(
     currentSong: SongInfo,
     queue: List<SongInfo>,
-    onSongSelected: (SongInfo) -> Unit,
+    onSongSelected: (Int, SongInfo) -> Unit,
     onMoveItem: (fromIndex: Int, toIndex: Int) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -176,7 +176,7 @@ fun QueueSheet(
                                 .background(if (isDragging) Color(0xFF263640) else Color.Transparent)
                                 .graphicsLayer { translationY = if (isDragging) dragOffsetPx else 0f }
                                 .clickable {
-                                    onSongSelected(song)
+                                    onSongSelected(index, song)
                                     onDismiss()
                                 }
                                 .padding(vertical = 8.dp, horizontal = 4.dp),

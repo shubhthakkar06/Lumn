@@ -83,13 +83,13 @@ fun SignInScreen(
                 ) {
                     Image(
                         painter = painterResource(com.example.musicapp.R.drawable.lumn_launcher_icon),
-                        contentDescription = "Lumn app logo",
+                        contentDescription = "Lumnova app logo",
                         modifier = Modifier.fillMaxSize()
                     )
                 }
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "Log in to Lumn",
+                    text = "Log in to Lumnova",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )
@@ -255,6 +255,11 @@ fun SignInScreen(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            Text("or", color = Color(0xFFA0A0A0), fontSize = 13.sp)
+            Spacer(modifier = Modifier.height(10.dp))
+            GoogleSignInButton(onSignInSuccess = onSignInSuccess)
 
             Spacer(modifier = Modifier.weight(1f))
             Spacer(modifier = Modifier.height(32.dp))

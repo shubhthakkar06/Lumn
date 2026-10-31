@@ -122,7 +122,7 @@ fun ArtistOptionsMenuSheet(
                         val safeSlug = artistName.lowercase().replace(" ", "-")
                         putExtra(
                             Intent.EXTRA_TEXT,
-                            "Discover $artistName on Lumn"
+                            "Discover $artistName on Lumnova"
                         )
                     }
                     context.startActivity(Intent.createChooser(shareIntent, "Share artist via"))

@@ -27,7 +27,8 @@ import androidx.compose.ui.unit.sp
 fun AuthLandingScreen(
     onNavigateToSignUp: () -> Unit,
     onNavigateToSignIn: () -> Unit,
-    onContinueAsGuest: () -> Unit
+    onContinueAsGuest: () -> Unit,
+    onGoogleSignInSuccess: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -43,7 +44,7 @@ fun AuthLandingScreen(
         ) {
             Spacer(modifier = Modifier.weight(1f))
 
-            // Lumn brand mark
+            // Lumnova brand mark
             Box(
                 modifier = Modifier
                     .size(96.dp),
@@ -51,7 +52,7 @@ fun AuthLandingScreen(
             ) {
                 Image(
                     painter = painterResource(com.example.musicapp.R.drawable.lumn_launcher_icon),
-                    contentDescription = "Lumn logo",
+                    contentDescription = "Lumnova logo",
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -60,7 +61,7 @@ fun AuthLandingScreen(
 
             // Bold Headline
             Text(
-                text = "Find your sound.\nLive in Lumn.",
+                text = "Find your sound.\nLive in Lumnova.",
                 style = MaterialTheme.typography.headlineMedium.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 32.sp,
@@ -112,6 +113,9 @@ fun AuthLandingScreen(
                     fontSize = 16.sp
                 )
             }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            GoogleSignInButton(onSignInSuccess = onGoogleSignInSuccess)
 
             TextButton(onClick = onContinueAsGuest, modifier = Modifier.padding(top = 8.dp)) {
                 Text("Continue as guest", color = Color(0xFFB8C2D0), fontSize = 14.sp)

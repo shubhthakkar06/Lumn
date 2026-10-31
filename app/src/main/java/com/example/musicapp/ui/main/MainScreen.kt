@@ -158,6 +158,7 @@ fun MainScreen(
                         coverUrl = currentScreen.coverUrl,
                         creator = currentScreen.subtitle.removePrefix("Playlist • "),
                         savesAndDuration = currentScreen.saves,
+                        unmatchedTracks = currentScreen.unmatchedTracks,
                         viewModel = viewModel,
                         onBack = { popBack() },
                         onNavigate = { navigateTo(it) }
@@ -485,21 +486,32 @@ fun MiniPlayerProgressBar(
     val duration = viewModel?.duration?.collectAsStateWithLifecycle()?.value ?: 0L
     val totalDuration = if (duration > 0) duration else 216000L
     val progress = (currentPosition.toFloat() / totalDuration.toFloat()).coerceIn(0f, 1f)
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 350),
+        label = "miniPlayerProgress"
+    )
 
     androidx.compose.foundation.Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(2.5.dp)
+            .height(7.dp)
+            .padding(horizontal = 10.dp)
     ) {
-        // Subtle track
-        drawRect(
-            color = Color(0x22FFFFFF),
-            size = size
-        )
-        // Neon progress gradient
-        drawRect(
-            brush = Brush.horizontalGradient(listOf(Color(0xFF00F59B), Color(0xFF00D2FF))),
-            size = androidx.compose.ui.geometry.Size(size.width * progress, size.height)
-        )
+        val barHeight = size.height * 0.48f
+        val top = (size.height - barHeight) / 2f
+        val radius = androidx.compose.ui.geometry.CornerRadius(barHeight / 2f)
+        drawRoundRect(Color(0x55242E3B), topLeft = androidx.compose.ui.geometry.Offset(0f, top), size = androidx.compose.ui.geometry.Size(size.width, barHeight), cornerRadius = radius)
+        val fillWidth = size.width * animatedProgress
+        if (fillWidth > 0f) {
+            drawRoundRect(
+                brush = Brush.horizontalGradient(listOf(Color(0xFF00F59B), Color(0xFF00D2FF)), endX = size.width),
+                topLeft = androidx.compose.ui.geometry.Offset(0f, top),
+                size = androidx.compose.ui.geometry.Size(fillWidth, barHeight),
+                cornerRadius = radius
+            )
+            drawCircle(Color(0x5500D2FF), radius = barHeight * 1.15f, center = androidx.compose.ui.geometry.Offset(fillWidth, size.height / 2f))
+            drawCircle(Color.White, radius = barHeight * 0.42f, center = androidx.compose.ui.geometry.Offset(fillWidth, size.height / 2f))
+        }
     }
 }

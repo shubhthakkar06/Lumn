@@ -7,6 +7,13 @@ import org.junit.Test
 class LyricsParserTest {
 
     @Test
+    fun parserHandlesMultipleTimestampsAndMillisecondFractions() {
+        val lines = parseLrcContent("[00:01.2][00:02.345] shared line\n[01:03:04] next")
+        assertEquals(listOf(1_200L, 2_345L, 63_040L), lines.map { it.timestampMs })
+        assertEquals(listOf("shared line", "shared line", "next"), lines.map { it.text })
+    }
+
+    @Test
     fun testParseLrc_standardTimestamps() {
         val lrc = """
             [00:14.50] I used to rule the world

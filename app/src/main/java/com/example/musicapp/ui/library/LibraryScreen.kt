@@ -91,6 +91,7 @@ fun LibraryScreen(
     var showSpotifyImportDialog by remember { mutableStateOf(false) }
     var spotifyPlaylistUrl by remember { mutableStateOf("") }
     var spotifyImporting by remember { mutableStateOf(false) }
+    var spotifyImportProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var spotifyImportError by remember { mutableStateOf<String?>(null) }
     var showAddArtistsSheet by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
@@ -614,7 +615,7 @@ fun LibraryScreen(
                 title = { Text("Import a Spotify playlist", fontWeight = FontWeight.Bold) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Paste a playlist link you own or collaborate on. Lumn will match its tracks to playable catalog versions.")
+                        Text("Paste a playlist link you own or collaborate on. Lumnova will match its tracks to playable catalog versions.")
                         OutlinedTextField(
                             value = spotifyPlaylistUrl,
                             onValueChange = { spotifyPlaylistUrl = it; spotifyImportError = null },
@@ -637,10 +638,13 @@ fun LibraryScreen(
                         enabled = !spotifyImporting && spotifyPlaylistUrl.isNotBlank(),
                         onClick = {
                             spotifyImporting = true
+                            spotifyImportProgress = null
                             spotifyImportError = null
                             importScope.launch {
                                 try {
-                                    val imported = SpotifyPlaylistImporter.import(context, spotifyPlaylistUrl)
+                                    val imported = SpotifyPlaylistImporter.import(context, spotifyPlaylistUrl) { completed, total ->
+                                        spotifyImportProgress = completed to total
+                                    }
                                     val songs = imported.tracks.map { track ->
                                         val match = track.resolvedSong
                                         val stableId = track.id.replace(Regex("[^A-Za-z0-9_-]"), "_")
@@ -652,9 +656,10 @@ fun LibraryScreen(
                                                 ?: track.albumArtUrl.ifBlank { imported.coverUrl },
                                             audioStreamUrl = match?.audioStreamUrl,
                                             albumName = match?.albumName?.ifBlank { track.albumName } ?: track.albumName,
-                                            durationSeconds = match?.durationSeconds?.takeIf { it > 0L } ?: track.durationSeconds
+                                            durationSeconds = match?.durationSeconds?.takeIf { it > 0L } ?: track.durationSeconds,
+                                            importMatchFound = match != null
                                         )
-                                    }.distinctBy { it.videoId }
+                                    }
                                     val playlist = playlistManager.createPlaylist(
                                         name = imported.name,
                                         creator = currentUser.name,
@@ -664,13 +669,18 @@ fun LibraryScreen(
                                     )
                                     if (playlist != null) {
                                         showSpotifyImportDialog = false
-                                        onNavigate(Screen.Playlist(playlist.id, playlist.name, playlist.coverUrl, "Imported from Spotify • ${playlist.creator}"))
                                         val matchedCount = imported.tracks.count { it.resolvedSong != null }
                                         val unmatchedCount = imported.tracks.size - matchedCount
+                                        val unmatched = songs.filter { it.importMatchFound == false }
+                                        onNavigate(Screen.Playlist(
+                                            playlist.id, playlist.name, playlist.coverUrl,
+                                            "Imported from Spotify • ${playlist.creator}",
+                                            unmatchedTracks = unmatched
+                                        ))
                                         val message = if (unmatchedCount == 0) {
                                             "Imported ${songs.size} playable tracks"
                                         } else {
-                                            "Imported ${songs.size} tracks; $unmatchedCount couldn’t be matched in Lumn"
+                                            "Imported ${songs.size} tracks; $unmatchedCount couldn’t be matched in Lumnova"
                                         }
                                         Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                                     }
@@ -678,12 +688,17 @@ fun LibraryScreen(
                                     spotifyImportError = e.message ?: "Could not import this Spotify playlist."
                                 } finally {
                                     spotifyImporting = false
+                                    spotifyImportProgress = null
                                 }
                             }
                         }
                     ) {
                         if (spotifyImporting) {
-                            CircularProgressIndicator(Modifier.size(18.dp), color = Color(0xFF00F59B), strokeWidth = 2.dp)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(Modifier.size(18.dp), color = Color(0xFF00F59B), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(8.dp))
+                                Text(spotifyImportProgress?.let { "Matching ${it.first}/${it.second}" } ?: "Reading Spotify playlist…", color = Color(0xFF00F59B))
+                            }
                         } else Text("Connect & import", color = Color(0xFF00F59B), fontWeight = FontWeight.Bold)
                     }
                 },

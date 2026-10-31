@@ -349,7 +349,7 @@ fun SpotifyConnectSheet(
             text = {
                 Column {
                     Text(
-                        text = "Invite friends to open this song in Lumn. Live synchronized playback needs a shared session server, which is not configured yet.",
+                        text = "Invite friends to open this song in Lumnova. Live synchronized playback needs a shared session server, which is not configured yet.",
                         color = Color(0xFFD0D0D0),
                         fontSize = 14.sp
                     )
@@ -383,10 +383,10 @@ fun SpotifyConnectSheet(
                             .build()
                         val invite = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
-                            putExtra(Intent.EXTRA_SUBJECT, "Lumn Jam: ${song.title}")
-                            putExtra(Intent.EXTRA_TEXT, "Join me for ${song.title} by ${song.artist} on Lumn:\n$link")
+                            putExtra(Intent.EXTRA_SUBJECT, "Lumnova Jam: ${song.title}")
+                            putExtra(Intent.EXTRA_TEXT, "Join me for ${song.title} by ${song.artist} on Lumnova:\n$link")
                         }
-                        context.startActivity(Intent.createChooser(invite, "Invite friends to Lumn"))
+                        context.startActivity(Intent.createChooser(invite, "Invite friends to Lumnova"))
                         showJamDialog = false
                     }
                 ) {

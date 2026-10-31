@@ -21,7 +21,9 @@ data class SongInfo(
     val albumName: String = "",
     val popularityScore: Long = 0L,
     /** Provider duration in whole seconds; zero means the provider did not report it. */
-    val durationSeconds: Long = 0L
+    val durationSeconds: Long = 0L,
+    /** Null for ordinary catalog tracks; false marks a Spotify import with no confident Lumnova match. */
+    val importMatchFound: Boolean? = null
 )
 
 class MusicApiService {
