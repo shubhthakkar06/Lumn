@@ -7,8 +7,24 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -20,7 +36,20 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.example.musicapp.theme.MusicAppTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -35,6 +64,7 @@ import kotlinx.serialization.decodeFromString
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlinx.coroutines.delay
 
 // Read from GitHub's public raw content endpoint first. Streamlit may show a public
 // sharing setting while its edge/auth layer still redirects anonymous app requests.
@@ -65,30 +95,44 @@ class MainActivity : ComponentActivity() {
     }
     setContent {
       MusicAppTheme {
+        var showLaunchSplash by remember { mutableStateOf(true) }
+        LaunchedEffect(Unit) {
+          delay(1_050)
+          showLaunchSplash = false
+        }
         val update by availableUpdate.collectAsState()
         val sharedSong by pendingSharedSong.collectAsState()
         val sharedPlaylist by pendingSharedPlaylist.collectAsState()
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-          MainNavigation(
-            sharedSong = sharedSong,
-            onSharedSongHandled = { pendingSharedSong.value = null },
-            sharedPlaylist = sharedPlaylist,
-            onSharedPlaylistHandled = { pendingSharedPlaylist.value = null }
-          )
-          update?.let { available ->
-            OptionalUpdateDialog(
-              update = available,
-              onLater = { availableUpdate.value = null },
-              onDownload = {
-                availableUpdate.value = null
-                runCatching {
-                  openingUpdateLink = true
-                  startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(available.apkUrl)))
-                }.onFailure {
-                  openingUpdateLink = false
-                }
-              }
+        Box(modifier = Modifier.fillMaxSize()) {
+          Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            MainNavigation(
+              sharedSong = sharedSong,
+              onSharedSongHandled = { pendingSharedSong.value = null },
+              sharedPlaylist = sharedPlaylist,
+              onSharedPlaylistHandled = { pendingSharedPlaylist.value = null }
             )
+            update?.let { available ->
+              OptionalUpdateDialog(
+                update = available,
+                onLater = { availableUpdate.value = null },
+                onDownload = {
+                  availableUpdate.value = null
+                  runCatching {
+                    openingUpdateLink = true
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(available.apkUrl)))
+                  }.onFailure {
+                    openingUpdateLink = false
+                  }
+                }
+              )
+            }
+          }
+          AnimatedVisibility(
+            visible = showLaunchSplash,
+            enter = fadeIn(animationSpec = tween(180)),
+            exit = fadeOut(animationSpec = tween(420))
+          ) {
+            RivaraLaunchSplash(modifier = Modifier.fillMaxSize())
           }
         }
       }
@@ -103,7 +147,7 @@ class MainActivity : ComponentActivity() {
 
   private fun acceptSharedSongIntent(intent: Intent?) {
     val uri = intent?.data ?: return
-    if (uri.scheme != "lumn") return
+    if (uri.scheme !in setOf("lumn", "rivara")) return
     if (uri.host == "playlist") {
       val payload = uri.getQueryParameter("data") ?: return
       val playlist = runCatching {
@@ -215,6 +259,67 @@ class MainActivity : ComponentActivity() {
       dismissButton = { TextButton(onClick = onLater) { Text("Later") } }
     )
   }
+}
+
+@Composable
+private fun RivaraLaunchSplash(modifier: Modifier = Modifier) {
+  val motion = rememberInfiniteTransition(label = "rivaraLaunchMotion")
+  val logoScale by motion.animateFloat(
+    initialValue = 0.94f,
+    targetValue = 1f,
+    animationSpec = infiniteRepeatable(tween(900), repeatMode = RepeatMode.Reverse),
+    label = "rivaraLogoPulse"
+  )
+  Box(
+    modifier = modifier.background(
+      Brush.linearGradient(listOf(Color(0xFF111B5B), Color(0xFF171038), Color(0xFF31104A)))
+    ),
+    contentAlignment = Alignment.Center
+  ) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+      androidx.compose.foundation.Image(
+        painter = painterResource(com.example.musicapp.R.drawable.rivara_launcher_icon),
+        contentDescription = null,
+        modifier = Modifier.size(132.dp).scale(logoScale).clip(androidx.compose.foundation.shape.RoundedCornerShape(30.dp))
+      )
+      Spacer(Modifier.height(26.dp))
+      Text(
+        text = "RIVARA",
+        color = Color.White,
+        fontSize = 23.sp,
+        letterSpacing = 7.sp,
+        fontWeight = FontWeight.Bold
+      )
+      Spacer(Modifier.height(16.dp))
+      Row(
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        listOf(Color(0xFF55C7FF), Color(0xFF9A62F6), Color(0xFFE34DAC), Color(0xFFFF806C), Color(0xFF56D8BF))
+          .forEachIndexed { index, color ->
+            SplashBeatBar(index = index, color = color, motion = motion)
+          }
+      }
+    }
+  }
+}
+
+@Composable
+private fun SplashBeatBar(
+  index: Int,
+  color: Color,
+  motion: androidx.compose.animation.core.InfiniteTransition
+) {
+  val height by motion.animateFloat(
+    initialValue = 7f,
+    targetValue = 19f + (index % 3) * 5f,
+    animationSpec = infiniteRepeatable(
+      tween(durationMillis = 460 + index * 55, delayMillis = index * 70),
+      repeatMode = RepeatMode.Reverse
+    ),
+    label = "splashBeat$index"
+  )
+  Box(Modifier.width(4.dp).height(height.dp).clip(CircleShape).background(color))
 }
 
 private const val P = android.os.Build.VERSION_CODES.P

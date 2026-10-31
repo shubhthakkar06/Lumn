@@ -58,7 +58,9 @@ class LyricsManager private constructor(context: Context) {
         memoryCache[key]?.let { return@withContext it }
         val lyrics = runCatching { fetchFromLrclib(title, artist, album, durationSeconds) }
             .getOrDefault(emptyList())
-        memoryCache[key] = lyrics
+        // Empty misses are transient (network/rate-limit/metadata variance); don't
+        // permanently cache them so the next track visit can retry.
+        if (lyrics.isNotEmpty()) memoryCache[key] = lyrics
         lyrics
     }
 
@@ -117,8 +119,14 @@ class LyricsManager private constructor(context: Context) {
         return duration <= 0L || candidateDuration <= 0L || kotlin.math.abs(candidateDuration - duration) <= 3L
     }
 
-    private fun lyrics(item: JsonObject): List<LyricLine>? =
+    private fun lyrics(item: JsonObject): List<LyricLine>? {
         item.string("syncedLyrics").takeIf(String::isNotBlank)?.let(::parseLrc)
+            ?.takeIf { it.isNotEmpty() }?.let { return it }
+        val plain = item.string("plainLyrics")
+            .lineSequence().map(String::trim).filter(String::isNotBlank)
+            .map { LyricLine(0L, it) }.toList()
+        return plain.takeIf { it.isNotEmpty() }
+    }
 
     private fun clean(value: String): String = value
         .replace(Regex("(?i)\\b(official\\s+(audio|video|lyrics)|audio|lyrics)\\b"), " ")

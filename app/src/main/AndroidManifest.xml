@@ -29,6 +29,8 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="lumn" android:host="song" />
                 <data android:scheme="lumn" android:host="playlist" />
+                <data android:scheme="rivara" android:host="song" />
+                <data android:scheme="rivara" android:host="playlist" />
             </intent-filter>
         </activity>
 

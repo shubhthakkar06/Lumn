@@ -652,8 +652,9 @@ fun LibraryScreen(
                                             videoId = match?.videoId ?: "spotify_$stableId",
                                             title = match?.title ?: track.title,
                                             artist = match?.artist ?: track.artists,
-                                            albumArtUrl = match?.albumArtUrl?.ifBlank { track.albumArtUrl.ifBlank { imported.coverUrl } }
-                                                ?: track.albumArtUrl.ifBlank { imported.coverUrl },
+                                            // Spotify's per-track album image is authoritative. Provider
+                                            // search thumbnails can belong to a different result/version.
+                                            albumArtUrl = track.albumArtUrl.ifBlank { match?.albumArtUrl.orEmpty().ifBlank { imported.coverUrl } },
                                             audioStreamUrl = match?.audioStreamUrl,
                                             albumName = match?.albumName?.ifBlank { track.albumName } ?: track.albumName,
                                             durationSeconds = match?.durationSeconds?.takeIf { it > 0L } ?: track.durationSeconds,

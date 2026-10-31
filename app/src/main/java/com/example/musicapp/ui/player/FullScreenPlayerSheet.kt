@@ -2,6 +2,7 @@ package com.example.musicapp.ui.player
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -120,8 +121,9 @@ fun FullScreenPlayerSheet(
 
     // LRCLIB timestamps are used directly; a fixed offset desynchronizes alternate recordings.
     val lyricSyncOffsetMs = 0L
+    val hasSyncedLyrics = remember(lyrics) { lyrics.any { it.timestampMs > 0L } }
     val activeLyricIndex = remember(lyrics, currentPosition) {
-        if (lyrics.isEmpty()) -1
+        if (lyrics.isEmpty() || !hasSyncedLyrics) -1
         else {
             val adjustedPos = currentPosition - lyricSyncOffsetMs
             val firstTimestamp = lyrics.firstOrNull()?.timestampMs ?: 0L
@@ -169,7 +171,12 @@ fun FullScreenPlayerSheet(
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_SUBJECT, song.title)
-            putExtra(Intent.EXTRA_TEXT, "Listen to \"${song.title}\" by ${song.artist}")
+            val id = Uri.encode(song.videoId)
+            val title = Uri.encode(song.title)
+            val artist = Uri.encode(song.artist)
+            val art = Uri.encode(song.albumArtUrl)
+            val appLink = "https://lumnmusic.streamlit.app/?song=$id&title=$title&artist=$artist&art=$art"
+            putExtra(Intent.EXTRA_TEXT, "Listen to \"${song.title}\" by ${song.artist}\n$appLink\n\nOpen directly in Rivara: rivara://song/$id?title=$title&artist=$artist&art=$art")
         }
         context.startActivity(Intent.createChooser(shareIntent, "Share song via"))
     }
@@ -347,7 +354,7 @@ fun FullScreenPlayerSheet(
             }
 
             // Dynamic Single-Line Live Lyric Preview beneath Artwork (Matching Screenshot 133831 & 133902)
-            val activeSingleLyric = lyrics.getOrNull(activeLyricIndex)?.text
+            val activeSingleLyric = lyrics.getOrNull(activeLyricIndex)?.text ?: lyrics.firstOrNull()?.text
             if (!activeSingleLyric.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(18.dp))
                 AnimatedContent(
@@ -693,12 +700,12 @@ fun FullScreenPlayerSheet(
                         val activeText = if (targetIdx >= 0) {
                             lyrics.getOrNull(targetIdx)?.text ?: "Synced lyrics unavailable for this version"
                         } else {
-                            if (lyrics.isNotEmpty()) "♪ Instrumental ♪" else "Synced lyrics unavailable for this version"
+                            lyrics.firstOrNull()?.text ?: "Lyrics unavailable for this version"
                         }
                         val nextText = if (targetIdx >= 0) {
                             lyrics.getOrNull(targetIdx + 1)?.text ?: ""
                         } else {
-                            lyrics.firstOrNull()?.text ?: ""
+                            if (hasSyncedLyrics) lyrics.firstOrNull()?.text.orEmpty() else lyrics.getOrNull(1)?.text.orEmpty()
                         }
 
                         Column {
@@ -953,7 +960,16 @@ fun FullScreenPlayerSheet(
                         Spacer(modifier = Modifier.width(32.dp))
                     }
 
-                    // Synchronized Interactive Lyrics List
+                    if (lyrics.isNotEmpty() && !hasSyncedLyrics) {
+                        Text(
+                            "Lyrics available · not synced to playback",
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color(0xFFB9A6D8)
+                        )
+                    }
+
+                    // Lyrics list; tapping seeks only when the source has timestamps.
                     LazyColumn(
                         state = lyricsListState,
                         contentPadding = PaddingValues(top = 80.dp, bottom = 220.dp),
@@ -965,17 +981,17 @@ fun FullScreenPlayerSheet(
                             val isCurrent = index == activeLyricIndex
 
                             val animatedScale by animateFloatAsState(
-                                targetValue = if (isCurrent) 1.07f else 0.95f,
+                                targetValue = if (hasSyncedLyrics && isCurrent) 1.07f else 1f,
                                 animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessLow),
                                 label = "lyricScale"
                             )
                             val animatedAlpha by animateFloatAsState(
-                                targetValue = if (isCurrent) 1.0f else 0.35f,
+                                targetValue = if (!hasSyncedLyrics || isCurrent) 1.0f else 0.48f,
                                 animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
                                 label = "lyricAlpha"
                             )
                             val animatedColor by animateColorAsState(
-                                targetValue = if (isCurrent) Color.White else Color(0x66FFFFFF),
+                                targetValue = if (!hasSyncedLyrics || isCurrent) Color.White else Color(0x99FFFFFF),
                                 animationSpec = tween(durationMillis = 400),
                                 label = "lyricColor"
                             )
@@ -990,10 +1006,7 @@ fun FullScreenPlayerSheet(
                                         transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
                                     }
                                     .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        // Tap any line to seek instantly!
-                                        viewModel.seekTo(line.timestampMs)
-                                    }
+                                    .clickable(enabled = hasSyncedLyrics) { viewModel.seekTo(line.timestampMs) }
                                     .padding(vertical = 10.dp, horizontal = 4.dp)
                             ) {
                                 Text(
@@ -1001,7 +1014,7 @@ fun FullScreenPlayerSheet(
                                     style = MaterialTheme.typography.headlineSmall.copy(
                                         fontFamily = lyricStyle.fontFamily,
                                         fontStyle = lyricStyle.fontStyle,
-                                        fontWeight = if (isCurrent) lyricStyle.activeWeight else lyricStyle.inactiveWeight,
+                                        fontWeight = if (!hasSyncedLyrics || isCurrent) lyricStyle.activeWeight else lyricStyle.inactiveWeight,
                                         letterSpacing = lyricStyle.letterSpacing,
                                         fontSize = 24.sp,
                                         lineHeight = 34.sp
@@ -1125,7 +1138,7 @@ fun PlayerProgressBarSection(
     viewModel: MainScreenViewModel,
     totalDuration: Long,
     modifier: Modifier = Modifier,
-    activeColor: Color = Color(0xFF00F59B)
+    activeColor: Color = Color(0xFFB565F5)
 ) {
     val currentPosition by viewModel.currentPosition.collectAsStateWithLifecycle()
     var userSliderPosition by remember { mutableStateOf<Float?>(null) }

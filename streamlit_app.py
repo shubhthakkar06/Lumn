@@ -25,3 +25,22 @@ st.info(
     "checks for a newer release the next time you open it."
 )
 st.caption("The in-app update prompt requires Android to approve installation of the downloaded APK.")
+
+# Shared web URLs remain useful when Rivara is not installed; the button invokes
+# the app's custom scheme on Android and carries the original song metadata.
+shared_song = st.query_params.get("song")
+if shared_song:
+    song_title = st.query_params.get("title", "Shared song")
+    artist = st.query_params.get("artist", "Unknown artist")
+    artwork = st.query_params.get("art", "")
+    from urllib.parse import quote
+    app_url = (
+        f"rivara://song/{quote(shared_song, safe='')}"
+        f"?title={quote(song_title, safe='')}&artist={quote(artist, safe='')}&art={quote(artwork, safe='')}"
+    )
+    st.divider()
+    st.subheader(song_title)
+    st.write(f"by {artist}")
+    if artwork.startswith("https://"):
+        st.image(artwork, width=180)
+    st.link_button("Open in Rivara", app_url, type="primary")

@@ -287,7 +287,7 @@ object SpotifyPlaylistImporter {
 /** Match Spotify's identity to Rivara's catalog without requiring identical artist spelling. */
 internal object SpotifyTrackMatcher {
     private val distinctVersionTerms = setOf(
-        "remix", "live", "acoustic", "instrumental", "karaoke", "cover", "sped", "slowed", "garba", "unplugged"
+        "remix", "live", "acoustic", "instrumental", "karaoke", "cover", "sped", "slowed", "garba", "unplugged", "remaster", "edit", "demo"
     )
 
     fun bestMatch(track: SpotifyImportedTrack, candidates: List<SongInfo>): SongInfo? = candidates
@@ -319,8 +319,10 @@ internal object SpotifyTrackMatcher {
         val durationClose = durationDelta != null && durationDelta <= maxOf(8L, source.durationSeconds / 30L)
 
         // Exact duration and title identity outweigh provider artist-credit variations.
-        if (titleScore < 0.78) return null
-        if (!durationClose && artistOverlap < 0.25 && titleScore < 0.96) return null
+        // Reject plausible title-only hits when the credited artist and runtime both
+        // disagree. This prevents unrelated search thumbnails/audio from being attached.
+        if (titleScore < 0.82) return null
+        if (artistOverlap < 0.20 && titleScore < 0.98) return null
         if (durationDelta != null && durationDelta > maxOf(18L, source.durationSeconds / 8L) && titleScore < 0.97) return null
 
         val durationScore = when {

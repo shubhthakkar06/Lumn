@@ -498,19 +498,19 @@ fun MiniPlayerProgressBar(
             .height(7.dp)
             .padding(horizontal = 10.dp)
     ) {
-        val barHeight = size.height * 0.48f
+        val barHeight = size.height * 0.66f
         val top = (size.height - barHeight) / 2f
         val radius = androidx.compose.ui.geometry.CornerRadius(barHeight / 2f)
         drawRoundRect(Color(0x55242E3B), topLeft = androidx.compose.ui.geometry.Offset(0f, top), size = androidx.compose.ui.geometry.Size(size.width, barHeight), cornerRadius = radius)
         val fillWidth = size.width * animatedProgress
         if (fillWidth > 0f) {
             drawRoundRect(
-                brush = Brush.horizontalGradient(listOf(Color(0xFF00F59B), Color(0xFF00D2FF)), endX = size.width),
+                brush = Brush.horizontalGradient(listOf(Color(0xFF536DFF), Color(0xFFC34DFF), Color(0xFFFF718A)), endX = size.width),
                 topLeft = androidx.compose.ui.geometry.Offset(0f, top),
                 size = androidx.compose.ui.geometry.Size(fillWidth, barHeight),
                 cornerRadius = radius
             )
-            drawCircle(Color(0x5500D2FF), radius = barHeight * 1.15f, center = androidx.compose.ui.geometry.Offset(fillWidth, size.height / 2f))
+            drawCircle(Color(0x55C34DFF), radius = barHeight * 1.15f, center = androidx.compose.ui.geometry.Offset(fillWidth, size.height / 2f))
             drawCircle(Color.White, radius = barHeight * 0.42f, center = androidx.compose.ui.geometry.Offset(fillWidth, size.height / 2f))
         }
     }

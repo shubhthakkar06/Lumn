@@ -1,7 +1,7 @@
 {
-  "versionName": "2.7.1",
-  "versionCode": 28,
-  "minimumVersionCode": 28,
+  "versionName": "2.7.2",
+  "versionCode": 29,
+  "minimumVersionCode": 29,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
-  "releaseNotes": "Rivara 2.7.1 brings the new Rivara name and colorful music-note icon, along with improved playlist import matching, playback and queue reliability, Google sign-in, lyrics, and older-device stability."
+  "releaseNotes": "Rivara 2.7.2 improves Spotify-import artwork and track matching, adds plain-lyrics fallback when synced lyrics are unavailable, refreshes player progress styling, improves song sharing links, fixes logout state, and adds an animated launch screen."
 }

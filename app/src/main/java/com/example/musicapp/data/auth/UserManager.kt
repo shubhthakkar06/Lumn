@@ -299,11 +299,17 @@ class UserManager private constructor(private val context: Context) {
     }
 
     fun logout() {
-        val signedInWithGoogle = _currentUser.value.id.startsWith("google_")
         _isLoggedIn.value = false
         _currentUser.value = defaultGuest
-        prefs.edit().putBoolean("is_logged_in", false).apply()
-        if (signedInWithGoogle) scope.launch {
+        // Clear the account pointer too; otherwise a stale active ID can restore the
+        // previous profile after process recreation or a fast app restart.
+        prefs.edit()
+            .remove("active_user_id")
+            .putBoolean("is_logged_in", false)
+            .apply()
+        // Firebase can hold a session even when the active local profile has changed,
+        // so always clear both auth providers on explicit logout.
+        scope.launch {
             runCatching { FirebaseAuth.getInstance().signOut() }
             runCatching {
                 CredentialManager.create(context).clearCredentialState(ClearCredentialStateRequest())
