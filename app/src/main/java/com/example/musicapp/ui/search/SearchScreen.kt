@@ -48,6 +48,9 @@ fun SearchScreen(
     onOpenPlayer: () -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val settingsManager = remember { com.example.musicapp.data.settings.SettingsManager.getInstance(context) }
+    val appTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
+    val themeAccent = remember(appTheme) { com.example.musicapp.theme.AppThemeHelper.getThemeAccent(appTheme) }
     val userManager = remember { com.example.musicapp.data.auth.UserManager.getInstance(context) }
     val currentUser by userManager.currentUser.collectAsStateWithLifecycle()
     val avatarColor = remember(currentUser.avatarColorHex) {
@@ -233,10 +236,10 @@ fun SearchScreen(
                         Box(
                             modifier = Modifier
                                 .clip(CircleShape)
-                                .background(if (isSelected) Color(0xFF00F59B) else Color(0xFF141922))
+                                .background(if (isSelected) themeAccent else Color(0xFF141922))
                                 .border(
                                     1.dp,
-                                    if (isSelected) Color(0xFF00F59B) else Color(0xFF232B3A),
+                                    if (isSelected) themeAccent else Color(0xFF232B3A),
                                     CircleShape
                                 )
                                 .clickable { selectedFilterChip = i }
@@ -303,7 +306,7 @@ fun SearchScreen(
                             modifier = Modifier.fillMaxWidth().height(200.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(color = Color(0xFF00F59B))
+                            CircularProgressIndicator(color = themeAccent)
                         }
                     }
                 }
@@ -379,7 +382,7 @@ fun SearchScreen(
                                     Text(
                                         text = song.title,
                                         style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                                        color = if (isCurrent) Color(0xFF00F59B) else Color.White,
+                                        color = if (isCurrent) themeAccent else Color.White,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -394,7 +397,7 @@ fun SearchScreen(
                                 if (isLoading) {
                                     CircularProgressIndicator(
                                         modifier = Modifier.size(20.dp),
-                                        color = Color(0xFF00F59B),
+                                        color = themeAccent,
                                         strokeWidth = 2.dp
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -402,7 +405,7 @@ fun SearchScreen(
                                     Icon(
                                         imageVector = Icons.Default.GraphicEq,
                                         contentDescription = "Playing",
-                                        tint = Color(0xFF00F59B),
+                                        tint = themeAccent,
                                         modifier = Modifier.size(20.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))

@@ -1,5 +1,6 @@
 package com.example.musicapp.ui.drawer
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -18,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -26,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.musicapp.data.auth.UserManager
+import com.example.musicapp.data.settings.SettingsManager
+import com.example.musicapp.theme.AppThemeHelper
 import com.example.musicapp.ui.auth.AuthDialog
 import com.example.musicapp.ui.navigation.Screen
 
@@ -37,6 +41,10 @@ fun ProfileDrawerContent(
     val context = LocalContext.current
     val userManager = remember { UserManager.getInstance(context) }
     val currentUser by userManager.currentUser.collectAsStateWithLifecycle()
+    val settingsManager = remember { SettingsManager.getInstance(context) }
+    val appTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
+    val themeGradientColors = remember(appTheme) { AppThemeHelper.getThemeGradient(appTheme) }
+    val themeAccent = remember(appTheme) { AppThemeHelper.getThemeAccent(appTheme) }
     var showAuthDialog by remember { mutableStateOf(false) }
 
     val avatarColor = remember(currentUser.avatarColorHex) {
@@ -59,6 +67,14 @@ fun ProfileDrawerContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            themeGradientColors.first().copy(alpha = 0.95f),
+                            Color(0xFF0F1520)
+                        )
+                    )
+                )
                 .padding(top = 48.dp, start = 20.dp, end = 20.dp, bottom = 24.dp)
         ) {
             // Profile Header
@@ -93,7 +109,7 @@ fun ProfileDrawerContent(
                     Text(
                         text = "View profile / Switch",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF00F59B)
+                        color = themeAccent
                     )
                 }
             }
@@ -149,6 +165,7 @@ fun ProfileDrawerContent(
                 title = "Log out",
                 onClick = {
                     userManager.logout()
+                    Toast.makeText(context, "Logged out successfully", Toast.LENGTH_SHORT).show()
                     onClose()
                 }
             )

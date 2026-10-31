@@ -75,6 +75,7 @@ fun HomeScreen(
     val settingsManager = remember { SettingsManager.getInstance(context) }
     val appTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
     val themeGradientColors = remember(appTheme) { AppThemeHelper.getThemeGradient(appTheme) }
+    val themeAccent = remember(appTheme) { AppThemeHelper.getThemeAccent(appTheme) }
 
     Box(
         modifier = Modifier
@@ -223,7 +224,7 @@ fun HomeScreen(
                                     modifier = Modifier
                                         .size(38.dp)
                                         .clip(CircleShape)
-                                        .background(Color(0xFF00F59B)),
+                                        .background(themeAccent),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(Icons.Default.PlayArrow, contentDescription = "Play", tint = Color.Black, modifier = Modifier.size(24.dp))
@@ -379,7 +380,7 @@ fun HomeScreen(
                             Text(
                                 text = "See All",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color(0xFF00F59B)
+                                color = themeAccent
                             )
                         }
                         Spacer(modifier = Modifier.height(16.dp))

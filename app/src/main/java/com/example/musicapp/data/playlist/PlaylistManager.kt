@@ -30,8 +30,11 @@ class PlaylistManager private constructor(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 
-    private val playlistsFile = File(context.filesDir, "user_playlists.json")
-    private val likedSongsFile = File(context.filesDir, "liked_songs.json")
+    private val userManager = com.example.musicapp.data.auth.UserManager.getInstance(context)
+    private var activeUserId: String = userManager.currentUser.value.id
+
+    private val legacyPlaylistsFile = File(context.filesDir, "user_playlists.json")
+    private val legacyLikedSongsFile = File(context.filesDir, "liked_songs.json")
 
     private val _playlists = MutableStateFlow<List<UserPlaylist>>(emptyList())
     val playlists: StateFlow<List<UserPlaylist>> = _playlists.asStateFlow()
@@ -40,16 +43,49 @@ class PlaylistManager private constructor(private val context: Context) {
     val likedSongs: StateFlow<List<SongInfo>> = _likedSongs.asStateFlow()
 
     init {
-        loadData()
+        loadData(activeUserId)
+        scope.launch(Dispatchers.Main.immediate) {
+            userManager.currentUser.collect { user ->
+                if (user.id != activeUserId) {
+                    loadData(user.id)
+                }
+            }
+        }
     }
 
-    private fun loadData() {
+    private fun sanitizeUserId(id: String): String =
+        id.replace(Regex("[^a-zA-Z0-9_-]"), "_").ifBlank { "default" }
+
+    private fun getPlaylistsFile(userId: String): File =
+        File(context.filesDir, "user_playlists_${sanitizeUserId(userId)}.json")
+
+    private fun getLikedSongsFile(userId: String): File =
+        File(context.filesDir, "liked_songs_${sanitizeUserId(userId)}.json")
+
+    fun switchUser(userId: String) {
+        if (userId != activeUserId) {
+            loadData(userId)
+        }
+    }
+
+    private fun loadData(userId: String) {
+        activeUserId = userId
+        val userPlaylistsFile = getPlaylistsFile(userId)
+        val userLikedSongsFile = getLikedSongsFile(userId)
+
         // 1. Liked Songs
         try {
-            if (likedSongsFile.exists()) {
-                val content = likedSongsFile.readText()
+            if (userLikedSongsFile.exists()) {
+                val content = userLikedSongsFile.readText()
                 val list = json.decodeFromString<List<SongInfo>>(content)
                 _likedSongs.value = list
+            } else if (!userId.startsWith("guest_") && legacyLikedSongsFile.exists()) {
+                // Migrate legacy global liked songs for existing users
+                val content = legacyLikedSongsFile.readText()
+                val list = json.decodeFromString<List<SongInfo>>(content)
+                _likedSongs.value = list
+                userLikedSongsFile.writeText(content)
+                legacyLikedSongsFile.delete()
             } else {
                 _likedSongs.value = emptyList()
             }
@@ -60,10 +96,17 @@ class PlaylistManager private constructor(private val context: Context) {
 
         // 2. Playlists
         try {
-            if (playlistsFile.exists()) {
-                val content = playlistsFile.readText()
+            if (userPlaylistsFile.exists()) {
+                val content = userPlaylistsFile.readText()
                 val list = json.decodeFromString<List<UserPlaylist>>(content)
                 _playlists.value = list
+            } else if (!userId.startsWith("guest_") && legacyPlaylistsFile.exists()) {
+                // Migrate legacy global playlists for existing users
+                val content = legacyPlaylistsFile.readText()
+                val list = json.decodeFromString<List<UserPlaylist>>(content)
+                _playlists.value = list
+                userPlaylistsFile.writeText(content)
+                legacyPlaylistsFile.delete()
             } else {
                 _playlists.value = emptyList()
             }
@@ -74,22 +117,22 @@ class PlaylistManager private constructor(private val context: Context) {
     }
 
     private fun savePlaylists() {
-        scope.launch {
-            try {
-                playlistsFile.writeText(json.encodeToString(_playlists.value))
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+        val targetFile = getPlaylistsFile(activeUserId)
+        val current = _playlists.value
+        try {
+            targetFile.writeText(json.encodeToString(current))
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
     private fun saveLikedSongs() {
-        scope.launch {
-            try {
-                likedSongsFile.writeText(json.encodeToString(_likedSongs.value))
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+        val targetFile = getLikedSongsFile(activeUserId)
+        val current = _likedSongs.value
+        try {
+            targetFile.writeText(json.encodeToString(current))
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -111,22 +154,29 @@ class PlaylistManager private constructor(private val context: Context) {
 
     fun createPlaylist(
         name: String,
-        creator: String = "Shubh Thakkar",
+        creator: String = "",
         coverUrl: String = "",
         songs: List<SongInfo> = emptyList(),
         sourceUrl: String = ""
     ): UserPlaylist? {
-        if (com.example.musicapp.data.auth.UserManager.getInstance(context).currentUser.value.isGuest) {
+        val currentProfile = userManager.currentUser.value
+        val isGuest = if (activeUserId.startsWith("user_") || activeUserId.startsWith("google_")) {
+            false
+        } else {
+            currentProfile.isGuest || activeUserId.startsWith("guest_")
+        }
+        if (isGuest) {
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 android.widget.Toast.makeText(context, "Sign in to create playlists", android.widget.Toast.LENGTH_SHORT).show()
             }
             return null
         }
+        val resolvedCreator = creator.ifBlank { currentProfile.name.ifBlank { "You" } }
         val id = "pl_" + System.currentTimeMillis()
         val newPlaylist = UserPlaylist(
             id = id,
             name = name.trim(),
-            creator = creator,
+            creator = resolvedCreator,
             coverUrl = coverUrl,
             songs = songs,
             sourceUrl = sourceUrl

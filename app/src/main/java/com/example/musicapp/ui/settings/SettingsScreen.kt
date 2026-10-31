@@ -45,6 +45,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     val isOffline by settingsManager.offlineMode.collectAsStateWithLifecycle()
     val appTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
     val themeGradientColors = remember(appTheme) { AppThemeHelper.getThemeGradient(appTheme) }
+    val themeAccent = remember(appTheme) { AppThemeHelper.getThemeAccent(appTheme) }
 
     val gapless by settingsManager.gaplessPlayback.collectAsStateWithLifecycle()
     val automix by settingsManager.automix.collectAsStateWithLifecycle()
@@ -396,17 +397,33 @@ fun SettingsScreen(onBack: () -> Unit) {
                             Text("Account Details", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
                             Spacer(modifier = Modifier.height(16.dp))
                             Text("Username: ${currentUser.name}", color = Color.White, fontSize = 16.sp)
-                            Text("Email: ${currentUser.email}", color = Color(0xFFA0A0A0), fontSize = 14.sp)
-                            Text("Tier: Personal Edition (100% Free & Uncapped)", color = Color(0xFF00F59B), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(20.dp))
-                            Button(
-                                onClick = {
-                                    activeCategorySheet = null
-                                    showAuthDialog = true
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B))
+                            Text("Email: ${currentUser.email.ifBlank { "Not provided" }}", color = Color(0xFFA0A0A0), fontSize = 14.sp)
+                            Text("Tier: Personal Edition (100% Free & Uncapped)", color = themeAccent, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text("Switch account", color = Color.White)
+                                Button(
+                                    onClick = {
+                                        activeCategorySheet = null
+                                        showAuthDialog = true
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B))
+                                ) {
+                                    Text("Switch account", color = Color.White)
+                                }
+                                Button(
+                                    onClick = {
+                                        activeCategorySheet = null
+                                        showLogoutConfirm = true
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B1E22))
+                                ) {
+                                    Text("Log out", color = Color(0xFFFF5252), fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                         "Playback" -> {

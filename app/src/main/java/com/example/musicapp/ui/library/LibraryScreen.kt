@@ -41,6 +41,8 @@ import com.example.musicapp.data.download.MusicDownloadManager
 import com.example.musicapp.data.playlist.PlaylistManager
 import com.example.musicapp.data.playlist.SpotifyPlaylistImporter
 import com.example.musicapp.data.network.SongInfo
+import com.example.musicapp.data.settings.SettingsManager
+import com.example.musicapp.theme.AppThemeHelper
 import com.example.musicapp.ui.main.MainScreenViewModel
 import com.example.musicapp.ui.navigation.Screen
 import kotlinx.coroutines.launch
@@ -65,6 +67,9 @@ fun LibraryScreen(
     viewModel: MainScreenViewModel? = null
 ) {
     val context = LocalContext.current
+    val settingsManager = remember { SettingsManager.getInstance(context) }
+    val appTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
+    val themeAccent = remember(appTheme) { AppThemeHelper.getThemeAccent(appTheme) }
     val userManager = remember { UserManager.getInstance(context) }
     val playlistManager = remember { PlaylistManager.getInstance(context) }
     val downloadManager = remember { MusicDownloadManager.getInstance(context) }
@@ -246,7 +251,7 @@ fun LibraryScreen(
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Search",
-                            tint = if (isSearchActive) Color(0xFF00F59B) else Color.White,
+                            tint = if (isSearchActive) themeAccent else Color.White,
                             modifier = Modifier.size(26.dp)
                         )
                     }
@@ -278,7 +283,7 @@ fun LibraryScreen(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF00F59B),
+                        focusedBorderColor = themeAccent,
                         unfocusedBorderColor = Color(0xFF2E384D),
                         focusedContainerColor = Color(0xFF161F2E),
                         unfocusedContainerColor = Color(0xFF161F2E)
@@ -302,7 +307,7 @@ fun LibraryScreen(
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)
-                            .background(if (isSelected) Color(0xFF00F59B) else Color(0xFF161F2E))
+                            .background(if (isSelected) themeAccent else Color(0xFF161F2E))
                             .clickable {
                                 selectedFilter = if (isSelected) null else filter
                             }
@@ -388,7 +393,7 @@ fun LibraryScreen(
                                         if (item.id == "liked") {
                                             Text("♥", color = Color.White, fontSize = 36.sp)
                                         } else {
-                                            Icon(Icons.Default.Bookmark, contentDescription = null, tint = Color(0xFF00F59B), modifier = Modifier.size(36.dp))
+                                            Icon(Icons.Default.Bookmark, contentDescription = null, tint = themeAccent, modifier = Modifier.size(36.dp))
                                         }
                                     }
                                 } else if (item.imageUrl.isBlank()) {
@@ -468,7 +473,7 @@ fun LibraryScreen(
                                     if (item.id == "liked") {
                                         Text("♥", color = Color.White, fontSize = 28.sp)
                                     } else {
-                                        Icon(Icons.Default.Bookmark, contentDescription = null, tint = Color(0xFF00F59B), modifier = Modifier.size(28.dp))
+                                        Icon(Icons.Default.Bookmark, contentDescription = null, tint = themeAccent, modifier = Modifier.size(28.dp))
                                     }
                                 }
                             } else if (item.imageUrl.isBlank()) {
@@ -625,7 +630,7 @@ fun LibraryScreen(
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = Color.White,
                                 unfocusedTextColor = Color.White,
-                                focusedBorderColor = Color(0xFF00F59B),
+                                focusedBorderColor = themeAccent,
                                 unfocusedBorderColor = Color(0xFF2E384D)
                             ),
                             modifier = Modifier.fillMaxWidth()
@@ -696,11 +701,11 @@ fun LibraryScreen(
                     ) {
                         if (spotifyImporting) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(Modifier.size(18.dp), color = Color(0xFF00F59B), strokeWidth = 2.dp)
+                                CircularProgressIndicator(Modifier.size(18.dp), color = themeAccent, strokeWidth = 2.dp)
                                 Spacer(Modifier.width(8.dp))
-                                Text(spotifyImportProgress?.let { "Matching ${it.first}/${it.second}" } ?: "Reading Spotify playlist…", color = Color(0xFF00F59B))
+                                Text(spotifyImportProgress?.let { "Matching ${it.first}/${it.second}" } ?: "Reading Spotify playlist…", color = themeAccent)
                             }
-                        } else Text("Connect & import", color = Color(0xFF00F59B), fontWeight = FontWeight.Bold)
+                        } else Text("Connect & import", color = themeAccent, fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {

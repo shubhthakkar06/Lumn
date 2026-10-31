@@ -60,6 +60,8 @@ import com.example.musicapp.data.lyrics.LyricLine
 import com.example.musicapp.data.lyrics.LyricsManager
 import com.example.musicapp.data.network.SongInfo
 import com.example.musicapp.data.playlist.PlaylistManager
+import com.example.musicapp.data.settings.SettingsManager
+import com.example.musicapp.theme.AppThemeHelper
 import com.example.musicapp.ui.main.MainScreenViewModel
 import com.example.musicapp.ui.util.rememberDynamicGradient
 
@@ -72,6 +74,9 @@ fun FullScreenPlayerSheet(
     onNavigateToArtist: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val settingsManager = remember { SettingsManager.getInstance(context) }
+    val appTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
+    val themeAccent = remember(appTheme) { AppThemeHelper.getThemeAccent(appTheme) }
     val playlistManager = remember { PlaylistManager.getInstance(context) }
     val downloadManager = remember { MusicDownloadManager.getInstance(context) }
     val currentUser by remember { UserManager.getInstance(context).currentUser }.collectAsStateWithLifecycle()
@@ -483,7 +488,8 @@ fun FullScreenPlayerSheet(
             // Seekbar Slider & Timestamps hoisted to avoid root recomposition
             PlayerProgressBarSection(
                 viewModel = viewModel,
-                totalDuration = totalDuration
+                totalDuration = totalDuration,
+                activeColor = themeAccent
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -1042,7 +1048,8 @@ fun FullScreenPlayerSheet(
                     // Seekbar in lyrics screen hoisted
                     PlayerProgressBarSection(
                         viewModel = viewModel,
-                        totalDuration = totalDuration
+                        totalDuration = totalDuration,
+                        activeColor = themeAccent
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -1141,44 +1148,14 @@ fun PlayerProgressBarSection(
     activeColor: Color = Color(0xFFB565F5)
 ) {
     val currentPosition by viewModel.currentPosition.collectAsStateWithLifecycle()
-    var userSliderPosition by remember { mutableStateOf<Float?>(null) }
-    val displayPos = userSliderPosition?.toLong() ?: currentPosition
-    val currentProgress = if (totalDuration > 0) {
-        (displayPos.toFloat() / totalDuration.toFloat()).coerceIn(0f, 1f)
-    } else 0f
+    val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
 
-    Column(modifier = modifier.fillMaxWidth()) {
-        Slider(
-            value = currentProgress,
-            onValueChange = { userSliderPosition = it * totalDuration.toFloat() },
-            onValueChangeFinished = {
-                userSliderPosition?.let { viewModel.seekTo(it.toLong()) }
-                userSliderPosition = null
-            },
-            colors = SliderDefaults.colors(
-                thumbColor = activeColor,
-                activeTrackColor = activeColor,
-                inactiveTrackColor = Color(0x33FFFFFF)
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = formatMs(displayPos),
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFA0A0A0)
-            )
-            Text(
-                text = formatMs(totalDuration),
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFA0A0A0)
-            )
-        }
-    }
+    WavyPlayerSlider(
+        currentPositionMs = currentPosition,
+        totalDurationMs = totalDuration,
+        isPlaying = isPlaying,
+        onSeek = { targetMs -> viewModel.seekTo(targetMs) },
+        modifier = modifier,
+        activeColor = activeColor
+    )
 }

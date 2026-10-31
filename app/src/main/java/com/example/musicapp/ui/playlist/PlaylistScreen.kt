@@ -56,6 +56,8 @@ import com.example.musicapp.data.download.DownloadStatus
 import com.example.musicapp.data.download.MusicDownloadManager
 import com.example.musicapp.data.network.SongInfo
 import com.example.musicapp.data.playlist.PlaylistManager
+import com.example.musicapp.data.settings.SettingsManager
+import com.example.musicapp.theme.AppThemeHelper
 import com.example.musicapp.ui.main.MainScreenViewModel
 import com.example.musicapp.ui.navigation.Screen
 import com.example.musicapp.ui.player.PlayerOptionsSheet
@@ -75,6 +77,9 @@ fun PlaylistScreen(
     unmatchedTracks: List<SongInfo> = emptyList()
 ) {
     val context = LocalContext.current
+    val settingsManager = remember { SettingsManager.getInstance(context) }
+    val appTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
+    val themeAccent = remember(appTheme) { AppThemeHelper.getThemeAccent(appTheme) }
     val playlistManager = remember { PlaylistManager.getInstance(context) }
     val downloadManager = remember { MusicDownloadManager.getInstance(context) }
 
@@ -171,7 +176,7 @@ fun PlaylistScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showUnmatchedTracksDialog = false }) {
-                    Text("View playlist", color = Color(0xFF00F59B), fontWeight = FontWeight.Bold)
+                    Text("View playlist", color = themeAccent, fontWeight = FontWeight.Bold)
                 }
             }
         )
@@ -200,7 +205,7 @@ fun PlaylistScreen(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF00F59B),
+                        focusedBorderColor = themeAccent,
                         unfocusedBorderColor = Color(0xFF2E384D),
                         focusedContainerColor = Color(0xFF0A0E14),
                         unfocusedContainerColor = Color(0xFF0A0E14)
@@ -218,7 +223,7 @@ fun PlaylistScreen(
                         showRenameDialog = false
                     }
                 ) {
-                    Text("Save", color = Color(0xFF00F59B), fontWeight = FontWeight.Bold)
+                    Text("Save", color = themeAccent, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -326,7 +331,7 @@ fun PlaylistScreen(
                     Icon(
                         imageVector = if (isPlaylistSearchOpen) Icons.Default.Close else Icons.Default.Search,
                         contentDescription = "Search Playlist",
-                        tint = if (isPlaylistSearchOpen) Color(0xFF00F59B) else Color.White,
+                        tint = if (isPlaylistSearchOpen) themeAccent else Color.White,
                         modifier = Modifier.size(26.dp)
                     )
                 }
@@ -341,7 +346,7 @@ fun PlaylistScreen(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF00F59B),
+                        focusedBorderColor = themeAccent,
                         unfocusedBorderColor = Color(0xFF2E384D),
                         focusedContainerColor = Color(0xFF131A26),
                         unfocusedContainerColor = Color(0xFF131A26)
@@ -576,7 +581,7 @@ fun PlaylistScreen(
                         Icon(
                             imageVector = Icons.Default.Shuffle,
                             contentDescription = "Shuffle",
-                            tint = if (isShuffle) Color(0xFF00F59B) else Color(0xFFA0A0A0),
+                            tint = if (isShuffle) themeAccent else Color(0xFFA0A0A0),
                             modifier = Modifier.size(28.dp).clickable { viewModel.toggleShuffle() }
                         )
 
@@ -588,7 +593,7 @@ fun PlaylistScreen(
                                 .clip(CircleShape)
                                 .background(
                                     Brush.linearGradient(
-                                        listOf(Color(0xFF00F59B), Color(0xFF00D2FF))
+                                        listOf(themeAccent, Color(0xFF00D2FF))
                                     )
                                 )
                                 .clickable {
@@ -646,7 +651,7 @@ fun PlaylistScreen(
                     Text(
                         text = song.title,
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                        color = if (isCurrent) Color(0xFF00F59B) else Color.White,
+                        color = if (isCurrent) themeAccent else Color.White,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -664,7 +669,7 @@ fun PlaylistScreen(
                             Icon(
                                 imageVector = Icons.Default.Download,
                                 contentDescription = null,
-                                tint = Color(0xFF00F59B),
+                                tint = themeAccent,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
@@ -682,14 +687,14 @@ fun PlaylistScreen(
                 if (isLoading) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
-                        color = Color(0xFF00F59B),
+                        color = themeAccent,
                         strokeWidth = 2.dp
                     )
                 } else if (dlStatus is DownloadStatus.Downloaded) {
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
                         contentDescription = null,
-                        tint = Color(0xFF00F59B),
+                        tint = themeAccent,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -697,7 +702,7 @@ fun PlaylistScreen(
                     Icon(
                         imageVector = Icons.Default.DragHandle,
                         contentDescription = "Hold and drag to reorder",
-                        tint = if (draggingPlaylistIndex == index) Color(0xFF00F59B) else Color(0xFF8793A2),
+                        tint = if (draggingPlaylistIndex == index) themeAccent else Color(0xFF8793A2),
                         modifier = Modifier
                             .size(40.dp)
                             .pointerInput(playlistId) {

@@ -67,6 +67,12 @@ fun MainScreen(
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     val currentSong by viewModel.currentSong.collectAsStateWithLifecycle()
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val settingsManager = remember { com.example.musicapp.data.settings.SettingsManager.getInstance(context) }
+    val appTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
+    val themeGradientColors = remember(appTheme) { com.example.musicapp.theme.AppThemeHelper.getThemeGradient(appTheme) }
+    val themeAccent = remember(appTheme) { com.example.musicapp.theme.AppThemeHelper.getThemeAccent(appTheme) }
+
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
@@ -129,9 +135,9 @@ fun MainScreen(
                     .fillMaxSize()
                     .background(
                         brush = Brush.verticalGradient(
-                            colors = listOf(Color(0xFF351515), Color(0xFF121212)),
+                            colors = themeGradientColors,
                             startY = 0f,
-                            endY = 1000f
+                            endY = 1200f
                         )
                     )
             ) {
@@ -198,7 +204,8 @@ fun MainScreen(
                             isPlaying = isPlaying,
                             viewModel = viewModel,
                             onClick = { isPlayerExpanded = true },
-                            onOpenConnect = { showConnectFromMini = true }
+                            onOpenConnect = { showConnectFromMini = true },
+                            accentColor = themeAccent
                         )
                     }
 
@@ -221,9 +228,9 @@ fun MainScreen(
                             val isLibrary = currentScreen is Screen.Library
 
                             val navItemColors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Color(0xFF00F59B),
+                                selectedIconColor = themeAccent,
                                 unselectedIconColor = Color(0xFF94A3B8),
-                                selectedTextColor = Color(0xFF00F59B),
+                                selectedTextColor = themeAccent,
                                 unselectedTextColor = Color(0xFF94A3B8),
                                 indicatorColor = Color.Transparent
                             )
@@ -291,7 +298,8 @@ fun FloatingCapsulePlayer(
     isPlaying: Boolean,
     viewModel: MainScreenViewModel? = null,
     onClick: () -> Unit,
-    onOpenConnect: () -> Unit = {}
+    onOpenConnect: () -> Unit = {},
+    accentColor: Color = Color(0xFF00F59B)
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val playlistManager = remember { com.example.musicapp.data.playlist.PlaylistManager.getInstance(context) }
@@ -332,7 +340,7 @@ fun FloatingCapsulePlayer(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp)
-            .shadow(elevation = 14.dp, shape = RoundedCornerShape(22.dp), spotColor = Color(0xFF00F59B))
+            .shadow(elevation = 14.dp, shape = RoundedCornerShape(22.dp), spotColor = accentColor)
             .clip(RoundedCornerShape(22.dp))
             .background(
                 Brush.horizontalGradient(
@@ -341,7 +349,7 @@ fun FloatingCapsulePlayer(
             )
             .border(
                 1.dp,
-                Brush.horizontalGradient(listOf(Color(0x5500F59B), Color(0x3300D2FF))),
+                Brush.horizontalGradient(listOf(accentColor.copy(alpha = 0.45f), Color(0x3300D2FF))),
                 RoundedCornerShape(22.dp)
             )
             .pointerInput(Unit) {
@@ -381,7 +389,7 @@ fun FloatingCapsulePlayer(
                     modifier = Modifier
                         .size(44.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .border(1.dp, Color(0x3300F59B), RoundedCornerShape(14.dp))
+                        .border(1.dp, accentColor.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
                 ) {
                     com.example.musicapp.ui.components.TrackArtwork(
                         model = song.albumArtUrl,
@@ -406,14 +414,14 @@ fun FloatingCapsulePlayer(
                         Icon(
                             imageVector = activeDevice.icon,
                             contentDescription = null,
-                            tint = Color(0xFF00F59B),
+                            tint = accentColor,
                             modifier = Modifier.size(12.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = activeDevice.name,
                             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = Color(0xFF00F59B),
+                            color = accentColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -428,7 +436,7 @@ fun FloatingCapsulePlayer(
                     Icon(
                         imageVector = activeDevice.icon,
                         contentDescription = "Audio Routing",
-                        tint = Color(0xFF00F59B),
+                        tint = accentColor,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -455,7 +463,7 @@ fun FloatingCapsulePlayer(
                         .size(36.dp)
                         .scale(playScale)
                         .clip(CircleShape)
-                        .background(Color(0xFF00F59B))
+                        .background(accentColor)
                         .clickable {
                             playBounced = true
                             viewModel?.togglePlayPause()
@@ -472,7 +480,7 @@ fun FloatingCapsulePlayer(
             }
 
             // Real-time Holographic Progress Line
-            MiniPlayerProgressBar(viewModel = viewModel)
+            MiniPlayerProgressBar(viewModel = viewModel, accentColor = accentColor)
         }
     }
 }
@@ -480,7 +488,8 @@ fun FloatingCapsulePlayer(
 @Composable
 fun MiniPlayerProgressBar(
     viewModel: MainScreenViewModel? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    accentColor: Color = Color(0xFF00F59B)
 ) {
     val currentPosition = viewModel?.currentPosition?.collectAsStateWithLifecycle()?.value ?: 0L
     val duration = viewModel?.duration?.collectAsStateWithLifecycle()?.value ?: 0L
@@ -505,12 +514,12 @@ fun MiniPlayerProgressBar(
         val fillWidth = size.width * animatedProgress
         if (fillWidth > 0f) {
             drawRoundRect(
-                brush = Brush.horizontalGradient(listOf(Color(0xFF536DFF), Color(0xFFC34DFF), Color(0xFFFF718A)), endX = size.width),
+                brush = Brush.horizontalGradient(listOf(Color(0xFF536DFF), accentColor), endX = size.width),
                 topLeft = androidx.compose.ui.geometry.Offset(0f, top),
                 size = androidx.compose.ui.geometry.Size(fillWidth, barHeight),
                 cornerRadius = radius
             )
-            drawCircle(Color(0x55C34DFF), radius = barHeight * 1.15f, center = androidx.compose.ui.geometry.Offset(fillWidth, size.height / 2f))
+            drawCircle(accentColor.copy(alpha = 0.35f), radius = barHeight * 1.15f, center = androidx.compose.ui.geometry.Offset(fillWidth, size.height / 2f))
             drawCircle(Color.White, radius = barHeight * 0.42f, center = androidx.compose.ui.geometry.Offset(fillWidth, size.height / 2f))
         }
     }

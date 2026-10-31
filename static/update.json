@@ -1,7 +1,7 @@
 {
-  "versionName": "2.7.2",
-  "versionCode": 29,
-  "minimumVersionCode": 29,
+  "versionName": "2.7.3",
+  "versionCode": 30,
+  "minimumVersionCode": 30,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
-  "releaseNotes": "Rivara 2.7.2 improves Spotify-import artwork and track matching, adds plain-lyrics fallback when synced lyrics are unavailable, refreshes player progress styling, improves song sharing links, fixes logout state, and adds an animated launch screen."
+  "releaseNotes": "Rivara 2.7.3 introduces an animated squiggly wave player bar, harmonizes theme gradients and dynamic accents across all screens and controls, fixes Google sign-out and account switching, and isolates playlists and library folders per user account."
 }

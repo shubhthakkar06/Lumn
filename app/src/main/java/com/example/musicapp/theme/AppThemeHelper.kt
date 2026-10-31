@@ -58,6 +58,20 @@ object AppThemeHelper {
         )
     )
 
+    fun getThemeAccent(themeId: String): Color {
+        if (themeId == "Dynamic Time") {
+            val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+            return when (hour) {
+                in 5..10 -> Color(0xFFFFB347)
+                in 11..16 -> Color(0xFF00D2FF)
+                in 17..20 -> Color(0xFFFF7A50)
+                else -> Color(0xFF00F59B)
+            }
+        }
+        val match = presets.find { it.id.equals(themeId, ignoreCase = true) }
+        return match?.accentColor ?: Color(0xFF00F59B)
+    }
+
     fun getThemeGradient(themeId: String): List<Color> {
         if (themeId == "Dynamic Time") {
             return getDynamicTimeGradient()

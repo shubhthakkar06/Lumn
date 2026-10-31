@@ -44,6 +44,9 @@ fun RecentsScreen(
     onNavigate: ((Screen) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val settingsManager = remember { com.example.musicapp.data.settings.SettingsManager.getInstance(context) }
+    val appTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
+    val themeAccent = remember(appTheme) { com.example.musicapp.theme.AppThemeHelper.getThemeAccent(appTheme) }
     val userManager = remember { UserManager.getInstance(context) }
     val currentUser by userManager.currentUser.collectAsStateWithLifecycle()
     val historyManager = remember { PlayHistoryManager.getInstance(context) }
@@ -87,7 +90,7 @@ fun RecentsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF121212))
+                    .background(Color.Transparent)
                     .statusBarsPadding()
                     .padding(horizontal = 8.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -107,7 +110,7 @@ fun RecentsScreen(
                 )
             }
         },
-        containerColor = Color(0xFF121212)
+        containerColor = Color.Transparent
     ) { padding ->
         if (userHistory.isEmpty()) {
             Box(
@@ -121,7 +124,7 @@ fun RecentsScreen(
                     Icon(
                         imageVector = Icons.Default.MusicNote,
                         contentDescription = null,
-                        tint = Color(0xFF1ED760),
+                        tint = themeAccent,
                         modifier = Modifier.size(64.dp)
                     )
                     Spacer(modifier = Modifier.height(16.dp))

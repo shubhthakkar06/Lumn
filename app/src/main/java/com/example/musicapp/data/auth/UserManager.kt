@@ -310,10 +310,7 @@ class UserManager private constructor(private val context: Context) {
         // Firebase can hold a session even when the active local profile has changed,
         // so always clear both auth providers on explicit logout.
         scope.launch {
-            runCatching { FirebaseAuth.getInstance().signOut() }
-            runCatching {
-                CredentialManager.create(context).clearCredentialState(ClearCredentialStateRequest())
-            }
+            GoogleAuthManager.signOut(context)
         }
     }
 }

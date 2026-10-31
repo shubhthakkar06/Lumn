@@ -1,10 +1,12 @@
 package com.example.musicapp.data.auth
 
 import android.app.Activity
+import android.content.Context
+import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
-import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.FirebaseAuth
@@ -22,7 +24,11 @@ object GoogleAuthManager {
             "Google sign-in is not enabled in Firebase yet. Enable the Google provider, then download the updated google-services.json."
         }
 
-        val googleOption = GetSignInWithGoogleOption.Builder(webClientId).build()
+        val googleOption = GetGoogleIdOption.Builder()
+            .setServerClientId(webClientId)
+            .setFilterByAuthorizedAccounts(false)
+            .setAutoSelectEnabled(false)
+            .build()
         val request = GetCredentialRequest.Builder()
             .addCredentialOption(googleOption)
             .build()
@@ -43,5 +49,14 @@ object GoogleAuthManager {
             email = firebaseUser.email.orEmpty(),
             displayName = firebaseUser.displayName.orEmpty()
         )
+    }
+
+    suspend fun signOut(context: Context) {
+        withContext(Dispatchers.IO) {
+            runCatching { FirebaseAuth.getInstance().signOut() }
+            runCatching {
+                CredentialManager.create(context).clearCredentialState(ClearCredentialStateRequest())
+            }
+        }
     }
 }
