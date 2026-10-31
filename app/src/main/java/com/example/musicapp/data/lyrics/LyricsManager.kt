@@ -96,7 +96,7 @@ class LyricsManager private constructor(context: Context) {
     }
 
     private fun request(url: String): kotlinx.serialization.json.JsonElement? {
-        val req = Request.Builder().url(url).header("User-Agent", "LumnMusic/2.6 (Android)").build()
+        val req = Request.Builder().url(url).header("User-Agent", "RivaraMusic/2.7.1 (Android)").build()
         client.newCall(req).execute().use { response ->
             if (!response.isSuccessful) return null
             val body = response.body?.string().orEmpty()

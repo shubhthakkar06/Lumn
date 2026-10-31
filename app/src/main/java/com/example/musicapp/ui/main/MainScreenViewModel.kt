@@ -383,7 +383,7 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
         val metadata = androidx.media3.common.MediaMetadata.Builder()
             .setTitle(song.title)
             .setArtist(song.artist)
-            .setAlbumTitle("Lumnova")
+            .setAlbumTitle("Rivara")
             .apply {
                 if (song.albumArtUrl.isNotBlank()) {
                     runCatching { setArtworkUri(android.net.Uri.parse(song.albumArtUrl)) }

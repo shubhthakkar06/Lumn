@@ -157,7 +157,7 @@ fun PlaylistScreen(
             title = { Text("Some tracks need attention", fontWeight = FontWeight.Bold) },
             text = {
                 Column(Modifier.heightIn(max = 420.dp)) {
-                    Text("${unmatchedTracks.size} tracks were kept in this playlist, but no confident Lumnova match was found. Tap a track to search again.")
+                    Text("${unmatchedTracks.size} tracks were kept in this playlist, but no confident Rivara match was found. Tap a track to search again.")
                     Spacer(Modifier.height(10.dp))
                     LazyColumn {
                         items(unmatchedTracks, key = { "unmatched_${it.videoId}_${it.title}" }) { track ->
@@ -530,7 +530,7 @@ fun PlaylistScreen(
                                                 val intent = Intent(Intent.ACTION_SEND).apply {
                                                     type = "text/plain"
                                                     putExtra(Intent.EXTRA_SUBJECT, shared.name)
-                                                    putExtra(Intent.EXTRA_TEXT, "Open this playlist in Lumnova (imports a local copy): ${shared.name}\n$link")
+                                                    putExtra(Intent.EXTRA_TEXT, "Open this playlist in Rivara (imports a local copy): ${shared.name}\n$link")
                                                 }
                                                 context.startActivity(Intent.createChooser(intent, "Share playlist"))
                                             }.onFailure {
@@ -652,7 +652,7 @@ fun PlaylistScreen(
                     )
                     if (song.importMatchFound == false) {
                         Text(
-                            text = "No confident Lumnova match • tap to retry",
+                            text = "No confident Rivara match • tap to retry",
                             color = Color(0xFFFFC66D),
                             style = MaterialTheme.typography.labelSmall,
                             maxLines = 1,

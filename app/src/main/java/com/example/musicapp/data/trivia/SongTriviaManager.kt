@@ -149,7 +149,7 @@ class SongTriviaManager private constructor(context: Context) {
         return SongTrivia(
             songId = song.videoId,
             title = song.title,
-            text = "'${song.title}' performed by ${song.artist}. Enjoy the track in Lumnova.",
+            text = "'${song.title}' performed by ${song.artist}. Enjoy the track in Rivara.",
             source = "genius.com",
             relatedVideos = listOf(
                 RelatedVideo(

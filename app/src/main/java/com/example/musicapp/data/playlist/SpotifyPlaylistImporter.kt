@@ -206,7 +206,7 @@ object SpotifyPlaylistImporter {
                         val requestTarget = requestLine.split(' ').getOrNull(1)
                             ?: throw IllegalStateException("Spotify returned an invalid sign-in response.")
                         val callback = Uri.parse("http://127.0.0.1$requestTarget")
-                        val html = "<html><body style='font-family:sans-serif;background:#10151f;color:white;padding:32px'><h2>Lumnova connected</h2><p>You can return to Lumnova to finish importing your playlist.</p></body></html>"
+                        val html = "<html><body style='font-family:sans-serif;background:#10151f;color:white;padding:32px'><h2>Rivara connected</h2><p>You can return to Rivara to finish importing your playlist.</p></body></html>"
                         val body = html.toByteArray(Charsets.UTF_8)
                         val output = client.getOutputStream()
                         output.write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray(Charsets.US_ASCII))
@@ -284,7 +284,7 @@ object SpotifyPlaylistImporter {
     }
 }
 
-/** Match Spotify's identity to Lumnova's catalog without requiring identical artist spelling. */
+/** Match Spotify's identity to Rivara's catalog without requiring identical artist spelling. */
 internal object SpotifyTrackMatcher {
     private val distinctVersionTerms = setOf(
         "remix", "live", "acoustic", "instrumental", "karaoke", "cover", "sped", "slowed", "garba", "unplugged"

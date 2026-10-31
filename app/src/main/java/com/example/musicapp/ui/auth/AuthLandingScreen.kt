@@ -44,15 +44,15 @@ fun AuthLandingScreen(
         ) {
             Spacer(modifier = Modifier.weight(1f))
 
-            // Lumnova brand mark
+            // Rivara brand mark
             Box(
                 modifier = Modifier
                     .size(96.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Image(
-                    painter = painterResource(com.example.musicapp.R.drawable.lumn_launcher_icon),
-                    contentDescription = "Lumnova logo",
+                    painter = painterResource(com.example.musicapp.R.drawable.rivara_launcher_icon),
+                    contentDescription = "Rivara logo",
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -61,7 +61,7 @@ fun AuthLandingScreen(
 
             // Bold Headline
             Text(
-                text = "Find your sound.\nLive in Lumnova.",
+                text = "Find your sound.\nLive in Rivara.",
                 style = MaterialTheme.typography.headlineMedium.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 32.sp,

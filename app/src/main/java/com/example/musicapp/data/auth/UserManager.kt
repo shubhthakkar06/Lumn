@@ -217,7 +217,7 @@ class UserManager private constructor(private val context: Context) {
         Result.success(profile)
     }
 
-    /** Creates or restores this device's Lumnova profile after Firebase verifies the Google identity. */
+    /** Creates or restores this device's Rivara profile after Firebase verifies the Google identity. */
     fun loginWithGoogle(uid: String, email: String, displayName: String): UserProfile {
         require(uid.isNotBlank()) { "Google did not return a valid account ID." }
         val profileId = "google_$uid"

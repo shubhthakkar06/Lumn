@@ -80,8 +80,8 @@ fun SignUpScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
-                        painter = painterResource(com.example.musicapp.R.drawable.lumn_launcher_icon),
-                        contentDescription = "Lumnova app logo",
+                        painter = painterResource(com.example.musicapp.R.drawable.rivara_launcher_icon),
+                        contentDescription = "Rivara app logo",
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -208,7 +208,7 @@ fun SignUpScreen(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "I agree to the Lumnova Terms of Service and Privacy Policy.",
+                    text = "I agree to the Rivara Terms of Service and Privacy Policy.",
                     color = Color.White,
                     fontSize = 12.sp,
                     lineHeight = 16.sp

@@ -615,7 +615,7 @@ fun LibraryScreen(
                 title = { Text("Import a Spotify playlist", fontWeight = FontWeight.Bold) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Paste a playlist link you own or collaborate on. Lumnova will match its tracks to playable catalog versions.")
+                        Text("Paste a playlist link you own or collaborate on. Rivara will match its tracks to playable catalog versions.")
                         OutlinedTextField(
                             value = spotifyPlaylistUrl,
                             onValueChange = { spotifyPlaylistUrl = it; spotifyImportError = null },
@@ -680,7 +680,7 @@ fun LibraryScreen(
                                         val message = if (unmatchedCount == 0) {
                                             "Imported ${songs.size} playable tracks"
                                         } else {
-                                            "Imported ${songs.size} tracks; $unmatchedCount couldn’t be matched in Lumnova"
+                                            "Imported ${songs.size} tracks; $unmatchedCount couldn’t be matched in Rivara"
                                         }
                                         Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                                     }

@@ -253,7 +253,7 @@ fun AuthDialog(
                             contentColor = Color.Black
                         )
                     ) {
-                        Text("Create your Lumnova account", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("Create your Rivara account", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))

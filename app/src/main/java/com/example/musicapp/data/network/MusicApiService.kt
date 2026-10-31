@@ -22,7 +22,7 @@ data class SongInfo(
     val popularityScore: Long = 0L,
     /** Provider duration in whole seconds; zero means the provider did not report it. */
     val durationSeconds: Long = 0L,
-    /** Null for ordinary catalog tracks; false marks a Spotify import with no confident Lumnova match. */
+    /** Null for ordinary catalog tracks; false marks a Spotify import with no confident Rivara match. */
     val importMatchFound: Boolean? = null
 )
 

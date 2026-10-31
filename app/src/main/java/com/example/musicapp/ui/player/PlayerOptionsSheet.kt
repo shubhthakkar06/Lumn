@@ -266,7 +266,7 @@ fun PlayerOptionsSheet(
                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
                         putExtra(Intent.EXTRA_SUBJECT, song.title)
-                        putExtra(Intent.EXTRA_TEXT, "Listen to \"${song.title}\" by ${song.artist} on Lumnova:\n$link")
+                        putExtra(Intent.EXTRA_TEXT, "Listen to \"${song.title}\" by ${song.artist} on Rivara:\n$link")
                     }
                     context.startActivity(Intent.createChooser(shareIntent, "Share song via"))
                     onDismiss()
@@ -343,7 +343,7 @@ fun PlayerOptionsSheet(
                     CreditRow(label = "Performed by", value = song.artist)
                     CreditRow(label = "Written by", value = song.artist.split(",").firstOrNull() ?: song.artist)
                     CreditRow(label = "Produced by", value = "High-Fidelity Studio")
-                    CreditRow(label = "Source", value = "Lumnova Audio Catalog")
+                    CreditRow(label = "Source", value = "Rivara Audio Catalog")
                 }
             },
             confirmButton = {

@@ -1,7 +1,7 @@
 {
-  "versionName": "2.7.0",
-  "versionCode": 27,
-  "minimumVersionCode": 27,
+  "versionName": "2.7.1",
+  "versionCode": 28,
+  "minimumVersionCode": 28,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
-  "releaseNotes": "Lumnova 2.7.0 improves playlist import matching, playback and queue reliability, Google sign-in, lyrics, and stability on older devices."
+  "releaseNotes": "Rivara 2.7.1 brings the new Rivara name and colorful music-note icon, along with improved playlist import matching, playback and queue reliability, Google sign-in, lyrics, and older-device stability."
 }

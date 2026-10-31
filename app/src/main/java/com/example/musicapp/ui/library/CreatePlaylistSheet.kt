@@ -68,7 +68,7 @@ fun CreatePlaylistSheet(
             CreateOptionItem(
                 icon = Icons.Default.MusicNote,
                 title = "Import Spotify playlist",
-                subtitle = "Bring a playlist you own into Lumnova",
+                subtitle = "Bring a playlist you own into Rivara",
                 onClick = {
                     onDismiss()
                     onImportSpotifyPlaylist()

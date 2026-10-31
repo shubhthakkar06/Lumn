@@ -82,14 +82,14 @@ fun SignInScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
-                        painter = painterResource(com.example.musicapp.R.drawable.lumn_launcher_icon),
-                        contentDescription = "Lumnova app logo",
+                        painter = painterResource(com.example.musicapp.R.drawable.rivara_launcher_icon),
+                        contentDescription = "Rivara app logo",
                         modifier = Modifier.fillMaxSize()
                     )
                 }
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "Log in to Lumnova",
+                    text = "Log in to Rivara",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )
