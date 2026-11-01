@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.musicapp.wear"
         minSdk = 30
         targetSdk = 35
-        versionCode = 31
-        versionName = "2.7.4"
+        versionCode = 35
+        versionName = "2.7.8"
     }
 
     buildTypes {

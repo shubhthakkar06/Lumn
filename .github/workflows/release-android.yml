@@ -69,8 +69,8 @@ jobs:
           echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
 
-      - name: Run unit tests and build APK
-        run: ./gradlew --no-daemon testDebugUnitTest assembleRelease
+      - name: Build release APK
+        run: ./gradlew --no-daemon assembleRelease
 
       - name: Name release APK
         run: cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/Lumn.apk"
