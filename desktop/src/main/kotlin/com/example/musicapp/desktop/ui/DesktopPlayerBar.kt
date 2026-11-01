@@ -3,6 +3,7 @@ package com.example.musicapp.desktop.ui
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -22,10 +23,12 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
 import com.example.musicapp.desktop.model.DesktopSong
 import kotlin.math.PI
 import kotlin.math.sin
@@ -55,7 +58,7 @@ fun DesktopPlayerBar(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(90.dp),
+            .height(92.dp),
         color = Color(0xFF181818),
         shadowElevation = 8.dp
     ) {
@@ -68,7 +71,7 @@ fun DesktopPlayerBar(
         ) {
             // Left Section: Album Art & Track Info
             Row(
-                modifier = Modifier.width(260.dp),
+                modifier = Modifier.width(280.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -78,19 +81,29 @@ fun DesktopPlayerBar(
                         .background(Color(0xFF282828)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.MusicNote,
-                        contentDescription = null,
-                        tint = Color.Gray,
-                        modifier = Modifier.size(28.dp)
-                    )
+                    val artUrl = currentSong?.albumArtUrl.orEmpty()
+                    if (artUrl.isNotBlank()) {
+                        AsyncImage(
+                            model = artUrl,
+                            contentDescription = currentSong?.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.MusicNote,
+                            contentDescription = null,
+                            tint = Color.Gray,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.width(14.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = currentSong?.title ?: "Select a song to play",
+                        text = currentSong?.title ?: "Select a track to play",
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = Color.White,
                         maxLines = 1,
@@ -117,9 +130,9 @@ fun DesktopPlayerBar(
                 }
             }
 
-            // Center Section: Transport Controls & Wavy Slider
+            // Center Section: Transport Controls & Animated Wavy Slider
             Column(
-                modifier = Modifier.weight(1f).padding(horizontal = 32.dp),
+                modifier = Modifier.weight(1f).padding(horizontal = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Controls Row
@@ -137,7 +150,7 @@ fun DesktopPlayerBar(
                     // Play/Pause circular button
                     Button(
                         onClick = onTogglePlayPause,
-                        modifier = Modifier.size(40.dp),
+                        modifier = Modifier.size(42.dp),
                         shape = CircleShape,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.White,
@@ -149,7 +162,7 @@ fun DesktopPlayerBar(
                             imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = if (isPlaying) "Pause" else "Play",
                             tint = Color.Black,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(26.dp)
                         )
                     }
 
@@ -161,39 +174,37 @@ fun DesktopPlayerBar(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
-                // Timeline Row with Wavy Slider
+                // Wavy Scrubber Bar Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = formatTime(progressMs / 1000L),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                         color = Color.Gray,
-                        modifier = Modifier.width(36.dp)
+                        modifier = Modifier.width(42.dp)
                     )
 
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    // Animated Wavy Timeline Slider
                     DesktopWavySlider(
                         progressFraction = progressFraction,
                         isPlaying = isPlaying,
                         onSeekFraction = { frac ->
                             onSeek((frac * totalMs).toLong())
                         },
-                        modifier = Modifier.weight(1f).height(20.dp)
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(24.dp)
+                            .padding(horizontal = 8.dp)
                     )
-
-                    Spacer(modifier = Modifier.width(8.dp))
 
                     Text(
                         text = formatTime(durationSeconds),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                         color = Color.Gray,
-                        modifier = Modifier.width(36.dp)
+                        modifier = Modifier.width(42.dp)
                     )
                 }
             }
@@ -265,19 +276,26 @@ private fun DesktopWavySlider(
     )
 
     Canvas(
-        modifier = modifier.pointerInput(Unit) {
-            detectTapGestures { offset ->
-                val frac = (offset.x / size.width).coerceIn(0f, 1f)
-                onSeekFraction(frac)
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    val frac = (offset.x / size.width).coerceIn(0f, 1f)
+                    onSeekFraction(frac)
+                }
             }
-        }
+            .pointerInput(Unit) {
+                detectDragGestures { change, _ ->
+                    val frac = (change.position.x / size.width).coerceIn(0f, 1f)
+                    onSeekFraction(frac)
+                }
+            }
     ) {
         val width = size.width
         val height = size.height
         val centerY = height / 2f
         val playedWidth = width * progressFraction
 
-        // 1. Draw inactive straight background line
+        // 1. Inactive background line
         drawLine(
             color = Color(0xFF404040),
             start = Offset(playedWidth, centerY),
@@ -286,7 +304,7 @@ private fun DesktopWavySlider(
             cap = StrokeCap.Round
         )
 
-        // 2. Draw active wavy squiggly path
+        // 2. Active wavy squiggly path
         if (playedWidth > 0f) {
             val wavePath = Path()
             val waveAmplitude = if (isPlaying) 3.5.dp.toPx() else 0f

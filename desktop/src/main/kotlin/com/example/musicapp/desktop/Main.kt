@@ -10,98 +10,55 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.example.musicapp.desktop.audio.DesktopAudioPlayer
+import com.example.musicapp.desktop.data.DesktopLibraryManager
+import com.example.musicapp.desktop.data.DesktopMusicRepository
+import com.example.musicapp.desktop.data.SyncedLyricLine
 import com.example.musicapp.desktop.mac.MacTrayIntegration
-import com.example.musicapp.desktop.model.DesktopPlaylist
-import com.example.musicapp.desktop.model.DesktopSong
 import com.example.musicapp.desktop.ui.DesktopLyricsPanel
 import com.example.musicapp.desktop.ui.DesktopMainContent
 import com.example.musicapp.desktop.ui.DesktopPlayerBar
 import com.example.musicapp.desktop.ui.DesktopSidebar
+import kotlinx.coroutines.launch
 
 fun main() = application {
-    val windowState = rememberWindowState(width = 1200.dp, height = 800.dp)
+    val windowState = rememberWindowState(width = 1240.dp, height = 840.dp)
     var isWindowVisible by remember { mutableStateOf(true) }
 
-    val audioPlayer = remember { DesktopAudioPlayer() }
+    val musicRepository = remember { DesktopMusicRepository() }
+    val libraryManager = remember { DesktopLibraryManager() }
+    val audioPlayer = remember { DesktopAudioPlayer(musicRepository) }
 
-    // Seed default tracks (including BAPS Satsang Podcast episode from user's screenshot!)
-    var songCatalog by remember {
-        mutableStateOf(
-            listOf(
-                DesktopSong(
-                    id = "song_1",
-                    title = "Yellow",
-                    artist = "Coldplay",
-                    album = "Parachutes",
-                    durationSeconds = 269L,
-                    isLiked = true,
-                    lyrics = listOf(
-                        "Look at the stars",
-                        "Look how they shine for you",
-                        "And everything you do",
-                        "Yeah, they were all yellow",
-                        "I came along",
-                        "I wrote a song for you",
-                        "And all the things you do",
-                        "And it was called \"Yellow\""
-                    )
-                ),
-                DesktopSong(
-                    id = "song_2",
-                    title = "Patience and True Refuge in Bhagwan",
-                    artist = "BAPS Satsang Gujarati • Pujya Somprakashdas Swami",
-                    album = "Episode • BAPS Satsang",
-                    durationSeconds = 2837L, // 47 min 17 sec from screenshot!
-                    isLiked = true,
-                    lyrics = listOf(
-                        "Patience and True Refuge in Bhagwan",
-                        "Pujya Somprakashdas Swami",
-                        "BAPS Satsang Gujarati",
-                        "આપણું જીવન સુખ અને દુઃખ બંનેથી ભરેલું છે.",
-                        "જ્યારે મુશ્કેલીઓ આવે છે, ત્યારે આપણે ઘણીવાર નિરાશ થઈ જઈએ છીએ.",
-                        "પૂજ્ય સોમપ્રકાશદાસ સ્વામી આ કથામાં સમજાવે છે કે સુખ અને દુઃખ એ જીવનના બે પાસાં છે."
-                    )
-                ),
-                DesktopSong(
-                    id = "song_3",
-                    title = "Starboy",
-                    artist = "The Weeknd ft. Daft Punk",
-                    album = "Starboy",
-                    durationSeconds = 230L
-                ),
-                DesktopSong(
-                    id = "song_4",
-                    title = "Levitating",
-                    artist = "Dua Lipa",
-                    album = "Future Nostalgia",
-                    durationSeconds = 203L
-                ),
-                DesktopSong(
-                    id = "song_5",
-                    title = "Tum Hi Ho",
-                    artist = "Arijit Singh",
-                    album = "Aashiqui 2",
-                    durationSeconds = 262L,
-                    isLiked = true
-                ),
-                DesktopSong(
-                    id = "song_6",
-                    title = "Dil Diyan Gallan",
-                    artist = "Atif Aslam",
-                    album = "Tiger Zinda Hai",
-                    durationSeconds = 320L
-                )
-            )
-        )
+    val coroutineScope = rememberCoroutineScope()
+    var currentLyrics by remember { mutableStateOf<List<SyncedLyricLine>>(emptyList()) }
+
+    val currentSong by audioPlayer.currentSong.collectAsState()
+    val isPlaying by audioPlayer.isPlaying.collectAsState()
+    val progressMs by audioPlayer.progressMs.collectAsState()
+    val volume by audioPlayer.volume.collectAsState()
+    val queue by audioPlayer.queue.collectAsState()
+    val playlists by libraryManager.playlists.collectAsState()
+
+    var selectedTab by remember { mutableStateOf("Home") }
+    var isLyricsOpen by remember { mutableStateOf(false) }
+    var isQueueOpen by remember { mutableStateOf(false) }
+
+    // Fetch live lyrics whenever the current track changes
+    LaunchedEffect(currentSong) {
+        val song = currentSong
+        if (song != null) {
+            coroutineScope.launch {
+                currentLyrics = musicRepository.fetchLyrics(song.title, song.artist)
+            }
+        } else {
+            currentLyrics = emptyList()
+        }
     }
 
+    // Setup macOS Menu Bar Tray
     LaunchedEffect(Unit) {
-        audioPlayer.setQueue(songCatalog)
-        // Setup macOS Menu Bar Tray
         MacTrayIntegration.setupTray(
             onPlayPause = { audioPlayer.togglePlayPause() },
             onNext = { audioPlayer.skipNext() },
@@ -111,29 +68,11 @@ fun main() = application {
         )
     }
 
-    val currentSong by audioPlayer.currentSong.collectAsState()
-    val isPlaying by audioPlayer.isPlaying.collectAsState()
-    val progressMs by audioPlayer.progressMs.collectAsState()
-    val volume by audioPlayer.volume.collectAsState()
-    val queue by audioPlayer.queue.collectAsState()
-
     // Update macOS tray tooltip whenever track or playing state changes
     LaunchedEffect(currentSong, isPlaying) {
         currentSong?.let {
             MacTrayIntegration.updateNowPlaying(it.title, it.artist, isPlaying)
         }
-    }
-
-    var selectedTab by remember { mutableStateOf("Home") }
-    var isLyricsOpen by remember { mutableStateOf(false) }
-    var isQueueOpen by remember { mutableStateOf(false) }
-
-    val playlists = remember {
-        listOf(
-            DesktopPlaylist("pl_1", "Chill Mix", songCount = 18),
-            DesktopPlaylist("pl_2", "Workout Beats", songCount = 24),
-            DesktopPlaylist("pl_3", "Satsang & Katha", songCount = 12)
-        )
     }
 
     if (isWindowVisible) {
@@ -162,33 +101,54 @@ fun main() = application {
                         DesktopSidebar(
                             selectedTab = selectedTab,
                             onTabSelected = { selectedTab = it },
-                            playlists = playlists
+                            playlists = playlists,
+                            onCreatePlaylist = { name ->
+                                libraryManager.createPlaylist(name)
+                            }
                         )
 
                         DesktopMainContent(
+                            selectedTab = selectedTab,
                             currentSong = currentSong,
-                            songs = songCatalog,
+                            isPlaying = isPlaying,
+                            playlists = playlists,
+                            libraryManager = libraryManager,
+                            musicRepository = musicRepository,
                             onPlaySong = { song ->
                                 audioPlayer.play(song)
                             },
-                            onToggleLike = { song ->
-                                songCatalog = songCatalog.map {
-                                    if (it.id == song.id) it.copy(isLiked = !it.isLiked) else it
+                            onTogglePlayPause = {
+                                audioPlayer.togglePlayPause()
+                            },
+                            onPlayAll = { songs ->
+                                if (songs.isNotEmpty()) {
+                                    audioPlayer.setQueue(songs)
+                                    audioPlayer.play(songs.first())
                                 }
                             },
+                            onPlayNext = { song ->
+                                audioPlayer.playNextInQueue(song)
+                            },
+                            onAddToQueue = { song ->
+                                audioPlayer.addToQueue(song)
+                            },
+                            onTabSelected = { selectedTab = it },
                             modifier = Modifier.weight(1f)
                         )
 
                         if (isLyricsOpen || isQueueOpen) {
                             DesktopLyricsPanel(
                                 currentSong = currentSong,
+                                lyrics = currentLyrics,
+                                progressMs = progressMs,
                                 isQueueMode = isQueueOpen,
                                 queue = queue,
                                 onClose = {
                                     isLyricsOpen = false
                                     isQueueOpen = false
                                 },
-                                onSongSelected = { audioPlayer.play(it) }
+                                onSongSelected = { audioPlayer.play(it) },
+                                onSeek = { audioPlayer.seekTo(it) }
                             )
                         }
                     }
@@ -216,9 +176,7 @@ fun main() = application {
                         },
                         onToggleLike = {
                             currentSong?.let { song ->
-                                songCatalog = songCatalog.map {
-                                    if (it.id == song.id) it.copy(isLiked = !it.isLiked) else it
-                                }
+                                libraryManager.toggleLike(song)
                             }
                         }
                     )

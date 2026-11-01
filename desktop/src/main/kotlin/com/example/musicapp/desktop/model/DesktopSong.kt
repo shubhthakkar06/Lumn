@@ -12,12 +12,22 @@ data class DesktopSong(
     val albumArtUrl: String = "",
     val audioUrl: String? = null,
     val isLiked: Boolean = false,
+    val isEpisode: Boolean = false,
+    val description: String = "",
+    val releaseDate: String = "",
     val lyrics: List<String> = emptyList()
 )
 
+@Serializable
 data class DesktopPlaylist(
     val id: String,
     val name: String,
     val creator: String = "Shubh Thakkar",
     val songCount: Int = 0
+)
+
+data class DesktopArtist(
+    val name: String,
+    val imageUrl: String,
+    val borderColorHex: Long = 0xFF1ED760
 )

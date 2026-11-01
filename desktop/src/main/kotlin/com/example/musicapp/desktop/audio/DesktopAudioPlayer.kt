@@ -1,15 +1,29 @@
 package com.example.musicapp.desktop.audio
 
+import com.example.musicapp.desktop.data.DesktopMusicRepository
 import com.example.musicapp.desktop.model.DesktopSong
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import javax.sound.sampled.*
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.io.File
+import java.io.FileOutputStream
+import java.util.Locale
 
-class DesktopAudioPlayer {
+class DesktopAudioPlayer(
+    private val musicRepository: DesktopMusicRepository = DesktopMusicRepository()
+) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var progressJob: Job? = null
+    private val httpClient = OkHttpClient()
+    private val cacheDir = File(System.getProperty("user.home"), ".rivara/cache").apply { mkdirs() }
+
+    private var activeProcess: Process? = null
+    private var activePid: Long = -1L
+    private var isIntentionallyStopped = false
+    private var tickerJob: Job? = null
+    private var playJob: Job? = null
 
     private val _currentSong = MutableStateFlow<DesktopSong?>(null)
     val currentSong: StateFlow<DesktopSong?> = _currentSong.asStateFlow()
@@ -20,7 +34,7 @@ class DesktopAudioPlayer {
     private val _progressMs = MutableStateFlow(0L)
     val progressMs: StateFlow<Long> = _progressMs.asStateFlow()
 
-    private val _volume = MutableStateFlow(0.75f)
+    private val _volume = MutableStateFlow(0.85f)
     val volume: StateFlow<Float> = _volume.asStateFlow()
 
     private val _queue = MutableStateFlow<List<DesktopSong>>(emptyList())
@@ -30,34 +44,170 @@ class DesktopAudioPlayer {
         _queue.value = songs
     }
 
-    fun play(song: DesktopSong) {
+    fun addToQueue(song: DesktopSong) {
+        val current = _queue.value.toMutableList()
+        if (current.none { it.id == song.id }) {
+            current.add(song)
+            _queue.value = current
+        }
+    }
+
+    fun playNextInQueue(song: DesktopSong) {
+        val q = _queue.value.toMutableList()
+        val currentIndex = q.indexOfFirst { it.id == _currentSong.value?.id }
+        q.removeAll { it.id == song.id }
+        if (currentIndex != -1 && currentIndex + 1 <= q.size) {
+            q.add(currentIndex + 1, song)
+        } else {
+            q.add(0, song)
+        }
+        _queue.value = q
+    }
+
+    fun play(song: DesktopSong, startPositionMs: Long = 0L) {
+        stopCurrentPlayback()
+        isIntentionallyStopped = false
         _currentSong.value = song
-        _progressMs.value = 0L
+        _progressMs.value = startPositionMs
         _isPlaying.value = true
-        startProgressTimer()
+
+        // Ensure song is present in queue
+        if (_queue.value.none { it.id == song.id }) {
+            _queue.value = listOf(song) + _queue.value
+        }
+
+        playJob?.cancel()
+        playJob = scope.launch {
+            var streamUrl = song.audioUrl
+            if (streamUrl.isNullOrBlank()) {
+                streamUrl = musicRepository.resolveAudioUrl(song)
+            }
+
+            if (streamUrl.isNullOrBlank()) {
+                startProgressTimer(song.durationSeconds * 1000L)
+                return@launch
+            }
+
+            val safeId = song.id.replace(Regex("[^a-zA-Z0-9_]"), "_")
+            val targetFile = File(cacheDir, "$safeId.m4a")
+
+            if (!targetFile.exists() || targetFile.length() < 10000) {
+                try {
+                    val req = Request.Builder()
+                        .url(streamUrl)
+                        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
+                        .build()
+                    val res = httpClient.newCall(req).execute()
+                    if (res.isSuccessful) {
+                        res.body?.byteStream()?.use { input ->
+                            FileOutputStream(targetFile).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            if (targetFile.exists() && targetFile.length() > 10000) {
+                startAfplay(targetFile, startPositionMs / 1000L)
+            } else {
+                startProgressTimer(song.durationSeconds * 1000L)
+            }
+        }
+    }
+
+    private fun startAfplay(file: File, startSeconds: Long) {
+        stopAfplayProcess()
+        try {
+            val volStr = String.format(Locale.US, "%.2f", _volume.value)
+            val cmd = mutableListOf("afplay", file.absolutePath, "-v", volStr)
+            if (startSeconds > 0) {
+                cmd.add("-s")
+                cmd.add(startSeconds.toString())
+            }
+
+            val process = ProcessBuilder(cmd).start()
+            activeProcess = process
+            activePid = process.pid()
+
+            startProgressTimer((_currentSong.value?.durationSeconds ?: 180L) * 1000L)
+
+            // Monitor when process naturally completes
+            scope.launch {
+                val exitCode = process.waitFor()
+                if (activeProcess == process && !isIntentionallyStopped && exitCode == 0 && _isPlaying.value) {
+                    withContext(Dispatchers.Main) {
+                        skipNext()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun togglePlayPause() {
-        if (_currentSong.value == null && _queue.value.isNotEmpty()) {
-            play(_queue.value.first())
+        val song = _currentSong.value
+        if (song == null) {
+            if (_queue.value.isNotEmpty()) {
+                play(_queue.value.first())
+            }
             return
         }
-        val newState = !_isPlaying.value
-        _isPlaying.value = newState
-        if (newState) {
-            startProgressTimer()
+
+        if (_isPlaying.value) {
+            pause()
         } else {
-            progressJob?.cancel()
+            resume()
+        }
+    }
+
+    fun pause() {
+        if (!_isPlaying.value) return
+        _isPlaying.value = false
+        tickerJob?.cancel()
+        if (activePid > 0) {
+            try {
+                Runtime.getRuntime().exec(arrayOf("kill", "-STOP", activePid.toString()))
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun resume() {
+        if (_isPlaying.value) return
+        _isPlaying.value = true
+        if (activePid > 0 && activeProcess?.isAlive == true) {
+            try {
+                Runtime.getRuntime().exec(arrayOf("kill", "-CONT", activePid.toString()))
+                startProgressTimer((_currentSong.value?.durationSeconds ?: 180L) * 1000L)
+            } catch (e: Exception) {
+                _currentSong.value?.let { play(it, _progressMs.value) }
+            }
+        } else {
+            _currentSong.value?.let { play(it, _progressMs.value) }
         }
     }
 
     fun seekTo(positionMs: Long) {
-        val duration = (_currentSong.value?.durationSeconds ?: 0L) * 1000L
-        _progressMs.value = positionMs.coerceIn(0L, duration.coerceAtLeast(1000L))
+        val song = _currentSong.value ?: return
+        val totalMs = song.durationSeconds * 1000L
+        val clamped = positionMs.coerceIn(0L, totalMs.coerceAtLeast(1000L))
+        _progressMs.value = clamped
+
+        val safeId = song.id.replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val targetFile = File(cacheDir, "$safeId.m4a")
+        if (targetFile.exists() && _isPlaying.value) {
+            startAfplay(targetFile, clamped / 1000L)
+        }
     }
 
     fun setVolume(vol: Float) {
-        _volume.value = vol.coerceIn(0f, 1f)
+        val clamped = vol.coerceIn(0f, 1f)
+        _volume.value = clamped
     }
 
     fun skipNext() {
@@ -76,20 +226,34 @@ class DesktopAudioPlayer {
         play(q[prevIndex])
     }
 
-    private fun startProgressTimer() {
-        progressJob?.cancel()
-        progressJob = scope.launch {
+    private fun stopCurrentPlayback() {
+        isIntentionallyStopped = true
+        tickerJob?.cancel()
+        stopAfplayProcess()
+    }
+
+    private fun stopAfplayProcess() {
+        activeProcess?.let {
+            try {
+                it.destroyForcibly()
+            } catch (_: Exception) {}
+        }
+        activeProcess = null
+        activePid = -1L
+    }
+
+    private fun startProgressTimer(totalMs: Long) {
+        tickerJob?.cancel()
+        tickerJob = scope.launch {
+            val startTime = System.currentTimeMillis() - _progressMs.value
             while (isActive && _isPlaying.value) {
-                delay(250)
-                val song = _currentSong.value ?: break
-                val totalMs = song.durationSeconds * 1000L
-                val nextPos = _progressMs.value + 250L
-                if (totalMs > 0 && nextPos >= totalMs) {
-                    _progressMs.value = 0L
-                    skipNext()
+                delay(200)
+                val current = System.currentTimeMillis() - startTime
+                if (totalMs > 0 && current >= totalMs) {
+                    _progressMs.value = totalMs
                     break
                 } else {
-                    _progressMs.value = nextPos
+                    _progressMs.value = current
                 }
             }
         }
