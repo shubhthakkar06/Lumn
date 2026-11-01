@@ -1,0 +1,166 @@
+package com.example.musicapp.desktop.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.musicapp.desktop.model.DesktopPlaylist
+
+@Composable
+fun DesktopSidebar(
+    selectedTab: String,
+    onTabSelected: (String) -> Unit,
+    playlists: List<DesktopPlaylist>,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxHeight()
+            .width(240.dp),
+        color = Color(0xFF121212)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            // Brand Logo & Title
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 24.dp, start = 4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF1ED760)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.GraphicEq,
+                        contentDescription = "Rivara",
+                        tint = Color.Black,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Rivara",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    ),
+                    color = Color.White
+                )
+            }
+
+            // Primary Navigation Items
+            SidebarItem(
+                icon = Icons.Default.Home,
+                label = "Home",
+                isSelected = selectedTab == "Home",
+                onClick = { onTabSelected("Home") }
+            )
+            SidebarItem(
+                icon = Icons.Default.Search,
+                label = "Search",
+                isSelected = selectedTab == "Search",
+                onClick = { onTabSelected("Search") }
+            )
+            SidebarItem(
+                icon = Icons.AutoMirrored.Filled.QueueMusic,
+                label = "Your Library",
+                isSelected = selectedTab == "Library",
+                onClick = { onTabSelected("Library") }
+            )
+            SidebarItem(
+                icon = Icons.Default.Favorite,
+                label = "Liked Songs",
+                isSelected = selectedTab == "Liked",
+                onClick = { onTabSelected("Liked") }
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+            HorizontalDivider(color = Color(0xFF282828), thickness = 1.dp)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "PLAYLISTS",
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp),
+                color = Color.Gray,
+                modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
+            )
+
+            // Playlist list
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(playlists, key = { it.id }) { playlist ->
+                    Text(
+                        text = playlist.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFFCCCCCC),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onTabSelected("Playlist_${playlist.id}") }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SidebarItem(
+    icon: ImageVector,
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val backgroundColor = if (isSelected) Color(0xFF282828) else Color.Transparent
+    val contentColor = if (isSelected) Color(0xFF1ED760) else Color(0xFFB3B3B3)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(backgroundColor)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = contentColor,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(14.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+            ),
+            color = if (isSelected) Color.White else contentColor
+        )
+    }
+}
