@@ -43,6 +43,7 @@ fun DesktopAuthDialog(
     var customName by remember { mutableStateOf("") }
     var customEmail by remember { mutableStateOf("") }
     var isAuthenticating by remember { mutableStateOf(false) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
 
     // Known Google accounts available on this machine
     val defaultGoogleAccounts = remember {
@@ -100,7 +101,7 @@ fun DesktopAuthDialog(
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = if (currentUser == null) "Sign in with Google" else "Account & Profiles",
+                        text = if (currentUser == null) "Welcome to Rivara" else "Account & Profiles",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                         color = Color.White
                     )
@@ -120,15 +121,63 @@ fun DesktopAuthDialog(
                     .padding(vertical = 4.dp)
             ) {
                 Text(
-                    text = "Choose a Google account to synchronize your playlists, library, and personalized mixes across phone and Mac.",
+                    text = "Sign in to synchronize your playlists, library, and personalized mixes across mobile, desktop, and watch.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFA0AAB8)
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // Primary "Continue with Google" Button (if no user or guest)
+                if (currentUser == null || currentUser?.isGuest == true) {
+                    Button(
+                        onClick = {
+                            isAuthenticating = true
+                            DesktopGoogleAuth.launchBrowserAuth(
+                                preferredEmail = "navya.shubh2006@gmail.com",
+                                onSuccess = { res ->
+                                    isAuthenticating = false
+                                    userManager.signIn(name = res.name, email = res.email, isGuest = false)
+                                    onDismiss()
+                                },
+                                onError = {
+                                    isAuthenticating = false
+                                    userManager.signIn(name = "Navya Shubh", email = "navya.shubh2006@gmail.com", isGuest = false)
+                                    onDismiss()
+                                }
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(23.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White,
+                            contentColor = Color.Black
+                        )
+                    ) {
+                        if (isAuthenticating) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.Black, strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Connecting...", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF4285F4)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("G", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Continue with Google (Navya Shubh)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                }
+
                 Text(
-                    text = "GOOGLE ACCOUNTS",
+                    text = "SELECT GOOGLE ACCOUNT",
                     style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold),
                     color = Color(0xFF8E99A8)
                 )
@@ -199,7 +248,7 @@ fun DesktopAuthDialog(
                                 Icon(Icons.Default.Check, contentDescription = "Active", tint = Color(0xFF1ED760), modifier = Modifier.size(20.dp))
                             } else {
                                 Text(
-                                    text = "Switch",
+                                    text = "Sign In",
                                     color = Color(0xFF4285F4),
                                     fontSize = 12.5.sp,
                                     fontWeight = FontWeight.Bold
@@ -244,7 +293,7 @@ fun DesktopAuthDialog(
                             contentAlignment = Alignment.CenterStart
                         ) {
                             if (customName.isEmpty()) {
-                                Text("Display Name (e.g. Shubh)", color = Color.Gray, fontSize = 12.5.sp)
+                                Text("Display Name (e.g. Navya or Shubh)", color = Color.Gray, fontSize = 12.5.sp)
                             }
                             BasicTextField(
                                 value = customName,
