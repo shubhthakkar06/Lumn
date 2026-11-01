@@ -61,6 +61,11 @@ fun DesktopEpisodeCard(
             verticalAlignment = Alignment.Top
         ) {
             // Left: High quality Episode Artwork matching Image 1 (click to play)
+            val isSomprakashdas = episode.id == "baps_ep_1" ||
+                episode.title.contains("Somprakashdas", ignoreCase = true) ||
+                episode.title.contains("True Refuge", ignoreCase = true) ||
+                episode.title.contains("સોમપ્રકાશદાસ", ignoreCase = true)
+
             Box(
                 modifier = Modifier
                     .width(180.dp)
@@ -70,7 +75,7 @@ fun DesktopEpisodeCard(
                     .clickable(onClick = onPlay),
                 contentAlignment = Alignment.Center
             ) {
-                if (episode.id == "baps_ep_1") {
+                if (isSomprakashdas) {
                     Image(
                         painter = painterResource("assets/somprakashdas_episode.png"),
                         contentDescription = episode.title,

@@ -13,9 +13,8 @@ class DesktopLibraryManager {
 
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
     private val dataDir = File(System.getProperty("user.home"), ".rivara").apply { mkdirs() }
-    private val playlistsFile = File(dataDir, "playlists.json")
-    private val likedSongsFile = File(dataDir, "liked_songs.json")
-    private val playlistSongsFile = File(dataDir, "playlist_songs.json")
+
+    private var activeUserId: String = "guest_default"
 
     private val _playlists = MutableStateFlow<List<DesktopPlaylist>>(emptyList())
     val playlists: StateFlow<List<DesktopPlaylist>> = _playlists.asStateFlow()
@@ -27,44 +26,129 @@ class DesktopLibraryManager {
     val likedSongs: StateFlow<List<DesktopSong>> = _likedSongs.asStateFlow()
 
     init {
-        loadData()
+        loadDataForUser(activeUserId)
     }
 
-    private fun loadData() {
+    fun switchUser(user: DesktopUser?) {
+        val newUserId = user?.id ?: "guest_default"
+        if (newUserId == activeUserId) return
+
+        // Save current user state before switching
+        saveDataForUser(activeUserId)
+
+        // Load new user's isolated library
+        activeUserId = newUserId
+        loadDataForUser(activeUserId)
+    }
+
+    private fun sanitize(userId: String): String {
+        return userId.replace(Regex("[^a-zA-Z0-9_]"), "_")
+    }
+
+    private fun getPlaylistsFile(userId: String) = File(dataDir, "user_playlists_${sanitize(userId)}.json")
+    private fun getLikedSongsFile(userId: String) = File(dataDir, "user_liked_${sanitize(userId)}.json")
+    private fun getPlaylistSongsFile(userId: String) = File(dataDir, "user_playlist_songs_${sanitize(userId)}.json")
+
+    private fun loadDataForUser(userId: String) {
+        val plFile = getPlaylistsFile(userId)
+        val likedFile = getLikedSongsFile(userId)
+        val plSongsFile = getPlaylistSongsFile(userId)
+
         try {
-            if (playlistsFile.exists()) {
-                val list = json.decodeFromString<List<DesktopPlaylist>>(playlistsFile.readText())
+            if (plFile.exists()) {
+                val list = json.decodeFromString<List<DesktopPlaylist>>(plFile.readText())
                 _playlists.value = list
             } else {
-                val defaults = listOf(
-                    DesktopPlaylist("pl_1", "Chill Mix", songCount = 0),
-                    DesktopPlaylist("pl_2", "Workout Beats", songCount = 0),
-                    DesktopPlaylist("pl_3", "Satsang & Katha", songCount = 1)
-                )
-                _playlists.value = defaults
-                savePlaylists()
+                // If legacy playlists.json exists and this is the primary user, migrate
+                val legacyPl = File(dataDir, "playlists.json")
+                if (legacyPl.exists() && !userId.startsWith("guest")) {
+                    val list = json.decodeFromString<List<DesktopPlaylist>>(legacyPl.readText())
+                    _playlists.value = list
+                    savePlaylists(userId)
+                } else {
+                    val defaults = if (userId.startsWith("guest")) {
+                        listOf(DesktopPlaylist("pl_guest_1", "Guest Chill Mix", songCount = 0))
+                    } else {
+                        listOf(
+                            DesktopPlaylist("pl_1", "Chill Mix", songCount = 0),
+                            DesktopPlaylist("pl_2", "Workout Beats", songCount = 0),
+                            DesktopPlaylist("pl_3", "Satsang & Katha", songCount = 1)
+                        )
+                    }
+                    _playlists.value = defaults
+                    savePlaylists(userId)
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            _playlists.value = emptyList()
         }
 
         try {
-            if (likedSongsFile.exists()) {
-                val list = json.decodeFromString<List<DesktopSong>>(likedSongsFile.readText())
+            if (likedFile.exists()) {
+                val list = json.decodeFromString<List<DesktopSong>>(likedFile.readText())
                 _likedSongs.value = list
+            } else {
+                val defaultLiked = listOf(
+                    DesktopSong(
+                        id = "baps_ep_1",
+                        title = "Patience and True Refuge in Bhagwan | Pujya Somprakashdas Swami | BAPS Satsang",
+                        artist = "Pujya Somprakashdas Swami",
+                        album = "Episode • BAPS Satsang Gujarati",
+                        durationSeconds = 2837L,
+                        albumArtUrl = "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/00/72/c6/0072c641-891b-71ff-8c1c-3e6f20be1f02/mza_13154730571231814752.jpg/600x600bb.jpg",
+                        audioUrl = "https://p.scdn.co/mp3-preview/fa88a13eafcd9aa77ca98e20ceb435c786e229c6.mp3",
+                        isLiked = true,
+                        isEpisode = true,
+                        description = "આપણું જીવન સુખ અને દુઃખ બંનેથી ભરેલું છે. જ્યારે મુશ્કેલીઓ આવે છે, ત્યારે આપણે ઘણીવાર નિરાશ થઈ જઈએ છીએ અથવા ખોટી જગ્યાએ ઉકેલ શોધીએ છીએ. પૂજ્ય સોમપ્રકાશદાસ સ્વામી આ કથામાં સમજાવે છે કે સુખ અને દુઃખ એ...",
+                        releaseDate = "Oct 12"
+                    ),
+                    DesktopSong(
+                        id = "yellow_coldplay",
+                        title = "Yellow",
+                        artist = "Coldplay",
+                        album = "Parachutes",
+                        durationSeconds = 269L,
+                        albumArtUrl = "https://c.saavncdn.com/712/Parachutes-English-2000-20201020084321-500x500.jpg",
+                        audioUrl = "https://aac.saavncdn.com/712/f2a4f4d2fb2d35889fa6e9f1a260f8ea_320.mp4",
+                        isLiked = true
+                    ),
+                    DesktopSong(
+                        id = "tum_hi_ho",
+                        title = "Tum Hi Ho",
+                        artist = "Arijit Singh",
+                        album = "Aashiqui 2",
+                        durationSeconds = 262L,
+                        albumArtUrl = "https://c.saavncdn.com/026/Aashiqui-2-Hindi-2013-500x500.jpg",
+                        audioUrl = "https://aac.saavncdn.com/026/02dfef8e359a35e38d6df72aebf8ad22_320.mp4",
+                        isLiked = true
+                    )
+                )
+                _likedSongs.value = defaultLiked
+                saveLikedSongs(userId)
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            _likedSongs.value = emptyList()
         }
 
         try {
-            if (playlistSongsFile.exists()) {
-                val map = json.decodeFromString<Map<String, List<DesktopSong>>>(playlistSongsFile.readText())
+            if (plSongsFile.exists()) {
+                val map = json.decodeFromString<Map<String, List<DesktopSong>>>(plSongsFile.readText())
                 _playlistSongs.value = map
+            } else {
+                _playlistSongs.value = emptyMap()
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            _playlistSongs.value = emptyMap()
         }
+    }
+
+    private fun saveDataForUser(userId: String) {
+        savePlaylists(userId)
+        saveLikedSongs(userId)
+        savePlaylistSongs(userId)
     }
 
     fun isLiked(songId: String): Boolean {
@@ -80,7 +164,7 @@ class DesktopLibraryManager {
             listOf(song.copy(isLiked = true)) + current
         }
         _likedSongs.value = updated
-        saveLikedSongs()
+        saveLikedSongs(activeUserId)
         return !alreadyLiked
     }
 
@@ -90,7 +174,7 @@ class DesktopLibraryManager {
         val playlist = DesktopPlaylist(id, clean, songCount = 0)
         val updated = _playlists.value + playlist
         _playlists.value = updated
-        savePlaylists()
+        savePlaylists(activeUserId)
         return playlist
     }
 
@@ -103,8 +187,8 @@ class DesktopLibraryManager {
             _playlists.value = _playlists.value.map {
                 if (it.id == playlistId) it.copy(songCount = currentMap[playlistId]?.size ?: 0) else it
             }
-            savePlaylists()
-            savePlaylistSongs()
+            savePlaylists(activeUserId)
+            savePlaylistSongs(activeUserId)
         }
     }
 
@@ -117,33 +201,33 @@ class DesktopLibraryManager {
         _playlists.value = _playlists.value.map {
             if (it.id == playlistId) it.copy(songCount = filtered.size) else it
         }
-        savePlaylists()
-        savePlaylistSongs()
+        savePlaylists(activeUserId)
+        savePlaylistSongs(activeUserId)
     }
 
     fun getSongsForPlaylist(playlistId: String): List<DesktopSong> {
         return _playlistSongs.value[playlistId].orEmpty()
     }
 
-    private fun savePlaylists() {
+    private fun savePlaylists(userId: String) {
         try {
-            playlistsFile.writeText(json.encodeToString(_playlists.value))
+            getPlaylistsFile(userId).writeText(json.encodeToString(_playlists.value))
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    private fun saveLikedSongs() {
+    private fun saveLikedSongs(userId: String) {
         try {
-            likedSongsFile.writeText(json.encodeToString(_likedSongs.value))
+            getLikedSongsFile(userId).writeText(json.encodeToString(_likedSongs.value))
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    private fun savePlaylistSongs() {
+    private fun savePlaylistSongs(userId: String) {
         try {
-            playlistSongsFile.writeText(json.encodeToString(_playlistSongs.value))
+            getPlaylistSongsFile(userId).writeText(json.encodeToString(_playlistSongs.value))
         } catch (e: Exception) {
             e.printStackTrace()
         }

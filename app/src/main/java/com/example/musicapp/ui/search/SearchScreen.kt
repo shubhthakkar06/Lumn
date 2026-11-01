@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
@@ -397,6 +398,11 @@ fun SearchScreen(
                                         verticalAlignment = Alignment.Top
                                     ) {
                                         // Left: Wide Thumbnail (16:9)
+                                        val isSomprakashdas = song.videoId == "baps_ep_1" ||
+                                            song.title.contains("Somprakashdas", ignoreCase = true) ||
+                                            song.title.contains("True Refuge", ignoreCase = true) ||
+                                            song.title.contains("સોમપ્રકાશદાસ", ignoreCase = true)
+
                                         Box(
                                             modifier = Modifier
                                                 .size(width = 118.dp, height = 76.dp)
@@ -404,7 +410,7 @@ fun SearchScreen(
                                                 .background(Color(0xFF222622)),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            if (song.videoId == "baps_ep_1") {
+                                            if (isSomprakashdas) {
                                                 androidx.compose.foundation.Image(
                                                     painter = androidx.compose.ui.res.painterResource(com.example.musicapp.R.drawable.somprakashdas_episode),
                                                     contentDescription = song.title,
@@ -484,10 +490,10 @@ fun SearchScreen(
                                                     contentAlignment = Alignment.Center
                                                 ) {
                                                     Icon(
-                                                        imageVector = Icons.Default.CheckCircle,
+                                                        imageVector = Icons.Default.Check,
                                                         contentDescription = "Saved",
                                                         tint = Color.Black,
-                                                        modifier = Modifier.size(18.dp)
+                                                        modifier = Modifier.size(16.dp)
                                                     )
                                                 }
 

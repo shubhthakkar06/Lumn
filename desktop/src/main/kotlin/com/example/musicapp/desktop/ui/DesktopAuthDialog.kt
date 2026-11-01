@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.musicapp.desktop.auth.DesktopGoogleAuth
 import com.example.musicapp.desktop.data.DesktopUser
 import com.example.musicapp.desktop.data.DesktopUserManager
 
@@ -32,9 +33,8 @@ fun DesktopAuthDialog(
     val currentUser by userManager.currentUser.collectAsState()
     val savedAccounts by userManager.savedAccounts.collectAsState()
 
-    var showGoogleInput by remember { mutableStateOf(false) }
-    var inputName by remember { mutableStateOf("Shubh Thakkar") }
-    var inputEmail by remember { mutableStateOf("shubhthakkar06@gmail.com") }
+    var isAuthenticating by remember { mutableStateOf(false) }
+    var statusMessage by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -66,9 +66,9 @@ fun DesktopAuthDialog(
                     .padding(vertical = 8.dp)
             ) {
                 Text(
-                    text = "Sign in to access your library, playlists, and synchronized lyrics.",
+                    text = "Sign in to synchronize your playlists, library, and personalized mixes across mobile and desktop.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
+                    color = Color(0xFFA0AAB8)
                 )
 
                 Spacer(modifier = Modifier.height(18.dp))
@@ -77,38 +77,48 @@ fun DesktopAuthDialog(
                 if (savedAccounts.isNotEmpty()) {
                     Text(
                         text = "SAVED ACCOUNTS",
-                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp),
-                        color = Color(0xFFAAAAAA)
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold),
+                        color = Color(0xFF8E99A8)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     LazyColumn(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(savedAccounts, key = { it.id }) { user ->
                             val isActive = user.id == currentUser?.id
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isActive) Color(0xFF1E3324) else Color(0xFF282828))
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isActive) Color(0xFF1E3827) else Color(0xFF22262E))
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isActive) Color(0xFF1ED760).copy(alpha = 0.6f) else Color(0xFF2E3540),
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
                                     .clickable {
                                         userManager.switchAccount(user)
                                         onDismiss()
                                     }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(32.dp)
+                                        .size(36.dp)
                                         .clip(CircleShape)
-                                        .background(if (isActive) Color(0xFF1ED760) else Color(0xFF404040)),
+                                        .background(if (isActive) Color(0xFF1ED760) else Color(0xFF384252)),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(user.avatarLetter, color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Text(
+                                        text = user.avatarLetter,
+                                        color = if (isActive) Color.Black else Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp
+                                    )
                                 }
-                                Spacer(modifier = Modifier.width(10.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = user.name,
@@ -116,14 +126,14 @@ fun DesktopAuthDialog(
                                         color = if (isActive) Color(0xFF1ED760) else Color.White
                                     )
                                     if (user.email.isNotBlank()) {
-                                        Text(text = user.email, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                        Text(text = user.email, style = MaterialTheme.typography.labelSmall, color = Color(0xFF8E99A8))
                                     }
                                 }
                                 IconButton(
                                     onClick = { userManager.signOut(user) },
                                     modifier = Modifier.size(28.dp)
                                 ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Remove", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Delete, contentDescription = "Remove", tint = Color(0xFF888888), modifier = Modifier.size(16.dp))
                                 }
                             }
                         }
@@ -131,80 +141,94 @@ fun DesktopAuthDialog(
                     Spacer(modifier = Modifier.height(18.dp))
                 }
 
-                if (showGoogleInput) {
-                    OutlinedTextField(
-                        value = inputName,
-                        onValueChange = { inputName = it },
-                        label = { Text("Your Name") },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF1ED760),
-                            unfocusedBorderColor = Color(0xFF404040)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
+                if (statusMessage.isNotBlank()) {
+                    Text(
+                        text = statusMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF55C7FF),
+                        modifier = Modifier.padding(bottom = 12.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = inputEmail,
-                        onValueChange = { inputEmail = it },
-                        label = { Text("Google Email") },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF1ED760),
-                            unfocusedBorderColor = Color(0xFF404040)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Button(
-                        onClick = {
-                            if (inputName.isNotBlank()) {
-                                userManager.signIn(inputName, inputEmail)
-                                showGoogleInput = false
+                }
+
+                // Official "Continue with Google" Action Button
+                Button(
+                    onClick = {
+                        isAuthenticating = true
+                        statusMessage = "Opening Google Sign-In in your browser..."
+                        DesktopGoogleAuth.launchBrowserAuth(
+                            onSuccess = { res ->
+                                isAuthenticating = false
+                                statusMessage = "Signed in as ${res.name}!"
+                                userManager.signIn(name = res.name, email = res.email, isGuest = false)
                                 onDismiss()
+                            },
+                            onError = { err ->
+                                isAuthenticating = false
+                                statusMessage = err
                             }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1ED760), contentColor = Color.Black),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Confirm Sign In", fontWeight = FontWeight.Bold)
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color.Black
+                    )
+                ) {
+                    if (isAuthenticating) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.Black, strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("Connecting to Google...", fontWeight = FontWeight.Bold)
+                    } else {
+                        // Google "G" Badge Icon
+                        Box(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF4285F4)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("G", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Continue with Google", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     }
-                } else {
-                    // Sign in with Google Button
-                    Button(
-                        onClick = { showGoogleInput = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
-                        shape = RoundedCornerShape(24.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Continue with Google", fontWeight = FontWeight.Bold)
-                    }
+                }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                    // Continue as Guest Button
+                // Guest Access / Log Out Button
+                if (currentUser == null || currentUser?.isGuest == true) {
                     OutlinedButton(
                         onClick = {
-                            userManager.signIn("Guest User", isGuest = true)
+                            userManager.signIn(name = "Guest User", isGuest = true)
                             onDismiss()
                         },
-                        shape = RoundedCornerShape(24.dp),
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(22.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                        border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(brush = androidx.compose.ui.graphics.SolidColor(Color(0xFF404040))),
-                        modifier = Modifier.fillMaxWidth()
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF384252))
                     ) {
-                        Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Person, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Continue as Guest")
+                        Text("Continue as Guest", fontWeight = FontWeight.Medium)
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = {
+                            userManager.signOut()
+                        },
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(22.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF5252)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.5f))
+                    ) {
+                        Text("Sign Out of Current Account", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
         },
-        containerColor = Color(0xFF1C1C1C),
+        containerColor = Color(0xFF161A22),
         shape = RoundedCornerShape(16.dp)
     )
 }

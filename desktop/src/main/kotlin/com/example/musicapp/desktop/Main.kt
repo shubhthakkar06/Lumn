@@ -63,8 +63,9 @@ fun main() = application {
         }
     }
 
-    // Automatically prompt sign-in when currentUser becomes null (e.g. after sign-out)
+    // Automatically sync library data & prompt sign-in when currentUser changes
     LaunchedEffect(currentUser) {
+        libraryManager.switchUser(currentUser)
         if (!showLaunchSplash && currentUser == null) {
             showAuthDialog = true
         }

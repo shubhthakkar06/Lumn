@@ -1,7 +1,7 @@
 {
-  "versionName": "2.7.5",
-  "versionCode": 32,
-  "minimumVersionCode": 32,
-  "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
-  "releaseNotes": "Rivara 2.7.5 introduces full Podcasts & Satsang episode support (rich discourse descriptions, durations, and audio playback), instant online search with dedicated Episode cards, enhanced auto-updater via global CDN, multi-account isolation, and macOS & Wear OS cross-platform support."
+  "versionName": "2.7.6",
+  "versionCode": 33,
+  "minimumVersionCode": 33,
+  "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/download/v2.7.6/Lumn.apk",
+  "releaseNotes": "Rivara 2.7.6: Authentic BAPS Gujarati Satsang discourses with Spotify audio streaming, authentic Somprakashdas Swami episode card layout, Google OAuth sign-in & cross-platform account sync, and animated launcher splash."
 }

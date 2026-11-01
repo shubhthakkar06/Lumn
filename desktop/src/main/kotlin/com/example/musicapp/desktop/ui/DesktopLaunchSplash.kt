@@ -1,14 +1,11 @@
 package com.example.musicapp.desktop.ui
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -18,87 +15,85 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
 fun DesktopLaunchSplash(modifier: Modifier = Modifier) {
-    val motion = rememberInfiniteTransition(label = "DesktopSplashMotion")
-    val scale by motion.animateFloat(
+    val motion = rememberInfiniteTransition(label = "rivaraLaunchMotion")
+    val logoScale by motion.animateFloat(
         initialValue = 0.94f,
-        targetValue = 1.04f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "LogoScale"
-    )
-
-    val glowAlpha by motion.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "GlowAlpha"
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(900), repeatMode = RepeatMode.Reverse),
+        label = "rivaraLogoPulse"
     )
 
     Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color(0xFF0D0F12)),
+        modifier = modifier.background(
+            Brush.linearGradient(listOf(Color(0xFF111B5B), Color(0xFF171038), Color(0xFF31104A)))
+        ),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            // Glowing Pulsing Logo
-            Box(
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Image(
+                painter = painterResource("assets/rivara_launcher_icon.png"),
+                contentDescription = "Rivara",
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(100.dp)
-                    .scale(scale)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            listOf(Color(0xFF1ED760).copy(alpha = glowAlpha), Color(0xFF00D2FF).copy(alpha = 0.2f), Color.Transparent)
-                        )
-                    )
-                    .border(2.5.dp, Brush.sweepGradient(listOf(Color(0xFF1ED760), Color(0xFF00D2FF), Color(0xFF1ED760))), CircleShape)
-                    .padding(18.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.GraphicEq,
-                    contentDescription = "Rivara",
-                    tint = Color(0xFF1ED760),
-                    modifier = Modifier.size(52.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(28.dp))
-
+                    .size(132.dp)
+                    .scale(logoScale)
+                    .clip(RoundedCornerShape(30.dp))
+            )
+            Spacer(Modifier.height(26.dp))
             Text(
                 text = "RIVARA",
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 6.sp
-                ),
-                color = Color.White
+                color = Color.White,
+                fontSize = 24.sp,
+                letterSpacing = 7.sp,
+                fontWeight = FontWeight.Bold
             )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "YOUR MUSIC, YOUR MOMENT",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp
-                ),
-                color = Color(0xFF60E6D0)
-            )
+            Spacer(Modifier.height(18.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf(
+                    Color(0xFF55C7FF),
+                    Color(0xFF9A62F6),
+                    Color(0xFFE34DAC),
+                    Color(0xFFFF806C),
+                    Color(0xFF56D8BF)
+                ).forEachIndexed { index, color ->
+                    SplashBeatBar(index = index, color = color, motion = motion)
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun SplashBeatBar(
+    index: Int,
+    color: Color,
+    motion: InfiniteTransition
+) {
+    val height by motion.animateFloat(
+        initialValue = 7f,
+        targetValue = 19f + (index % 3) * 5f,
+        animationSpec = infiniteRepeatable(
+            tween(durationMillis = 460 + index * 55, delayMillis = index * 70),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "splashBeat$index"
+    )
+    Box(
+        Modifier
+            .width(4.dp)
+            .height(height.dp)
+            .clip(CircleShape)
+            .background(color)
+    )
 }

@@ -254,7 +254,7 @@ class DesktopMusicRepository {
                 album = "Episode • BAPS Satsang Gujarati",
                 durationSeconds = 2837L, // 47 min 17 sec
                 albumArtUrl = "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/00/72/c6/0072c641-891b-71ff-8c1c-3e6f20be1f02/mza_13154730571231814752.jpg/600x600bb.jpg",
-                audioUrl = "https://www.buzzsprout.com/1006105/episodes/20031353-faith-is-a-muscle-how-do-we-strengthen-it-faith-part-2-pujya-chaitanyamurtidas-swami-wiw.mp3",
+                audioUrl = "https://p.scdn.co/mp3-preview/fa88a13eafcd9aa77ca98e20ceb435c786e229c6.mp3",
                 isLiked = true,
                 isEpisode = true,
                 description = "આપણું જીવન સુખ અને દુઃખ બંનેથી ભરેલું છે. જ્યારે મુશ્કેલીઓ આવે છે, ત્યારે આપણે ઘણીવાર નિરાશ થઈ જઈએ છીએ અથવા ખોટી જગ્યાએ ઉકેલ શોધીએ છીએ. પૂજ્ય સોમપ્રકાશદાસ સ્વામી આ કથામાં સમજાવે છે કે સુખ અને દુઃખ એ જીવનના બે પાસાં છે.",
@@ -270,29 +270,68 @@ class DesktopMusicRepository {
             ),
             DesktopSong(
                 id = "baps_ep_2",
-                title = "Faith Is a Muscle: How Do We Strengthen It? | Pujya Chaitanyamurtidas Swami",
-                artist = "Pujya Chaitanyamurtidas Swami",
-                album = "Episode • BAPS Better Living",
-                durationSeconds = 2410L, // 40 min 10 sec
-                albumArtUrl = "https://is1-ssl.mzstatic.com/image/thumb/PodcastSource221/v4/1a/42/0e/1a420e34-b357-ef5b-b7da-49c354795b92/08642214-e91d-4071-89b5-e2ae3b916892.png/600x600bb.jpg",
-                audioUrl = "https://www.buzzsprout.com/1006105/episodes/20031353-faith-is-a-muscle-how-do-we-strengthen-it-faith-part-2-pujya-chaitanyamurtidas-swami-wiw.mp3",
+                title = "વાણી , વિચાર અને વલણ (Vani, Vichar ane Valan) | Pu. Gyanvatsal Swami",
+                artist = "Pujya Gyanvatsal Swami",
+                album = "Episode • BAPS Satsang Gujarati",
+                durationSeconds = 2712L, // 45 min 12 sec
+                albumArtUrl = "https://d3t3ozftmdmh3i.cloudfront.net/production/podcast_uploaded_nologo/3720760/3720760-1582650047432-8e3427f300f86.jpg",
+                audioUrl = "https://anchor.fm/s/11be3c80/podcast/play/9702112/https%3A%2F%2Fd3ctxlq1ktw2nl.cloudfront.net%2Fproduction%2F2020-0-15%2F43524604-44100-2-6f1b842bf8afb.mp3",
                 isLiked = true,
                 isEpisode = true,
-                description = "Understanding how faith in Bhagwan and Satpurush anchors our mind during testing times and keeps us centered.",
+                description = "પૂજ્ય જ્ઞાનવત્સલ સ્વામી દ્વારા જીવનમાં વાણી, વિચાર અને વલણની પવિત્રતા અને સત્સંગ દ્વારા માનસિક શાંતિ પ્રાપ્ત કરવા માટેનું પ્રેરણાદાયી પ્રવચન.",
                 releaseDate = "Oct 19"
             ),
             DesktopSong(
                 id = "baps_ep_3",
-                title = "Inaugural Executive Forum on “Value-Added Life” | Pujya Brahmaviharidas Swami",
-                artist = "Pujya Brahmaviharidas Swami",
-                album = "Episode • BAPS Satsang Lectures",
-                durationSeconds = 3120L, // 52 min
-                albumArtUrl = "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/00/b2/ff/00b2ff57-d8bf-b00d-a317-b6c7788b0890/mza_13015016754983816106.jpg/600x600bb.jpg",
-                audioUrl = "https://www.buzzsprout.com/1006105/episodes/19983365-inaugural-executive-forum-on-value-added-life-pujya-brahmaviharidas-swami.mp3",
+                title = "સારા અને સફળ સંબંધો રાખવાનું રહસ્ય | Pu. Apurvamuni Swami",
+                artist = "Pujya Apurvamuni Swami",
+                album = "Episode • BAPS Satsang Gujarati",
+                durationSeconds = 2320L, // 38 min 40 sec
+                albumArtUrl = "https://d3t3ozftmdmh3i.cloudfront.net/production/podcast_uploaded_nologo/3720760/3720760-1582650047432-8e3427f300f86.jpg",
+                audioUrl = "https://anchor.fm/s/11be3c80/podcast/play/10202928/https%3A%2F%2Fd3ctxlq1ktw2nl.cloudfront.net%2Fstaging%2F2020-02-06%2F4e117b5b3a1fd9ab4821bb33e862a648.m4a",
+                isLiked = true,
+                isEpisode = true,
+                description = "પૂજ્ય અપૂર્વમુનિ સ્વામી સમજાવે છે કે પરિવાર અને સમાજમાં સંબંધોમાં મીઠાશ, સહનશીલતા અને સત્સંગનું મહત્ત્વ કેવું હોવું જોઈએ.",
+                releaseDate = "Sep 25"
+            ),
+            DesktopSong(
+                id = "baps_ep_4",
+                title = "તણાવ મુક્ત જીવન જીવવાની કળા (Stress Management) | Pu. Gyanvatsal Swami",
+                artist = "Pujya Gyanvatsal Swami",
+                album = "Episode • BAPS Satsang Gujarati",
+                durationSeconds = 2538L, // 42 min 18 sec
+                albumArtUrl = "https://d3t3ozftmdmh3i.cloudfront.net/production/podcast_uploaded_nologo/3720760/3720760-1582650047432-8e3427f300f86.jpg",
+                audioUrl = "https://anchor.fm/s/11be3c80/podcast/play/9342893/https%3A%2F%2Fd3ctxlq1ktw2nl.cloudfront.net%2Fstaging%2F2020-03-05%2Fdda0f33ab415b7535c18bcaf0347ae3b.m4a",
                 isLiked = false,
                 isEpisode = true,
-                description = "Pujya Brahmaviharidas Swami delivers an inspiring discourse on leading a meaningful, value-centered life with purpose and dedication.",
-                releaseDate = "Sep 28"
+                description = "આજના દોડધામભર્યા જીવનમાં આધ્યાત્મિકતા અને સ્વામિનારાયણ ભગવાનના આશ્રય દ્વારા તણાવમુક્ત અને સંતોષી જીવન કેવી રીતે જીવવું.",
+                releaseDate = "Sep 12"
+            ),
+            DesktopSong(
+                id = "baps_ep_5",
+                title = "સફળતા અને નિષ્ફળતા - જીવન મૂલ્યો | Pu. Gyanvatsal Swami",
+                artist = "Pujya Gyanvatsal Swami",
+                album = "Episode • BAPS Satsang Gujarati",
+                durationSeconds = 2210L, // 36 min 50 sec
+                albumArtUrl = "https://d3t3ozftmdmh3i.cloudfront.net/production/podcast_uploaded_nologo/3720760/3720760-1582650047432-8e3427f300f86.jpg",
+                audioUrl = "https://anchor.fm/s/11be3c80/podcast/play/9149804/https%3A%2F%2Fd3ctxlq1ktw2nl.cloudfront.net%2Fstaging%2F2020-02-06%2Fd1b49f50-fc82-3d71-c0ef-11c750a92543.m4a",
+                isLiked = false,
+                isEpisode = true,
+                description = "જીવનમાં મુશ્કેલીઓ કે નિષ્ફળતા આવે ત્યારે સત્સંગ અને સત્પુરુષની આજ્ઞામાં રહીને કેવી રીતે સ્થિર મતિ રાખવી તેની સુંદર સમજૂતી.",
+                releaseDate = "Aug 28"
+            ),
+            DesktopSong(
+                id = "baps_ep_6",
+                title = "દરેક પરિસ્થિતિમાં હકારાત્મકતા (Positivity in Everything) | Pu. Brahmaviharidas Swami",
+                artist = "Pujya Brahmaviharidas Swami",
+                album = "Episode • BAPS Satsang Gujarati",
+                durationSeconds = 3130L, // 52 min 10 sec
+                albumArtUrl = "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/00/b2/ff/00b2ff57-d8bf-b00d-a317-b6c7788b0890/mza_13015016754983816106.jpg/600x600bb.jpg",
+                audioUrl = "https://anchor.fm/s/11be3c80/podcast/play/13479437/https%3A%2F%2Fd3ctxlq1ktw2nl.cloudfront.net%2Fproduction%2F2020-4-8%2F71372863-48000-1-3104d1f71b053.mp3",
+                isLiked = true,
+                isEpisode = true,
+                description = "પૂજ્ય બ્રહ્મવિહારીદાસ સ્વામીનું પ્રેરણાદાયી પ્રવચન: પરમાત્માના સંકલ્પ પર વિશ્વાસ રાખીને હકારાત્મક દ્રષ્ટિકોણ કેળવવો.",
+                releaseDate = "Aug 14"
             )
         )
     }
