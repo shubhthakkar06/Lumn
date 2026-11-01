@@ -52,7 +52,13 @@ class DesktopUserManager {
     }
 
     fun signIn(name: String, email: String = "", isGuest: Boolean = false) {
-        val id = if (isGuest) "guest_${System.currentTimeMillis()}" else "usr_${name.lowercase().replace(" ", "_")}"
+        val id = if (isGuest) {
+            "guest_${System.currentTimeMillis()}"
+        } else if (email.isNotBlank()) {
+            "usr_" + email.lowercase().replace(Regex("[^a-z0-9]"), "_")
+        } else {
+            "usr_" + name.lowercase().replace(Regex("[^a-z0-9]"), "_")
+        }
         val user = DesktopUser(
             id = id,
             name = name.ifBlank { if (isGuest) "Guest User" else "Music Lover" },

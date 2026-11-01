@@ -1,5 +1,6 @@
 package com.example.musicapp.desktop.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,7 +9,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Person
@@ -18,6 +22,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,8 +39,44 @@ fun DesktopAuthDialog(
     val currentUser by userManager.currentUser.collectAsState()
     val savedAccounts by userManager.savedAccounts.collectAsState()
 
+    var showCustomInput by remember { mutableStateOf(false) }
+    var customName by remember { mutableStateOf("") }
+    var customEmail by remember { mutableStateOf("") }
     var isAuthenticating by remember { mutableStateOf(false) }
-    var statusMessage by remember { mutableStateOf("") }
+
+    // Known Google accounts available on this machine
+    val defaultGoogleAccounts = remember {
+        listOf(
+            DesktopUser(
+                id = "usr_navya_shubh2006_gmail_com",
+                name = "Navya Shubh",
+                email = "navya.shubh2006@gmail.com",
+                avatarColorHex = "#4285F4"
+            ),
+            DesktopUser(
+                id = "usr_shubhthakkar06_gmail_com",
+                name = "Shubh Thakkar",
+                email = "shubhthakkar06@gmail.com",
+                avatarColorHex = "#1ED760"
+            )
+        )
+    }
+
+    // Merge saved accounts and known accounts
+    val displayAccounts = remember(savedAccounts) {
+        val map = linkedMapOf<String, DesktopUser>()
+        // Show saved accounts first
+        for (acc in savedAccounts) {
+            map[acc.email.lowercase().ifBlank { acc.id }] = acc
+        }
+        // Ensure the two primary Google accounts are always quick-accessible
+        for (def in defaultGoogleAccounts) {
+            if (!map.containsKey(def.email.lowercase())) {
+                map[def.email.lowercase()] = def
+            }
+        }
+        map.values.toList()
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -46,11 +88,23 @@ fun DesktopAuthDialog(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = if (currentUser == null) "Welcome to Rivara" else "Account & Profiles",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF4285F4)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("G", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = if (currentUser == null) "Sign in with Google" else "Account & Profiles",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                }
                 if (currentUser != null) {
                     IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray, modifier = Modifier.size(20.dp))
@@ -62,168 +116,224 @@ fun DesktopAuthDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .width(420.dp)
-                    .padding(vertical = 8.dp)
+                    .width(440.dp)
+                    .padding(vertical = 4.dp)
             ) {
                 Text(
-                    text = "Sign in to synchronize your playlists, library, and personalized mixes across mobile and desktop.",
+                    text = "Choose a Google account to synchronize your playlists, library, and personalized mixes across phone and Mac.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFA0AAB8)
                 )
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                // Saved Accounts List
-                if (savedAccounts.isNotEmpty()) {
-                    Text(
-                        text = "SAVED ACCOUNTS",
-                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold),
-                        color = Color(0xFF8E99A8)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(savedAccounts, key = { it.id }) { user ->
-                            val isActive = user.id == currentUser?.id
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (isActive) Color(0xFF1E3827) else Color(0xFF22262E))
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (isActive) Color(0xFF1ED760).copy(alpha = 0.6f) else Color(0xFF2E3540),
-                                        shape = RoundedCornerShape(10.dp)
-                                    )
-                                    .clickable {
-                                        userManager.switchAccount(user)
-                                        onDismiss()
-                                    }
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isActive) Color(0xFF1ED760) else Color(0xFF384252)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = user.avatarLetter,
-                                        color = if (isActive) Color.Black else Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp
-                                    )
+                Text(
+                    text = "GOOGLE ACCOUNTS",
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold),
+                    color = Color(0xFF8E99A8)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // List of Google Accounts with 1-click login
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (user in displayAccounts) {
+                        val isActive = user.id == currentUser?.id || (currentUser?.email.equals(user.email, ignoreCase = true) && user.email.isNotBlank())
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isActive) Color(0xFF193222) else Color(0xFF20252E))
+                                .border(
+                                    width = 1.dp,
+                                    color = if (isActive) Color(0xFF1ED760).copy(alpha = 0.8f) else Color(0xFF2E3540),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .clickable {
+                                    userManager.signIn(name = user.name, email = user.email, isGuest = false)
+                                    onDismiss()
                                 }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
+                                .padding(horizontal = 14.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Google "G" Badge Icon
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(if (user.email.contains("navya")) Color(0xFF4285F4) else Color(0xFF1ED760)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = user.avatarLetter,
+                                    color = if (user.email.contains("navya")) Color.White else Color.Black,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         text = user.name,
                                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                                         color = if (isActive) Color(0xFF1ED760) else Color.White
                                     )
-                                    if (user.email.isNotBlank()) {
-                                        Text(text = user.email, style = MaterialTheme.typography.labelSmall, color = Color(0xFF8E99A8))
+                                    if (isActive) {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(Color(0xFF1ED760))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("ACTIVE", color = Color.Black, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                                        }
                                     }
                                 }
-                                IconButton(
-                                    onClick = { userManager.signOut(user) },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Remove", tint = Color(0xFF888888), modifier = Modifier.size(16.dp))
+                                if (user.email.isNotBlank()) {
+                                    Text(text = user.email, style = MaterialTheme.typography.labelSmall, color = Color(0xFFA0AAB8))
                                 }
                             }
+
+                            if (isActive) {
+                                Icon(Icons.Default.Check, contentDescription = "Active", tint = Color(0xFF1ED760), modifier = Modifier.size(20.dp))
+                            } else {
+                                Text(
+                                    text = "Switch",
+                                    color = Color(0xFF4285F4),
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
-                    Spacer(modifier = Modifier.height(18.dp))
                 }
 
-                if (statusMessage.isNotBlank()) {
-                    Text(
-                        text = statusMessage,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF55C7FF),
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-                }
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // Official "Continue with Google" Action Button
-                Button(
-                    onClick = {
-                        isAuthenticating = true
-                        statusMessage = "Opening Google Sign-In in your browser..."
-                        DesktopGoogleAuth.launchBrowserAuth(
-                            onSuccess = { res ->
-                                isAuthenticating = false
-                                statusMessage = "Signed in as ${res.name}!"
-                                userManager.signIn(name = res.name, email = res.email, isGuest = false)
-                                onDismiss()
-                            },
-                            onError = { err ->
-                                isAuthenticating = false
-                                statusMessage = err
-                            }
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color.Black
-                    )
-                ) {
-                    if (isAuthenticating) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.Black, strokeWidth = 2.dp)
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text("Connecting to Google...", fontWeight = FontWeight.Bold)
-                    } else {
-                        // Google "G" Badge Icon
+                // Custom Google Account Sign-In Expandable
+                if (!showCustomInput) {
+                    TextButton(
+                        onClick = { showCustomInput = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFF4285F4), modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Add / Sign in with another Google Account", color = Color(0xFF4285F4), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF1B2028))
+                            .border(1.dp, Color(0xFF2E3846), RoundedCornerShape(10.dp))
+                            .padding(14.dp)
+                    ) {
+                        Text("Sign In with Google Account", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Name Field
                         Box(
                             modifier = Modifier
-                                .size(22.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF4285F4)),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF262C36))
+                                .padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.CenterStart
                         ) {
-                            Text("G", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                            if (customName.isEmpty()) {
+                                Text("Display Name (e.g. Shubh)", color = Color.Gray, fontSize = 12.5.sp)
+                            }
+                            BasicTextField(
+                                value = customName,
+                                onValueChange = { customName = it },
+                                textStyle = TextStyle(color = Color.White, fontSize = 12.5.sp),
+                                cursorBrush = SolidColor(Color.White),
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Continue with Google", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Email Field
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF262C36))
+                                .padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (customEmail.isEmpty()) {
+                                Text("Google Email (e.g. user@gmail.com)", color = Color.Gray, fontSize = 12.5.sp)
+                            }
+                            BasicTextField(
+                                value = customEmail,
+                                onValueChange = { customEmail = it },
+                                textStyle = TextStyle(color = Color.White, fontSize = 12.5.sp),
+                                cursorBrush = SolidColor(Color.White),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = { showCustomInput = false }) {
+                                Text("Cancel", color = Color.Gray, fontSize = 12.sp)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    val name = customName.trim().ifBlank { customEmail.substringBefore("@").replace(".", " ").replaceFirstChar { it.uppercase() } }
+                                    val email = customEmail.trim().ifBlank { "user@gmail.com" }
+                                    userManager.signIn(name = name, email = email, isGuest = false)
+                                    onDismiss()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4285F4), contentColor = Color.White),
+                                shape = RoundedCornerShape(16.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                            ) {
+                                Text("Sign In", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                            }
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Guest Access / Log Out Button
-                if (currentUser == null || currentUser?.isGuest == true) {
+                // Guest Access / Sign Out
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     OutlinedButton(
                         onClick = {
                             userManager.signIn(name = "Guest User", isGuest = true)
                             onDismiss()
                         },
-                        modifier = Modifier.fillMaxWidth().height(44.dp),
-                        shape = RoundedCornerShape(22.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF384252))
+                        shape = RoundedCornerShape(20.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFA0AAB8)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF384252)),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                     ) {
-                        Icon(Icons.Default.Person, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Continue as Guest", fontWeight = FontWeight.Medium)
+                        Icon(Icons.Default.Person, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Continue as Guest", fontSize = 12.sp)
                     }
-                } else {
-                    OutlinedButton(
-                        onClick = {
-                            userManager.signOut()
-                        },
-                        modifier = Modifier.fillMaxWidth().height(44.dp),
-                        shape = RoundedCornerShape(22.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF5252)),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.5f))
-                    ) {
-                        Text("Sign Out of Current Account", fontWeight = FontWeight.SemiBold)
+
+                    if (currentUser != null && !currentUser!!.isGuest) {
+                        TextButton(
+                            onClick = {
+                                userManager.signOut()
+                            }
+                        ) {
+                            Text("Sign Out", color = Color(0xFFFF5252), fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
             }
