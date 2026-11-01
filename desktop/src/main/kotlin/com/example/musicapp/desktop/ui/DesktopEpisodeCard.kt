@@ -42,33 +42,30 @@ fun DesktopEpisodeCard(
     var showMenu by remember { mutableStateOf(false) }
     var showPlaylistSubmenu by remember { mutableStateOf(false) }
 
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isPlayingThis) Color(0xFF1B2E21) else Color(0xFF181C19)
-        ),
+    Box(
         modifier = modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (isPlayingThis) Color(0xFF1B2E21) else Color(0xFF181C19))
             .border(
                 width = 1.dp,
-                color = if (isPlayingThis) Color(0xFF1ED760).copy(alpha = 0.5f) else Color(0xFF263329),
+                color = if (isPlayingThis) Color(0xFF1ED760).copy(alpha = 0.6f) else Color(0xFF263329),
                 shape = RoundedCornerShape(12.dp)
             )
-            .clickable(onClick = onPlay)
+            .padding(16.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left: High quality Episode Artwork
+            // Left: High quality Episode Artwork (click to play)
             Box(
                 modifier = Modifier
                     .width(160.dp)
                     .height(96.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF222622)),
+                    .background(Color(0xFF222622))
+                    .clickable(onClick = onPlay),
                 contentAlignment = Alignment.Center
             ) {
                 if (episode.albumArtUrl.isNotBlank()) {
@@ -90,10 +87,11 @@ fun DesktopEpisodeCard(
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            // Middle: Episode Details
+            // Middle: Episode Details (click to play)
             Column(
                 modifier = Modifier
                     .weight(1f)
+                    .clickable(onClick = onPlay)
                     .padding(end = 12.dp)
             ) {
                 Text(
@@ -153,7 +151,7 @@ fun DesktopEpisodeCard(
                 }
             }
 
-            // Right: Like Icon + Big Circular Play Button + 3-dots
+            // Right: Like Icon + Play/Pause Button + 3-dots
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -161,7 +159,7 @@ fun DesktopEpisodeCard(
                 // Like / Checkmark Icon
                 IconButton(
                     onClick = onToggleLike,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
                         imageVector = if (isLiked) Icons.Default.CheckCircle else Icons.Default.FavoriteBorder,
@@ -171,24 +169,22 @@ fun DesktopEpisodeCard(
                     )
                 }
 
-                // Play / Pause Circle Button (just like Spotify episode card)
-                Button(
-                    onClick = {
-                        if (isPlayingThis) onTogglePlayPause() else onPlay()
-                    },
-                    modifier = Modifier.size(42.dp),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color.Black
-                    ),
-                    contentPadding = PaddingValues(0.dp)
+                // Play / Pause Circle Button
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .clickable {
+                            if (isPlayingThis) onTogglePlayPause() else onPlay()
+                        },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (isPlayingThis) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (isPlayingThis) "Pause" else "Play",
                         tint = Color.Black,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(26.dp)
                     )
                 }
 
@@ -196,7 +192,7 @@ fun DesktopEpisodeCard(
                 Box {
                     IconButton(
                         onClick = { showMenu = true },
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.MoreVert,

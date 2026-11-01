@@ -39,6 +39,8 @@ fun DesktopPlayerBar(
     isPlaying: Boolean,
     progressMs: Long,
     volume: Float,
+    isShuffle: Boolean,
+    isRepeat: Boolean,
     isLyricsOpen: Boolean,
     isQueueOpen: Boolean,
     onTogglePlayPause: () -> Unit,
@@ -46,6 +48,8 @@ fun DesktopPlayerBar(
     onSkipPrev: () -> Unit,
     onSeek: (Long) -> Unit,
     onVolumeChange: (Float) -> Unit,
+    onToggleShuffle: () -> Unit,
+    onToggleRepeat: () -> Unit,
     onToggleLyrics: () -> Unit,
     onToggleQueue: () -> Unit,
     onToggleLike: () -> Unit,
@@ -140,8 +144,13 @@ fun DesktopPlayerBar(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    IconButton(onClick = {}, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Shuffle, contentDescription = "Shuffle", tint = Color.Gray, modifier = Modifier.size(18.dp))
+                    IconButton(onClick = onToggleShuffle, modifier = Modifier.size(28.dp)) {
+                        Icon(
+                            Icons.Default.Shuffle,
+                            contentDescription = "Shuffle",
+                            tint = if (isShuffle) Color(0xFF1ED760) else Color.Gray,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                     IconButton(onClick = onSkipPrev, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = Color.White, modifier = Modifier.size(24.dp))
@@ -169,8 +178,13 @@ fun DesktopPlayerBar(
                     IconButton(onClick = onSkipNext, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White, modifier = Modifier.size(24.dp))
                     }
-                    IconButton(onClick = {}, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Repeat, contentDescription = "Repeat", tint = Color.Gray, modifier = Modifier.size(18.dp))
+                    IconButton(onClick = onToggleRepeat, modifier = Modifier.size(28.dp)) {
+                        Icon(
+                            Icons.Default.Repeat,
+                            contentDescription = "Repeat",
+                            tint = if (isRepeat) Color(0xFF1ED760) else Color.Gray,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
 

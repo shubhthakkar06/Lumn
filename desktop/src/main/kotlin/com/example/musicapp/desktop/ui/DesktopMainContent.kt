@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.example.musicapp.desktop.data.DesktopLibraryManager
 import com.example.musicapp.desktop.data.DesktopMusicRepository
+import com.example.musicapp.desktop.data.DesktopUser
 import com.example.musicapp.desktop.model.DesktopArtist
 import com.example.musicapp.desktop.model.DesktopPlaylist
 import com.example.musicapp.desktop.model.DesktopSong
@@ -40,6 +41,7 @@ import java.util.Calendar
 @Composable
 fun DesktopMainContent(
     selectedTab: String,
+    currentUser: DesktopUser?,
     currentSong: DesktopSong?,
     isPlaying: Boolean,
     playlists: List<DesktopPlaylist>,
@@ -51,6 +53,7 @@ fun DesktopMainContent(
     onPlayNext: (DesktopSong) -> Unit,
     onAddToQueue: (DesktopSong) -> Unit,
     onTabSelected: (String) -> Unit,
+    onOpenAuth: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -85,11 +88,12 @@ fun DesktopMainContent(
         }
     }
 
-    // Load initial songs on launch
-    LaunchedEffect(Unit) {
-        isLoading = true
-        displayedSongs = musicRepository.getTrendingSongs()
-        isLoading = false
+    // Reset search when switching back to Home tab
+    LaunchedEffect(selectedTab) {
+        if (selectedTab == "Home") {
+            searchQuery = ""
+            selectedCategory = "All"
+        }
     }
 
     // Debounced Online Search or Category Switch
@@ -152,11 +156,12 @@ fun DesktopMainContent(
                     modifier = Modifier.width(460.dp).height(50.dp)
                 )
 
-                // User Profile Pill
+                // User Profile Pill (Clickable -> Opens Auth & Profiles Dialog)
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
                         .background(Color(0xFF1E1E1E))
+                        .clickable(onClick = onOpenAuth)
                         .padding(horizontal = 14.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -167,10 +172,20 @@ fun DesktopMainContent(
                             .background(Color(0xFF1ED760)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("S", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(
+                            text = currentUser?.avatarLetter ?: "S",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
-                    Text("Shubh", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text(
+                        text = currentUser?.name ?: "Sign In",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
                 }
             }
 
@@ -232,8 +247,8 @@ fun DesktopMainContent(
                             val isSelected = category == selectedCategory && searchQuery.isBlank()
                             AssistChip(
                                 onClick = {
-                                    selectedCategory = category
                                     searchQuery = ""
+                                    selectedCategory = category
                                 },
                                 label = {
                                     Text(
@@ -258,7 +273,7 @@ fun DesktopMainContent(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
-                        // Top Artists Row (shown when not searching)
+                        // Top Artists Row (shown when on Home and not actively querying)
                         if (searchQuery.isBlank() && selectedCategory == "All") {
                             item {
                                 Column(modifier = Modifier.padding(bottom = 12.dp)) {
@@ -338,7 +353,6 @@ fun DesktopMainContent(
                                 }
                             }
                         } else {
-                            // Render items: Episodes use DesktopEpisodeCard, songs use DesktopSongRow!
                             itemsIndexed(displayedSongs, key = { index, s -> "${s.id}_$index" }) { index, song ->
                                 if (song.isEpisode) {
                                     DesktopEpisodeCard(
@@ -427,7 +441,7 @@ private fun LikedSongsView(
                     color = Color.White
                 )
                 Text(
-                    text = "Shubh Thakkar • ${likedSongs.size} tracks",
+                    text = "${likedSongs.size} tracks saved",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White.copy(alpha = 0.9f)
                 )
@@ -526,7 +540,7 @@ private fun PlaylistDetailView(
                     color = Color.White
                 )
                 Text(
-                    text = "Created by ${playlist?.creator ?: "Shubh Thakkar"} • ${songs.size} tracks",
+                    text = "Created by ${playlist?.creator ?: "User"} • ${songs.size} tracks",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.Gray
                 )

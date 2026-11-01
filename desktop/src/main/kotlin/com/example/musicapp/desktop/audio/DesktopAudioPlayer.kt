@@ -19,6 +19,17 @@ class DesktopAudioPlayer(
     private val httpClient = OkHttpClient()
     private val cacheDir = File(System.getProperty("user.home"), ".rivara/cache").apply { mkdirs() }
 
+    private val playerBin: String by lazy {
+        listOf("/opt/homebrew/bin/ffplay", "/usr/local/bin/ffplay")
+            .firstOrNull { File(it).canExecute() }
+            ?: runCatching {
+                val p = ProcessBuilder("which", "ffplay").start()
+                val out = p.inputStream.bufferedReader().readLine()?.trim().orEmpty()
+                if (out.isNotBlank() && File(out).canExecute()) out else null
+            }.getOrNull()
+            ?: "/usr/bin/afplay"
+    }
+
     private var activeProcess: Process? = null
     private var activePid: Long = -1L
     private var isIntentionallyStopped = false
@@ -39,6 +50,20 @@ class DesktopAudioPlayer(
 
     private val _queue = MutableStateFlow<List<DesktopSong>>(emptyList())
     val queue: StateFlow<List<DesktopSong>> = _queue.asStateFlow()
+
+    private val _isShuffle = MutableStateFlow(false)
+    val isShuffle: StateFlow<Boolean> = _isShuffle.asStateFlow()
+
+    private val _isRepeat = MutableStateFlow(false)
+    val isRepeat: StateFlow<Boolean> = _isRepeat.asStateFlow()
+
+    fun toggleShuffle() {
+        _isShuffle.value = !_isShuffle.value
+    }
+
+    fun toggleRepeat() {
+        _isRepeat.value = !_isRepeat.value
+    }
 
     fun setQueue(songs: List<DesktopSong>) {
         _queue.value = songs
@@ -71,7 +96,6 @@ class DesktopAudioPlayer(
         _progressMs.value = startPositionMs
         _isPlaying.value = true
 
-        // Ensure song is present in queue
         if (_queue.value.none { it.id == song.id }) {
             _queue.value = listOf(song) + _queue.value
         }
@@ -88,8 +112,13 @@ class DesktopAudioPlayer(
                 return@launch
             }
 
+            val isMp3 = streamUrl.contains(".mp3", ignoreCase = true) ||
+                streamUrl.contains("buzzsprout", ignoreCase = true) ||
+                streamUrl.contains("anchor.fm", ignoreCase = true)
+            val ext = if (isMp3) "mp3" else "m4a"
+
             val safeId = song.id.replace(Regex("[^a-zA-Z0-9_]"), "_")
-            val targetFile = File(cacheDir, "$safeId.m4a")
+            var targetFile = File(cacheDir, "$safeId.$ext")
 
             if (!targetFile.exists() || targetFile.length() < 10000) {
                 try {
@@ -110,36 +139,73 @@ class DesktopAudioPlayer(
                 }
             }
 
+            // Verify file format header to prevent macOS CoreAudio 'typ?' errors
+            if (targetFile.exists() && targetFile.length() > 500) {
+                try {
+                    val bytes = ByteArray(4)
+                    targetFile.inputStream().use { it.read(bytes) }
+                    val isActuallyMp3 = (bytes[0] == 'I'.code.toByte() && bytes[1] == 'D'.code.toByte() && bytes[2] == '3'.code.toByte()) ||
+                        (bytes[0] == 0xFF.toByte() && (bytes[1].toInt() and 0xE0) == 0xE0)
+                    if (isActuallyMp3 && !targetFile.name.endsWith(".mp3")) {
+                        val renamed = File(cacheDir, "$safeId.mp3")
+                        targetFile.renameTo(renamed)
+                        targetFile = renamed
+                    }
+                } catch (_: Exception) {}
+            }
+
             if (targetFile.exists() && targetFile.length() > 10000) {
-                startAfplay(targetFile, startPositionMs / 1000L)
+                startAudioEngine(targetFile, startPositionMs / 1000L)
             } else {
                 startProgressTimer(song.durationSeconds * 1000L)
             }
         }
     }
 
-    private fun startAfplay(file: File, startSeconds: Long) {
-        stopAfplayProcess()
+    private fun startAudioEngine(file: File, startSeconds: Long) {
+        stopPlayerProcess()
         try {
-            val volStr = String.format(Locale.US, "%.2f", _volume.value)
-            val cmd = mutableListOf("afplay", file.absolutePath, "-v", volStr)
-            if (startSeconds > 0) {
-                cmd.add("-s")
-                cmd.add(startSeconds.toString())
+            val cmd = mutableListOf<String>()
+            val isFfplay = playerBin.endsWith("ffplay")
+
+            if (isFfplay) {
+                val volInt = (_volume.value * 100).toInt().coerceIn(0, 100)
+                cmd.add(playerBin)
+                cmd.add("-nodisp")
+                cmd.add("-autoexit")
+                cmd.add("-volume")
+                cmd.add(volInt.toString())
+                if (startSeconds > 0) {
+                    cmd.add("-ss")
+                    cmd.add(startSeconds.toString())
+                }
+                cmd.add(file.absolutePath)
+            } else {
+                val volStr = String.format(Locale.US, "%.2f", _volume.value)
+                cmd.add(playerBin)
+                cmd.add(file.absolutePath)
+                cmd.add("-v")
+                cmd.add(volStr)
+                // afplay does NOT support -s, so start from beginning if using afplay
             }
 
-            val process = ProcessBuilder(cmd).start()
+            val process = ProcessBuilder(cmd)
+                .redirectErrorStream(true)
+                .start()
             activeProcess = process
             activePid = process.pid()
 
             startProgressTimer((_currentSong.value?.durationSeconds ?: 180L) * 1000L)
 
-            // Monitor when process naturally completes
             scope.launch {
                 val exitCode = process.waitFor()
                 if (activeProcess == process && !isIntentionallyStopped && exitCode == 0 && _isPlaying.value) {
                     withContext(Dispatchers.Main) {
-                        skipNext()
+                        if (_isRepeat.value) {
+                            _currentSong.value?.let { play(it, 0L) }
+                        } else {
+                            skipNext()
+                        }
                     }
                 }
             }
@@ -199,9 +265,12 @@ class DesktopAudioPlayer(
         _progressMs.value = clamped
 
         val safeId = song.id.replace(Regex("[^a-zA-Z0-9_]"), "_")
-        val targetFile = File(cacheDir, "$safeId.m4a")
+        val mp3File = File(cacheDir, "$safeId.mp3")
+        val m4aFile = File(cacheDir, "$safeId.m4a")
+        val targetFile = if (mp3File.exists()) mp3File else m4aFile
+
         if (targetFile.exists() && _isPlaying.value) {
-            startAfplay(targetFile, clamped / 1000L)
+            startAudioEngine(targetFile, clamped / 1000L)
         }
     }
 
@@ -213,6 +282,13 @@ class DesktopAudioPlayer(
     fun skipNext() {
         val q = _queue.value
         if (q.isEmpty()) return
+        if (_isShuffle.value) {
+            val unplayed = q.filter { it.id != _currentSong.value?.id }
+            if (unplayed.isNotEmpty()) {
+                play(unplayed.random())
+                return
+            }
+        }
         val currentIndex = q.indexOfFirst { it.id == _currentSong.value?.id }
         val nextIndex = (currentIndex + 1).takeIf { it in q.indices } ?: 0
         play(q[nextIndex])
@@ -229,10 +305,10 @@ class DesktopAudioPlayer(
     private fun stopCurrentPlayback() {
         isIntentionallyStopped = true
         tickerJob?.cancel()
-        stopAfplayProcess()
+        stopPlayerProcess()
     }
 
-    private fun stopAfplayProcess() {
+    private fun stopPlayerProcess() {
         activeProcess?.let {
             try {
                 it.destroyForcibly()
