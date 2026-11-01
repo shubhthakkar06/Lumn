@@ -9,9 +9,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,6 +40,8 @@ fun NowPlayingScreen(
     onPlayPauseToggle: () -> Unit,
     onSkipNext: () -> Unit,
     onSkipPrev: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenPlaylists: () -> Unit,
     onOpenQueue: () -> Unit,
     onOpenVolume: () -> Unit,
     onVolumeAdjust: (Float) -> Unit,
@@ -167,16 +171,49 @@ fun NowPlayingScreen(
                 }
             }
 
-            // Bottom Section: Quick Access Buttons (Volume & Queue)
+            // Bottom Section: Quick Access Buttons (Search, Playlists, Volume, Queue)
             Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(bottom = 6.dp)
             ) {
+                // 1. Search Button (Type / Voice on Galaxy Watch)
+                IconButton(
+                    onClick = onOpenSearch,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF222222))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search",
+                        tint = WearPrimary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+
+                // 2. Playlists & Offline Downloads Button
+                IconButton(
+                    onClick = onOpenPlaylists,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF222222))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LibraryMusic,
+                        contentDescription = "Playlists",
+                        tint = Color.White,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+
+                // 3. Volume Button
                 IconButton(
                     onClick = onOpenVolume,
                     modifier = Modifier
-                        .size(34.dp)
+                        .size(32.dp)
                         .clip(CircleShape)
                         .background(Color(0xFF222222))
                 ) {
@@ -184,14 +221,15 @@ fun NowPlayingScreen(
                         imageVector = Icons.Default.VolumeUp,
                         contentDescription = "Volume",
                         tint = Color.White,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(15.dp)
                     )
                 }
 
+                // 4. Queue Button
                 IconButton(
                     onClick = onOpenQueue,
                     modifier = Modifier
-                        .size(34.dp)
+                        .size(32.dp)
                         .clip(CircleShape)
                         .background(Color(0xFF222222))
                 ) {
@@ -199,7 +237,7 @@ fun NowPlayingScreen(
                         imageVector = Icons.Default.QueueMusic,
                         contentDescription = "Queue",
                         tint = Color.White,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(15.dp)
                     )
                 }
             }

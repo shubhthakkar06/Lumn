@@ -146,7 +146,8 @@ fun DesktopMainContent(
                     singleLine = true,
                     textStyle = TextStyle(
                         color = Color.White,
-                        fontSize = 14.5.sp,
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp,
                         fontWeight = FontWeight.Medium
                     ),
                     cursorBrush = SolidColor(themeAccent),
@@ -155,20 +156,19 @@ fun DesktopMainContent(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(46.dp)
-                                .clip(RoundedCornerShape(23.dp))
-                                .background(Color(0xFF1E1E1E))
+                                .height(50.dp)
+                                .background(Color(0xFF1E1E1E), shape = RoundedCornerShape(25.dp))
                                 .border(
                                     1.dp,
                                     if (searchQuery.isNotBlank()) themeAccent else Color(0xFF2E2E2E),
-                                    RoundedCornerShape(23.dp)
+                                    RoundedCornerShape(25.dp)
                                 )
                                 .padding(horizontal = 16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(10.dp))
-                            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                            Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
                                 if (searchQuery.isEmpty()) {
                                     Text("What do you want to play? (Songs, Artists, Podcasts)", color = Color.Gray, fontSize = 13.5.sp)
                                 }
@@ -223,6 +223,7 @@ fun DesktopMainContent(
                 selectedTab == "Downloaded" -> {
                     DownloadedSongsView(
                         downloadedSongs = downloadedSongs,
+                        likedSongs = likedSongs,
                         currentSong = currentSong,
                         playlists = playlists,
                         themeAccent = themeAccent,
@@ -267,6 +268,7 @@ fun DesktopMainContent(
                     PlaylistDetailView(
                         playlist = playlist,
                         songs = playlistSongs,
+                        likedSongs = likedSongs,
                         currentSong = currentSong,
                         playlists = playlists,
                         themeAccent = themeAccent,
@@ -585,46 +587,105 @@ fun DesktopMainContent(
                                     CircularProgressIndicator(color = themeAccent)
                                 }
                             }
+                        } else if (selectedCategory == "Artists") {
+                            val distinctArtists = (if (isBapsQuery) listOf("Sadhus of BAPS") else emptyList()) +
+                                displayedSongs.flatMap { it.artist.split(",", "&", "•") }.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+                            if (distinctArtists.isEmpty()) {
+                                item {
+                                    Text("No artists found for \"$searchQuery\".", color = Color.Gray, modifier = Modifier.padding(vertical = 24.dp))
+                                }
+                            } else {
+                                items(distinctArtists) { artistName ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable { searchQuery = artistName; selectedCategory = "All" }
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier.size(52.dp).clip(CircleShape).background(Color(0xFF282828)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (artistName == "Sadhus of BAPS") {
+                                                Image(
+                                                    painter = painterResource("assets/sadhus_of_baps.png"),
+                                                    contentDescription = null,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                            } else {
+                                                Icon(Icons.Default.Person, contentDescription = null, tint = themeAccent, modifier = Modifier.size(28.dp))
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Column {
+                                            Text(artistName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                            Text("Artist", color = Color.Gray, fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        } else if (selectedCategory == "Playlists") {
+                            item {
+                                Text("Playlists matching \"$searchQuery\": Satsang & Katha, Chill Mix, Workout Beats", color = Color(0xFF909AAB), modifier = Modifier.padding(vertical = 24.dp))
+                            }
+                        } else if (selectedCategory == "Albums") {
+                            item {
+                                Text("Album search is coming from artist discographies.", color = Color(0xFF909AAB), modifier = Modifier.padding(vertical = 24.dp))
+                            }
+                        } else if (selectedCategory == "Genres & Moods") {
+                            item {
+                                Text("Genres & Moods: Devotional, Satsang, Spiritual, Bollywood, Lo-Fi, Pop", color = Color(0xFF909AAB), modifier = Modifier.padding(vertical = 24.dp))
+                            }
                         } else {
-                            itemsIndexed(displayedSongs, key = { index, s -> "${s.id}_$index" }) { index, song ->
-                                val isLiked = libraryManager.isLiked(song.id)
-                                val isDownloaded = downloadManager.isDownloaded(song.id)
-                                val isDownloading = downloadingIds.contains(song.id)
+                            if (displayedSongs.isEmpty()) {
+                                item {
+                                    val emptyMsg = if (selectedCategory == "Podcasts & Shows") "No podcast or satsang episodes found." else "No tracks found for \"$searchQuery\"."
+                                    Text(emptyMsg, color = Color(0xFF909AAB), modifier = Modifier.padding(vertical = 24.dp))
+                                }
+                            } else {
+                                itemsIndexed(displayedSongs, key = { index, s -> "${s.id}_$index" }) { index, song ->
+                                    val isLiked = likedSongs.any { it.id == song.id }
+                                    val isDownloaded = downloadManager.isDownloaded(song.id)
+                                    val isDownloading = downloadingIds.contains(song.id)
 
-                                if (song.isEpisode) {
-                                    DesktopEpisodeCard(
-                                        episode = song,
-                                        isPlayingThis = currentSong?.id == song.id && isPlaying,
-                                        isLiked = isLiked,
-                                        playlists = playlists,
-                                        onPlay = { onPlaySong(song) },
-                                        onTogglePlayPause = onTogglePlayPause,
-                                        onToggleLike = { libraryManager.toggleLike(song) },
-                                        onPlayNext = { onPlayNext(song) },
-                                        onAddToQueue = { onAddToQueue(song) },
-                                        onAddToPlaylist = { plId -> libraryManager.addSongToPlaylist(plId, song) }
-                                    )
-                                } else {
-                                    DesktopSongRow(
-                                        index = index,
-                                        song = song,
-                                        isCurrent = song.id == currentSong?.id,
-                                        isLiked = isLiked,
-                                        isDownloaded = isDownloaded,
-                                        isDownloading = isDownloading,
-                                        themeAccent = themeAccent,
-                                        playlists = playlists,
-                                        onPlay = { onPlaySong(song) },
-                                        onToggleLike = { libraryManager.toggleLike(song) },
-                                        onToggleDownload = {
-                                            if (isDownloaded) downloadManager.removeDownload(song.id)
-                                            else downloadManager.downloadSong(song)
-                                        },
-                                        onShareSong = { onShareSong(song) },
-                                        onPlayNext = { onPlayNext(song) },
-                                        onAddToQueue = { onAddToQueue(song) },
-                                        onAddToPlaylist = { plId -> libraryManager.addSongToPlaylist(plId, song) }
-                                    )
+                                    if (song.isEpisode) {
+                                        DesktopEpisodeCard(
+                                            episode = song,
+                                            isPlayingThis = currentSong?.id == song.id && isPlaying,
+                                            isLiked = isLiked,
+                                            playlists = playlists,
+                                            onPlay = { onPlaySong(song) },
+                                            onTogglePlayPause = onTogglePlayPause,
+                                            onToggleLike = { libraryManager.toggleLike(song) },
+                                            onPlayNext = { onPlayNext(song) },
+                                            onAddToQueue = { onAddToQueue(song) },
+                                            onAddToPlaylist = { plId -> libraryManager.addSongToPlaylist(plId, song) }
+                                        )
+                                    } else {
+                                        DesktopSongRow(
+                                            index = index,
+                                            song = song,
+                                            isCurrent = song.id == currentSong?.id,
+                                            isLiked = isLiked,
+                                            isDownloaded = isDownloaded,
+                                            isDownloading = isDownloading,
+                                            themeAccent = themeAccent,
+                                            playlists = playlists,
+                                            onPlay = { onPlaySong(song) },
+                                            onToggleLike = { libraryManager.toggleLike(song) },
+                                            onToggleDownload = {
+                                                if (isDownloaded) downloadManager.removeDownload(song.id)
+                                                else downloadManager.downloadSong(song)
+                                            },
+                                            onShareSong = { onShareSong(song) },
+                                            onPlayNext = { onPlayNext(song) },
+                                            onAddToQueue = { onAddToQueue(song) },
+                                            onAddToPlaylist = { plId -> libraryManager.addSongToPlaylist(plId, song) }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -638,6 +699,7 @@ fun DesktopMainContent(
 @Composable
 private fun DownloadedSongsView(
     downloadedSongs: List<DesktopSong>,
+    likedSongs: List<DesktopSong>,
     currentSong: DesktopSong?,
     playlists: List<DesktopPlaylist>,
     themeAccent: Color,
@@ -706,11 +768,12 @@ private fun DownloadedSongsView(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 itemsIndexed(downloadedSongs, key = { index, s -> "${s.id}_$index" }) { index, song ->
+                    val isLiked = likedSongs.any { it.id == song.id }
                     DesktopSongRow(
                         index = index,
                         song = song,
                         isCurrent = song.id == currentSong?.id,
-                        isLiked = false,
+                        isLiked = isLiked,
                         isDownloaded = true,
                         isDownloading = false,
                         themeAccent = themeAccent,
@@ -826,6 +889,7 @@ private fun LikedSongsView(
 private fun PlaylistDetailView(
     playlist: DesktopPlaylist?,
     songs: List<DesktopSong>,
+    likedSongs: List<DesktopSong>,
     currentSong: DesktopSong?,
     playlists: List<DesktopPlaylist>,
     themeAccent: Color,
@@ -904,13 +968,14 @@ private fun PlaylistDetailView(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 itemsIndexed(songs, key = { index, s -> "${s.id}_$index" }) { index, song ->
+                    val isLiked = likedSongs.any { it.id == song.id }
                     val isDownloaded = downloadManager.isDownloaded(song.id)
                     val isDownloading = downloadManager.isDownloading(song.id)
                     DesktopSongRow(
                         index = index,
                         song = song,
                         isCurrent = song.id == currentSong?.id,
-                        isLiked = false,
+                        isLiked = isLiked,
                         isDownloaded = isDownloaded,
                         isDownloading = isDownloading,
                         themeAccent = themeAccent,

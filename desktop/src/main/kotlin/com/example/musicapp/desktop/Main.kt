@@ -59,12 +59,14 @@ fun main() = application {
     val isShuffle by audioPlayer.isShuffle.collectAsState()
     val isRepeat by audioPlayer.isRepeat.collectAsState()
     val playlists by libraryManager.playlists.collectAsState()
+    val likedSongs by libraryManager.likedSongs.collectAsState()
 
     var selectedTab by remember { mutableStateOf("Home") }
     var isLyricsOpen by remember { mutableStateOf(false) }
     var isQueueOpen by remember { mutableStateOf(false) }
     var showAuthDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var showSoundCapsuleDialog by remember { mutableStateOf(false) }
     var showEqualizerDialog by remember { mutableStateOf(false) }
     var showDeviceSelectorDialog by remember { mutableStateOf(false) }
     var showPlaylistImportDialog by remember { mutableStateOf(false) }
@@ -72,6 +74,8 @@ fun main() = application {
     var showLaunchSplash by remember { mutableStateOf(true) }
     var selectedDeviceName by remember { mutableStateOf("MacBook Pro Speakers") }
     var toastMessage by remember { mutableStateOf<String?>(null) }
+
+    val isCurrentSongLiked = currentSong?.let { s -> likedSongs.any { it.id == s.id } } ?: false
 
     // Start intro splash and check if user needs to sign in on first launch
     LaunchedEffect(Unit) {
@@ -175,6 +179,7 @@ fun main() = application {
                                     libraryManager.createPlaylist(name)
                                 },
                                 onOpenImportPlaylist = { showPlaylistImportDialog = true },
+                                onOpenSoundCapsule = { showSoundCapsuleDialog = true },
                                 onOpenSettings = { showSettingsDialog = true }
                             )
 
@@ -242,6 +247,7 @@ fun main() = application {
                             isRepeat = isRepeat,
                             isLyricsOpen = isLyricsOpen,
                             isQueueOpen = isQueueOpen,
+                            isLiked = isCurrentSongLiked,
                             isDownloaded = currentSong?.let { downloadManager.isDownloaded(it.id) } ?: false,
                             isDownloading = currentSong?.let { downloadManager.isDownloading(it.id) } ?: false,
                             themeAccent = themeAccent,
@@ -271,6 +277,8 @@ fun main() = application {
                                     else downloadManager.downloadSong(song)
                                 }
                             },
+                            onOpenEqualizer = { showEqualizerDialog = true },
+                            onOpenDeviceSelector = { showDeviceSelectorDialog = true },
                             onShareSong = { currentSong?.let { shareSong(it) } },
                             onOpenFullscreen = { isFullscreenPlayerOpen = true }
                         )
@@ -285,7 +293,7 @@ fun main() = application {
                             volume = volume,
                             isShuffle = isShuffle,
                             isRepeat = isRepeat,
-                            isLiked = libraryManager.isLiked(currentSong!!.id),
+                            isLiked = isCurrentSongLiked,
                             themeAccent = themeAccent,
                             lyrics = currentLyrics,
                             queue = queue,
@@ -331,8 +339,19 @@ fun main() = application {
                             downloadManager = downloadManager,
                             onOpenEqualizer = { showEqualizerDialog = true },
                             onOpenDeviceSelector = { showDeviceSelectorDialog = true },
+                            onOpenSoundCapsule = { showSoundCapsuleDialog = true },
                             onOpenAuth = { showAuthDialog = true },
                             onDismiss = { showSettingsDialog = false }
+                        )
+                    }
+
+                    // Sound Capsule Dialog (2026 Listening Journey Recap)
+                    if (showSoundCapsuleDialog) {
+                        DesktopSoundCapsuleDialog(
+                            currentUser = currentUser,
+                            themeAccent = themeAccent,
+                            onPlaySong = { audioPlayer.play(it) },
+                            onDismiss = { showSoundCapsuleDialog = false }
                         )
                     }
 

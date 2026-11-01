@@ -46,6 +46,7 @@ fun DesktopPlayerBar(
     isRepeat: Boolean,
     isLyricsOpen: Boolean,
     isQueueOpen: Boolean,
+    isLiked: Boolean = false,
     isDownloaded: Boolean,
     isDownloading: Boolean,
     themeAccent: Color,
@@ -60,6 +61,8 @@ fun DesktopPlayerBar(
     onToggleQueue: () -> Unit,
     onToggleLike: () -> Unit,
     onToggleDownload: () -> Unit,
+    onOpenEqualizer: () -> Unit = {},
+    onOpenDeviceSelector: () -> Unit = {},
     onShareSong: () -> Unit,
     onOpenFullscreen: () -> Unit,
     modifier: Modifier = Modifier
@@ -152,9 +155,9 @@ fun DesktopPlayerBar(
                 if (currentSong != null) {
                     IconButton(onClick = onToggleLike, modifier = Modifier.size(32.dp)) {
                         Icon(
-                            imageVector = if (currentSong.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                             contentDescription = "Like",
-                            tint = if (currentSong.isLiked) themeAccent else Color.Gray,
+                            tint = if (isLiked) themeAccent else Color.Gray,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -264,9 +267,9 @@ fun DesktopPlayerBar(
                 }
             }
 
-            // Right Section: Share, Lyrics, Queue, Volume Slider, and Fullscreen Expand
+            // Right Section: Share, Lyrics, Queue, Equalizer, Volume Slider, and Fullscreen Expand
             Row(
-                modifier = Modifier.width(300.dp),
+                modifier = Modifier.width(360.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.End
             ) {
@@ -274,6 +277,15 @@ fun DesktopPlayerBar(
                     Icon(
                         imageVector = Icons.Default.Share,
                         contentDescription = "Share Track",
+                        tint = Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                IconButton(onClick = onOpenEqualizer, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Equalizer,
+                        contentDescription = "Equalizer",
                         tint = Color.Gray,
                         modifier = Modifier.size(18.dp)
                     )
@@ -297,19 +309,21 @@ fun DesktopPlayerBar(
                     )
                 }
 
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(2.dp))
 
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                    contentDescription = "Volume",
-                    tint = Color.Gray,
-                    modifier = Modifier.size(18.dp)
-                )
+                IconButton(onClick = onOpenDeviceSelector, modifier = Modifier.size(30.dp)) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                        contentDescription = "Audio Output Device",
+                        tint = Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
 
                 Slider(
                     value = volume,
                     onValueChange = onVolumeChange,
-                    modifier = Modifier.width(80.dp),
+                    modifier = Modifier.width(76.dp),
                     colors = SliderDefaults.colors(
                         thumbColor = Color.White,
                         activeTrackColor = themeAccent,
@@ -317,7 +331,7 @@ fun DesktopPlayerBar(
                     )
                 )
 
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(2.dp))
 
                 IconButton(onClick = onOpenFullscreen, modifier = Modifier.size(32.dp)) {
                     Icon(

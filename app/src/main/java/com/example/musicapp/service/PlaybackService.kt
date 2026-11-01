@@ -62,7 +62,7 @@ class PlaybackService : MediaSessionService() {
 
         val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(this)
             .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-            .setEnableAudioFloatOutput(true)
+            .setEnableAudioFloatOutput(android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S)
 
         val player = ExoPlayer.Builder(this, renderersFactory)
             .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(cacheDataSourceFactory))
@@ -91,6 +91,10 @@ class PlaybackService : MediaSessionService() {
                 if (isPlaying) {
                     attachAudioEffectsToCurrentSession(player)
                 }
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                android.util.Log.e("PlaybackService", "ExoPlayer playback error: ${error.errorCodeName}", error)
             }
         })
         

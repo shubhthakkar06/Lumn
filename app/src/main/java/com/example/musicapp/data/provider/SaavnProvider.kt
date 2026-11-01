@@ -64,20 +64,27 @@ class SaavnProvider(
     override suspend fun search(query: String): List<SongInfo> = withContext(Dispatchers.IO) {
         val results = mutableListOf<SongInfo>()
         val trimmed = query.trim()
+        val tokens = trimmed.lowercase().split("\\s+".toRegex()).filter { it.isNotBlank() }
         val isSatsangQuery = trimmed.contains("satsang", ignoreCase = true) ||
             trimmed.contains("baps", ignoreCase = true) ||
             trimmed.contains("swami", ignoreCase = true) ||
             trimmed.contains("katha", ignoreCase = true) ||
+            trimmed.contains("gujarati", ignoreCase = true) ||
             trimmed.contains("patience", ignoreCase = true) ||
             trimmed.contains("episode", ignoreCase = true) ||
             trimmed.contains("podcast", ignoreCase = true)
 
         if (isSatsangQuery) {
-            results.addAll(getBapsSatsangEpisodes().filter {
-                it.title.contains(trimmed, ignoreCase = true) ||
-                it.artist.contains(trimmed, ignoreCase = true) ||
-                it.description.contains(trimmed, ignoreCase = true)
-            })
+            val allEpisodes = getBapsSatsangEpisodes()
+            val matched = allEpisodes.filter { ep ->
+                tokens.any { token ->
+                    ep.title.contains(token, ignoreCase = true) ||
+                    ep.artist.contains(token, ignoreCase = true) ||
+                    ep.description.contains(token, ignoreCase = true) ||
+                    token in "baps satsang gujarati katha swaminarayan bhagwan pravachan"
+                }
+            }
+            results.addAll(if (matched.isNotEmpty()) matched else allEpisodes)
         }
         try {
             val encoded = URLEncoder.encode(query, "UTF-8")

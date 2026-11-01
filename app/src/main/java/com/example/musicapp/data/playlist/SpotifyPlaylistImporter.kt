@@ -76,11 +76,7 @@ object SpotifyPlaylistImporter {
         val playlistCover = playlistImages(playlist)
 
         val tracks = mutableListOf<SpotifyImportedTrack>()
-        var nextUrl: String? = "https://api.spotify.com/v1/playlists/$playlistId/items?limit=50&market=US"
-        var pages = 0
-        while (nextUrl != null && pages < 40) {
-            val page = apiGet(nextUrl, token)
-            val entries = page["items"] as? JsonArray ?: JsonArray(emptyList())
+        val parseEntries: (JsonArray) -> Unit = { entries ->
             entries.forEach { entry ->
                 val obj = entry as? JsonObject ?: return@forEach
                 val item = (obj["item"] as? JsonObject) ?: (obj["track"] as? JsonObject) ?: return@forEach
@@ -100,27 +96,50 @@ object SpotifyPlaylistImporter {
                     )
                 }
             }
+        }
+
+        // 1. Process initial batch of tracks embedded in playlist response
+        val initialTracksObj = playlist["tracks"] as? JsonObject
+        if (initialTracksObj != null) {
+            (initialTracksObj["items"] as? JsonArray)?.let(parseEntries)
+        }
+
+        // 2. Page through remaining playlist tracks using standard /tracks endpoint
+        var nextUrl: String? = if (initialTracksObj != null) {
+            parseSpotifyNextPageUrl(initialTracksObj)
+        } else {
+            "https://api.spotify.com/v1/playlists/$playlistId/tracks?limit=100&market=US"
+        }
+
+        var pages = 0
+        while (nextUrl != null && pages < 50) {
+            val page = runCatching { apiGet(nextUrl!!, token) }.getOrNull() ?: break
+            val entries = page["items"] as? JsonArray ?: JsonArray(emptyList())
+            parseEntries(entries)
             nextUrl = parseSpotifyNextPageUrl(page)
             pages++
         }
         if (tracks.isEmpty()) throw IllegalStateException("No playable tracks were found in that Spotify playlist.")
-        // Keep network work bounded. Hundreds of eager searches used to overwhelm older phones,
-        // and the repository's offline-mode filter incorrectly made every remote match disappear.
+
+        // Keep network work bounded. Hundreds of eager searches used to overwhelm older phones
+        // and hit provider rate limits midway through large playlists.
         val router = ProviderRouter()
-        val semaphore = Semaphore(3)
+        val semaphore = Semaphore(2)
         val uniqueTracks = tracks.distinctBy { it.id }
         val completed = java.util.concurrent.atomic.AtomicInteger(0)
         val resolvedUniqueTracks = coroutineScope {
-            uniqueTracks.chunked(24).flatMap { batch ->
+            uniqueTracks.chunked(12).flatMap { batch ->
                 batch.map { track ->
                     async {
                         semaphore.withPermit {
-                            val primary = searchSafely(router, "${track.title} ${track.artists}")
-                            val firstMatch = SpotifyTrackMatcher.bestMatch(track, primary)
-                            val result = if (firstMatch != null) firstMatch else {
-                                val titleOnly = searchSafely(router, track.title)
-                                SpotifyTrackMatcher.bestMatch(track, titleOnly)
-                            }
+                            val result = runCatching {
+                                val primary = searchSafely(router, "${track.title} ${track.artists}")
+                                val firstMatch = SpotifyTrackMatcher.bestMatch(track, primary)
+                                if (firstMatch != null) firstMatch else {
+                                    val titleOnly = searchSafely(router, track.title)
+                                    SpotifyTrackMatcher.bestMatch(track, titleOnly)
+                                }
+                            }.getOrNull()
                             val done = completed.incrementAndGet()
                             withContext(Dispatchers.Main) { onProgress(done, uniqueTracks.size) }
                             track.copy(resolvedSong = result)
@@ -264,6 +283,17 @@ object SpotifyPlaylistImporter {
         http.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
+                if (response.code == 429) {
+                    val retrySec = response.header("Retry-After")?.toLongOrNull() ?: 1L
+                    Thread.sleep((retrySec * 1000L).coerceIn(500L, 3000L))
+                    http.newCall(request).execute().use { retryResp ->
+                        val retryBody = retryResp.body?.string().orEmpty()
+                        if (retryResp.isSuccessful) {
+                            return json.parseToJsonElement(retryBody) as? JsonObject
+                                ?: throw IllegalStateException("Spotify returned an unreadable playlist.")
+                        }
+                    }
+                }
                 val message = when (response.code) {
                     401 -> "Spotify sign-in expired. Please try again."
                     403 -> "Spotify denied access to this playlist. Confirm the signed-in account owns it or has edit access as a collaborator. If it does, check that the account is added as an allowed tester in your Spotify Developer Dashboard and meets Spotify's developer-mode requirements."

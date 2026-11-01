@@ -31,6 +31,7 @@ fun DesktopSettingsDialog(
     downloadManager: DesktopDownloadManager,
     onOpenEqualizer: () -> Unit,
     onOpenDeviceSelector: () -> Unit,
+    onOpenSoundCapsule: () -> Unit,
     onOpenAuth: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -81,7 +82,51 @@ fun DesktopSettingsDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Profile & Cloud Sync Card
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF252528)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(themeAccent),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(currentUser?.avatarLetter ?: "U", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(currentUser?.name ?: "Guest Listener", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text(currentUser?.email?.ifBlank { "Signed in locally • No cloud sync" } ?: "Guest mode", color = Color.Gray, fontSize = 12.sp)
+                        }
+                        Button(
+                            onClick = {
+                                onDismiss()
+                                onOpenSoundCapsule()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = themeAccent.copy(alpha = 0.2f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, themeAccent),
+                            shape = RoundedCornerShape(20.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = themeAccent, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Sound Capsule", color = themeAccent, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // 1. Theme Selection
                 Text("APP ACCENT THEME", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp), color = Color.Gray)

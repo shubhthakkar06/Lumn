@@ -229,9 +229,15 @@ class UserManager private constructor(private val context: Context) {
 
     /** Creates or restores this device's Rivara profile after Firebase verifies the Google identity. */
     fun loginWithGoogle(uid: String, email: String, displayName: String): UserProfile {
-        require(uid.isNotBlank()) { "Google did not return a valid account ID." }
-        val profileId = "google_$uid"
-        val existing = _allUsers.value.firstOrNull { it.id == profileId }
+        require(uid.isNotBlank() || email.isNotBlank()) { "Google did not return a valid account." }
+        val profileId = if (email.isNotBlank()) {
+            "usr_" + email.lowercase().replace(Regex("[^a-z0-9]"), "_")
+        } else {
+            "google_$uid"
+        }
+        val existing = _allUsers.value.firstOrNull {
+            it.id == profileId || it.id == "google_$uid" || (email.isNotBlank() && it.email.equals(email, ignoreCase = true))
+        }
         val resolvedName = displayName.trim().ifBlank { email.substringBefore('@').ifBlank { "Listener" } }
         val usernameBase = email.substringBefore('@').lowercase()
             .replace(Regex("[^a-z0-9_.]"), "_")
@@ -239,6 +245,7 @@ class UserManager private constructor(private val context: Context) {
             .ifBlank { "listener" }
         val avatarColors = listOf("#1DB954", "#00A8E8", "#9C27B0", "#FF5722")
         val profile = existing?.copy(
+            id = profileId,
             name = resolvedName,
             email = email,
             avatarLetter = resolvedName.firstOrNull()?.uppercaseChar()?.toString() ?: "L",

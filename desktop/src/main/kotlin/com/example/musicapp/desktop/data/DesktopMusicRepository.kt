@@ -383,7 +383,7 @@ class DesktopMusicRepository {
             val encodedArtist = URLEncoder.encode(cleanArtist, "UTF-8")
             val url = "https://lrclib.net/api/get?track_name=$encodedTitle&artist_name=$encodedArtist"
 
-            val request = Request.Builder().url(url).header("User-Agent", "RivaraDesktop/2.7.4").build()
+            val request = Request.Builder().url(url).header("User-Agent", "RivaraDesktop/2.7.7").build()
             val response = httpClient.newCall(request).execute()
             if (response.isSuccessful) {
                 val body = response.body?.string().orEmpty()
@@ -396,6 +396,29 @@ class DesktopMusicRepository {
                 if (!plainLrc.isNullOrBlank()) {
                     return@withContext plainLrc.lines().filter { it.isNotBlank() }.mapIndexed { i, l ->
                         SyncedLyricLine(i * 3500L, l)
+                    }
+                }
+            }
+
+            // Fallback search on LRCLIB if exact get endpoint yielded no synced lyrics
+            val searchQuery = URLEncoder.encode("$cleanTitle $cleanArtist", "UTF-8")
+            val searchUrl = "https://lrclib.net/api/search?q=$searchQuery"
+            val searchReq = Request.Builder().url(searchUrl).header("User-Agent", "RivaraDesktop/2.7.7").build()
+            val searchResp = httpClient.newCall(searchReq).execute()
+            if (searchResp.isSuccessful) {
+                val searchBody = searchResp.body?.string().orEmpty()
+                val results = json.parseToJsonElement(searchBody).jsonArray
+                for (item in results) {
+                    val obj = item.jsonObject
+                    val synced = obj["syncedLyrics"]?.jsonPrimitive?.contentOrNull
+                    if (!synced.isNullOrBlank()) {
+                        return@withContext parseLrc(synced)
+                    }
+                    val plain = obj["plainLyrics"]?.jsonPrimitive?.contentOrNull
+                    if (!plain.isNullOrBlank()) {
+                        return@withContext plain.lines().filter { it.isNotBlank() }.mapIndexed { i, l ->
+                            SyncedLyricLine(i * 3500L, l)
+                        }
                     }
                 }
             }

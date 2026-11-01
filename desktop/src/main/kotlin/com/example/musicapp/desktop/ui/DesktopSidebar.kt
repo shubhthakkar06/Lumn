@@ -31,6 +31,7 @@ fun DesktopSidebar(
     themeAccent: Color,
     onCreatePlaylist: (String) -> Unit,
     onOpenImportPlaylist: () -> Unit,
+    onOpenSoundCapsule: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -163,6 +164,13 @@ fun DesktopSidebar(
                     isSelected = selectedTab == "Downloaded",
                     themeAccent = themeAccent,
                     onClick = { onTabSelected("Downloaded") }
+                )
+                SidebarItem(
+                    icon = Icons.Default.AutoAwesome,
+                    label = "Sound Capsule",
+                    isSelected = selectedTab == "SoundCapsule",
+                    themeAccent = themeAccent,
+                    onClick = onOpenSoundCapsule
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))

@@ -24,6 +24,7 @@ data class WearPlaybackState(
         WearSongItem("1", "Yellow", "Coldplay", 269L),
         WearSongItem("2", "Starboy", "The Weeknd", 230L),
         WearSongItem("3", "Levitating", "Dua Lipa", 203L),
-        WearSongItem("4", "Patience and True Refuge", "BAPS Satsang", 2837L)
+        WearSongItem("4", "Kesariya", "Arijit Singh", 268L),
+        WearSongItem("5", "Tum Hi Ho", "Arijit Singh", 262L)
     )
 )

@@ -11,6 +11,8 @@ import com.example.musicapp.wear.model.WearPlaybackState
 import com.example.musicapp.wear.presentation.NowPlayingScreen
 import com.example.musicapp.wear.presentation.QueueScreen
 import com.example.musicapp.wear.presentation.VolumeScreen
+import com.example.musicapp.wear.presentation.WearPlaylistsScreen
+import com.example.musicapp.wear.presentation.WearSearchScreen
 import com.example.musicapp.wear.theme.RivaraWearTheme
 
 class MainActivity : ComponentActivity() {
@@ -55,11 +57,45 @@ class MainActivity : ComponentActivity() {
                                     isPlaying = true
                                 )
                             },
+                            onOpenSearch = { navController.navigate("search") },
+                            onOpenPlaylists = { navController.navigate("playlists") },
                             onOpenQueue = { navController.navigate("queue") },
                             onOpenVolume = { navController.navigate("volume") },
                             onVolumeAdjust = { newVol ->
                                 playbackState = playbackState.copy(volume = newVol)
                             }
+                        )
+                    }
+
+                    composable("search") {
+                        WearSearchScreen(
+                            onSongSelected = { song ->
+                                playbackState = playbackState.copy(
+                                    title = song.title,
+                                    artist = song.artist,
+                                    progressMs = 0L,
+                                    isPlaying = true,
+                                    queue = if (playbackState.queue.any { it.id == song.id }) playbackState.queue else listOf(song) + playbackState.queue
+                                )
+                                navController.popBackStack()
+                            },
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+
+                    composable("playlists") {
+                        WearPlaylistsScreen(
+                            onSongSelected = { song, playlistTracks ->
+                                playbackState = playbackState.copy(
+                                    title = song.title,
+                                    artist = song.artist,
+                                    progressMs = 0L,
+                                    isPlaying = true,
+                                    queue = playlistTracks
+                                )
+                                navController.popBackStack("now_playing", false)
+                            },
+                            onBack = { navController.popBackStack() }
                         )
                     }
 
