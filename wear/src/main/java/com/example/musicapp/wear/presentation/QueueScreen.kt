@@ -4,8 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,6 +17,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -23,6 +27,9 @@ import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.*
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.example.musicapp.wear.model.WearSongItem
 import com.example.musicapp.wear.theme.WearPrimary
 import kotlinx.coroutines.launch
@@ -32,6 +39,7 @@ fun QueueScreen(
     queue: List<WearSongItem>,
     currentTitle: String,
     onSongSelected: (WearSongItem) -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberScalingLazyListState()
@@ -58,16 +66,35 @@ fun QueueScreen(
         ScalingLazyColumn(
             modifier = Modifier.fillMaxSize(),
             state = listState,
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 28.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 26.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             item {
-                Text(
-                    text = "Up Next",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White,
-                    modifier = Modifier.padding(bottom = 6.dp)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF222222))
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Up Next",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                }
             }
 
             items(queue, key = { it.id }) { song ->
@@ -76,7 +103,7 @@ fun QueueScreen(
                     onClick = { onSongSelected(song) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp)),
+                        .clip(RoundedCornerShape(14.dp)),
                     colors = CardDefaults.cardColors(
                         containerColor = if (isCurrent) Color(0xFF1B3D23) else Color(0xFF1E1E1E)
                     )
@@ -84,22 +111,35 @@ fun QueueScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(8.dp),
+                            .padding(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // High-res thumbnail
                         Box(
                             modifier = Modifier
-                                .size(28.dp)
-                                .clip(RoundedCornerShape(8.dp))
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(6.dp))
                                 .background(if (isCurrent) WearPrimary else Color(0xFF2A2A2A)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.MusicNote,
-                                contentDescription = null,
-                                tint = if (isCurrent) Color.Black else Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
+                            if (song.albumArtUrl.isNotBlank()) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(song.albumArtUrl)
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = song.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.MusicNote,
+                                    contentDescription = null,
+                                    tint = if (isCurrent) Color.Black else Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.width(8.dp))
@@ -108,18 +148,20 @@ fun QueueScreen(
                             Text(
                                 text = song.title,
                                 style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium
+                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
                                 ),
                                 color = if (isCurrent) WearPrimary else Color.White,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                fontSize = 12.sp
                             )
                             Text(
                                 text = song.artist,
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = Color.Gray,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                fontSize = 10.sp
                             )
                         }
                     }

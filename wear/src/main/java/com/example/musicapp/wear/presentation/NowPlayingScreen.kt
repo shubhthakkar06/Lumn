@@ -1,20 +1,25 @@
 package com.example.musicapp.wear.presentation
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,14 +27,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material3.*
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.example.musicapp.wear.model.WearPlaybackState
 import com.example.musicapp.wear.theme.WearPrimary
 import kotlinx.coroutines.launch
@@ -42,15 +51,16 @@ fun NowPlayingScreen(
     onSkipPrev: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenPlaylists: () -> Unit,
-    onOpenQueue: () -> Unit,
+    onOpenAccount: () -> Unit,
     onOpenVolume: () -> Unit,
+    onOpenQueue: () -> Unit,
     onVolumeAdjust: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val scrollState = rememberScrollState()
     val focusRequester = remember { FocusRequester() }
     val coroutineScope = rememberCoroutineScope()
 
-    // Request rotary focus so Galaxy Watch touch bezel events are received immediately
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
     }
@@ -59,7 +69,12 @@ fun NowPlayingScreen(
         (state.progressMs.toFloat() / state.durationMs.toFloat()).coerceIn(0f, 1f)
     } else 0f
 
-    val animatedProgress by animateFloatAsState(targetValue = progress, label = "WatchProgress")
+    val formatTime: (Long) -> String = { ms ->
+        val totalSecs = (ms / 1000).coerceAtLeast(0)
+        val mins = totalSecs / 60
+        val secs = totalSecs % 60
+        String.format("%d:%02d", mins, secs)
+    }
 
     Box(
         modifier = modifier
@@ -68,122 +83,36 @@ fun NowPlayingScreen(
             .focusRequester(focusRequester)
             .focusable()
             .onRotaryScrollEvent { event ->
-                // Rotate Galaxy Watch 7 touch bezel to change volume
-                val delta = event.verticalScrollPixels / 1200f
-                onVolumeAdjust((state.volume + delta).coerceIn(0f, 1f))
+                coroutineScope.launch {
+                    scrollState.scrollBy(event.verticalScrollPixels)
+                }
                 true
             },
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.TopCenter
     ) {
-        // Outer Circular Edge Progress Arc
-        CircularProgressIndicator(
-            progress = { animatedProgress },
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(4.dp),
-            colors = ProgressIndicatorDefaults.colors(
-                indicatorColor = WearPrimary,
-                trackColor = Color(0xFF222222)
-            ),
-            strokeWidth = 4.dp
-        )
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+                .verticalScroll(scrollState)
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Top Section: Track Info
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(top = 8.dp)
-            ) {
-                Text(
-                    text = state.title,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(0.85f)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = state.artist,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = WearPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(0.75f)
-                )
-            }
-
-            // Middle Section: Transport Controls
+            // 1. Top Action Bar: Search (Left), Account & Phone Sync (Center), Playlists (Right)
             Row(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .padding(top = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Previous
-                IconButton(
-                    onClick = onSkipPrev,
-                    modifier = Modifier.size(38.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.FastRewind,
-                        contentDescription = "Previous",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                // Play / Pause Primary Pill
-                Button(
-                    onClick = onPlayPauseToggle,
-                    modifier = Modifier.size(52.dp),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = WearPrimary,
-                        contentColor = Color.Black
-                    )
-                ) {
-                    Icon(
-                        imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (state.isPlaying) "Pause" else "Play",
-                        modifier = Modifier.size(30.dp),
-                        tint = Color.Black
-                    )
-                }
-
-                // Next
-                IconButton(
-                    onClick = onSkipNext,
-                    modifier = Modifier.size(38.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.FastForward,
-                        contentDescription = "Next",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-
-            // Bottom Section: Quick Access Buttons (Search, Playlists, Volume, Queue)
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 6.dp)
-            ) {
-                // 1. Search Button (Type / Voice on Galaxy Watch)
-                IconButton(
-                    onClick = onOpenSearch,
+                // Search Pill Button
+                Box(
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(28.dp)
                         .clip(CircleShape)
                         .background(Color(0xFF222222))
+                        .clickable(onClick = onOpenSearch),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Search,
@@ -193,13 +122,40 @@ fun NowPlayingScreen(
                     )
                 }
 
-                // 2. Playlists & Offline Downloads Button
-                IconButton(
-                    onClick = onOpenPlaylists,
+                // Center Account & Phone Sync Pill
+                Row(
                     modifier = Modifier
-                        .size(32.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF191919))
+                        .border(1.dp, Color(0xFF2B2B2B), RoundedCornerShape(10.dp))
+                        .clickable(onClick = onOpenAccount)
+                        .padding(horizontal = 6.dp, vertical = 2.5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(5.dp)
+                            .clip(CircleShape)
+                            .background(WearPrimary)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = state.userProfileName.ifBlank { "Shubh Thakkar" },
+                        color = Color.White,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1
+                    )
+                }
+
+                // Playlists & Offline Button
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
                         .clip(CircleShape)
                         .background(Color(0xFF222222))
+                        .clickable(onClick = onOpenPlaylists),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.LibraryMusic,
@@ -208,39 +164,199 @@ fun NowPlayingScreen(
                         modifier = Modifier.size(15.dp)
                     )
                 }
+            }
 
-                // 3. Volume Button
-                IconButton(
-                    onClick = onOpenVolume,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF222222))
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.VolumeUp,
-                        contentDescription = "Volume",
-                        tint = Color.White,
-                        modifier = Modifier.size(15.dp)
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // 2. High-Res Album Art Thumbnail (Resolves "no thumbnails")
+            Box(
+                modifier = Modifier
+                    .size(58.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF1E1E1E))
+                    .border(1.dp, Color(0xFF333333), RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (state.albumArtUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(state.albumArtUrl)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = state.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
                     )
-                }
-
-                // 4. Queue Button
-                IconButton(
-                    onClick = onOpenQueue,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF222222))
-                ) {
+                } else {
                     Icon(
-                        imageVector = Icons.Default.QueueMusic,
-                        contentDescription = "Queue",
-                        tint = Color.White,
-                        modifier = Modifier.size(15.dp)
+                        imageVector = Icons.Default.MusicNote,
+                        contentDescription = null,
+                        tint = WearPrimary,
+                        modifier = Modifier.size(26.dp)
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(3.dp))
+
+            // 3. Track Title & Artist
+            Text(
+                text = state.title,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                fontSize = 12.sp,
+                modifier = Modifier.fillMaxWidth(0.85f)
+            )
+            Text(
+                text = state.artist,
+                style = MaterialTheme.typography.bodySmall,
+                color = WearPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                fontSize = 9.5.sp,
+                modifier = Modifier.fillMaxWidth(0.75f)
+            )
+
+            Spacer(modifier = Modifier.height(3.dp))
+
+            // 4. Progress Scrubber Bar & Timestamps
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth(0.72f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.5.dp)
+                        .clip(RoundedCornerShape(1.5.dp))
+                        .background(Color(0xFF282828))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress)
+                            .fillMaxHeight()
+                            .background(WearPrimary)
+                    )
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = formatTime(state.progressMs),
+                        color = Color.Gray,
+                        fontSize = 8.sp
+                    )
+                    Text(
+                        text = formatTime(state.durationMs),
+                        color = Color.Gray,
+                        fontSize = 8.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // 5. Transport Controls (Rewind, Play/Pause Pill, FastForward)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF222222))
+                        .clickable(onClick = onSkipPrev),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FastRewind,
+                        contentDescription = "Previous",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(WearPrimary)
+                        .clickable(onClick = onPlayPauseToggle),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (state.isPlaying) "Pause" else "Play",
+                        modifier = Modifier.size(24.dp),
+                        tint = Color.Black
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF222222))
+                        .clickable(onClick = onSkipNext),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FastForward,
+                        contentDescription = "Next",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // 6. Bottom Controls: Volume & Queue
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF1E1E1E))
+                        .clickable(onClick = onOpenVolume),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                        contentDescription = "Volume",
+                        tint = Color.LightGray,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF1E1E1E))
+                        .clickable(onClick = onOpenQueue),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                        contentDescription = "Queue",
+                        tint = Color.LightGray,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
         }
     }
 }
