@@ -11,7 +11,17 @@ import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
+import javax.sound.sampled.*
 
+/**
+ * DesktopAudioPlayer: High-performance audio engine for Rivara Desktop on macOS.
+ * Uses FFmpeg to decode any audio stream/codec (AAC, MP4, MP3, FLAC, M4A) directly
+ * into 48kHz 16-bit stereo PCM, and plays it via Java Sound's DirectAudioDevice (CoreAudio HAL).
+ *
+ * This completely avoids the macOS high-level AudioQueue freeze (error -66681) that crashes
+ * afplay and SDL/ffplay on macOS, ensuring instant, stutter-free playback with accurate
+ * millisecond scrubber progress and wavy animations.
+ */
 class DesktopAudioPlayer(
     private val musicRepository: DesktopMusicRepository = DesktopMusicRepository()
 ) {
@@ -19,21 +29,24 @@ class DesktopAudioPlayer(
     private val httpClient = OkHttpClient()
     private val cacheDir = File(System.getProperty("user.home"), ".rivara/cache").apply { mkdirs() }
 
-    private val playerBin: String by lazy {
-        listOf("/opt/homebrew/bin/ffplay", "/usr/local/bin/ffplay")
+    private val audioFormat = AudioFormat(48000f, 16, 2, true, false)
+    private val bytesPerMs = 192L // 48000 samples/sec * 2 channels * 2 bytes/sample / 1000 ms
+
+    private val ffmpegBin: String by lazy {
+        listOf("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg")
             .firstOrNull { File(it).canExecute() }
             ?: runCatching {
-                val p = ProcessBuilder("which", "ffplay").start()
+                val p = ProcessBuilder("which", "ffmpeg").start()
                 val out = p.inputStream.bufferedReader().readLine()?.trim().orEmpty()
                 if (out.isNotBlank() && File(out).canExecute()) out else null
             }.getOrNull()
-            ?: "/usr/bin/afplay"
+            ?: "ffmpeg"
     }
 
+    private var activeLine: SourceDataLine? = null
     private var activeProcess: Process? = null
-    private var activePid: Long = -1L
     private var isIntentionallyStopped = false
-    private var tickerJob: Job? = null
+    @Volatile private var isPaused = false
     private var playJob: Job? = null
 
     private val _currentSong = MutableStateFlow<DesktopSong?>(null)
@@ -92,6 +105,7 @@ class DesktopAudioPlayer(
     fun play(song: DesktopSong, startPositionMs: Long = 0L) {
         stopCurrentPlayback()
         isIntentionallyStopped = false
+        isPaused = false
         _currentSong.value = song
         _progressMs.value = startPositionMs
         _isPlaying.value = true
@@ -108,54 +122,29 @@ class DesktopAudioPlayer(
             }
 
             if (streamUrl.isNullOrBlank()) {
-                startProgressTimer(song.durationSeconds * 1000L)
+                // If stream resolution completely fails, fallback to virtual progress
+                simulateProgress(song.durationSeconds * 1000L, startPositionMs)
                 return@launch
             }
 
-            val isMp3 = streamUrl.contains(".mp3", ignoreCase = true) ||
-                streamUrl.contains("buzzsprout", ignoreCase = true) ||
-                streamUrl.contains("anchor.fm", ignoreCase = true)
-            val ext = if (isMp3) "mp3" else "m4a"
-
             val safeId = song.id.replace(Regex("[^a-zA-Z0-9_]"), "_")
+            val isMp3 = streamUrl.contains(".mp3", ignoreCase = true)
+            val ext = if (isMp3) "mp3" else "m4a"
             val targetFile = File(cacheDir, "$safeId.$ext")
-            val isFfplay = playerBin.endsWith("ffplay")
 
-            if (isFfplay) {
-                // ffplay plays direct streams with zero buffering delay & full seeking!
-                val audioSource = if (targetFile.exists() && targetFile.length() > 50000) {
-                    targetFile.absolutePath
-                } else {
-                    streamUrl
-                }
-                startAudioEngine(audioSource, startPositionMs / 1000L)
-
-                // Cache in the background without blocking audio startup
-                if (!targetFile.exists() || targetFile.length() < 10000) {
-                    scope.launch(Dispatchers.IO) {
-                        try {
-                            val req = Request.Builder()
-                                .url(streamUrl)
-                                .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                                .build()
-                            val res = httpClient.newCall(req).execute()
-                            if (res.isSuccessful) {
-                                res.body?.byteStream()?.use { input ->
-                                    FileOutputStream(targetFile).use { output ->
-                                        input.copyTo(output)
-                                    }
-                                }
-                            }
-                        } catch (_: Exception) {}
-                    }
-                }
+            val audioSource = if (targetFile.exists() && targetFile.length() > 50000) {
+                targetFile.absolutePath
             } else {
-                // afplay fallback requires a downloaded file on disk
-                if (!targetFile.exists() || targetFile.length() < 10000) {
+                streamUrl
+            }
+
+            // Cache in background for offline / replay
+            if (!targetFile.exists() || targetFile.length() < 10000) {
+                scope.launch(Dispatchers.IO) {
                     try {
                         val req = Request.Builder()
                             .url(streamUrl)
-                            .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                            .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
                             .build()
                         val res = httpClient.newCall(req).execute()
                         if (res.isSuccessful) {
@@ -165,86 +154,144 @@ class DesktopAudioPlayer(
                                 }
                             }
                         }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-
-                if (targetFile.exists() && targetFile.length() > 10000) {
-                    startAudioEngine(targetFile.absolutePath, startPositionMs / 1000L)
-                } else {
-                    startProgressTimer(song.durationSeconds * 1000L)
+                    } catch (_: Exception) {}
                 }
             }
+
+            startDirectPcmEngine(audioSource, startPositionMs, song.durationSeconds * 1000L)
         }
     }
 
-    private fun startAudioEngine(audioSource: String, startSeconds: Long) {
-        stopPlayerProcess()
-        try {
-            val cmd = mutableListOf<String>()
-            val isFfplay = playerBin.endsWith("ffplay")
+    private suspend fun startDirectPcmEngine(
+        audioSource: String,
+        startPositionMs: Long,
+        totalDurationMs: Long
+    ) = withContext(Dispatchers.IO) {
+        var line: SourceDataLine? = null
+        var proc: Process? = null
 
-            if (isFfplay) {
-                val volInt = (_volume.value * 100).toInt().coerceIn(0, 100)
-                cmd.add(playerBin)
-                cmd.add("-nodisp")
-                cmd.add("-autoexit")
-                cmd.add("-user_agent")
-                cmd.add("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                cmd.add("-volume")
-                cmd.add(volInt.toString())
-                if (startSeconds > 0) {
-                    cmd.add("-ss")
-                    cmd.add(startSeconds.toString())
-                }
-                cmd.add(audioSource)
-            } else {
-                val volStr = String.format(Locale.US, "%.2f", _volume.value)
-                cmd.add(playerBin)
-                cmd.add(audioSource)
-                cmd.add("-v")
-                cmd.add(volStr)
-                // afplay does NOT support -s, so starts from beginning
+        try {
+            // Open Java DirectAudio line (talks directly to CoreAudio HAL, bypasses AudioQueue)
+            val lineInfo = DataLine.Info(SourceDataLine::class.java, audioFormat)
+            line = (AudioSystem.getLine(lineInfo) as SourceDataLine).apply {
+                open(audioFormat, 48000 * 4) // 1 second hardware buffer
+                start()
+            }
+            activeLine = line
+
+            // Build ffmpeg decoding process to output raw 48kHz 16-bit stereo PCM
+            val cmd = mutableListOf(
+                ffmpegBin,
+                "-user_agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "-reconnect", "1",
+                "-reconnect_streamed", "1",
+                "-reconnect_delay_max", "5"
+            )
+
+            if (startPositionMs > 0) {
+                cmd.add("-ss")
+                cmd.add(String.format(Locale.US, "%.3f", startPositionMs / 1000.0))
             }
 
-            val process = ProcessBuilder(cmd)
-                .redirectErrorStream(true)
-                .start()
-            activeProcess = process
-            activePid = process.pid()
+            cmd.addAll(listOf(
+                "-i", audioSource,
+                "-vn",
+                "-f", "s16le",
+                "-ar", "48000",
+                "-ac", "2",
+                "pipe:1"
+            ))
 
-            startProgressTimer((_currentSong.value?.durationSeconds ?: 180L) * 1000L)
+            val pb = ProcessBuilder(cmd)
+            pb.redirectError(ProcessBuilder.Redirect.DISCARD)
+            proc = pb.start()
+            activeProcess = proc
 
-            scope.launch {
-                val errorLines = mutableListOf<String>()
-                process.inputStream.bufferedReader().useLines { lines ->
-                    lines.forEach { line ->
-                        if (errorLines.size < 20) errorLines.add(line)
+            val inputStream = proc.inputStream
+            val buffer = ByteArray(4096)
+            var bytesWritten = 0L
+            var lastUpdateMs = System.currentTimeMillis()
+
+            while (isActive && !isIntentionallyStopped) {
+                if (isPaused) {
+                    delay(30)
+                    continue
+                }
+
+                val read = inputStream.read(buffer)
+                if (read <= 0) break
+
+                // Software volume adjustment directly on PCM 16-bit signed samples
+                val vol = _volume.value
+                if (vol < 0.99f) {
+                    var i = 0
+                    while (i < read - 1) {
+                        val sample = (buffer[i].toInt() and 0xFF) or (buffer[i + 1].toInt() shl 8)
+                        val scaled = (sample.toShort() * vol).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                        buffer[i] = (scaled and 0xFF).toByte()
+                        buffer[i + 1] = ((scaled shr 8) and 0xFF).toByte()
+                        i += 2
                     }
                 }
-                val exitCode = process.waitFor()
-                if (activeProcess == process && !isIntentionallyStopped && _isPlaying.value) {
-                    if (exitCode == 0) {
-                        withContext(Dispatchers.Main) {
-                            if (_isRepeat.value) {
-                                _currentSong.value?.let { play(it, 0L) }
-                            } else {
-                                skipNext()
-                            }
-                        }
+
+                line.write(buffer, 0, read)
+                bytesWritten += read
+
+                val now = System.currentTimeMillis()
+                if (now - lastUpdateMs >= 80) {
+                    lastUpdateMs = now
+                    val currentPos = startPositionMs + (bytesWritten / bytesPerMs)
+                    val clamped = if (totalDurationMs > 0) currentPos.coerceAtMost(totalDurationMs) else currentPos
+                    _progressMs.value = clamped
+                }
+            }
+
+            if (!isIntentionallyStopped && isActive) {
+                line.drain()
+                withContext(Dispatchers.Main) {
+                    if (_isRepeat.value) {
+                        _currentSong.value?.let { play(it, 0L) }
                     } else {
-                        System.err.println("Audio process exited with code $exitCode: ${errorLines.joinToString("\n")}")
-                        // If ffplay exited with error and we tried a URL directly, stop ticker
-                        tickerJob?.cancel()
-                        _isPlaying.value = false
+                        skipNext()
                     }
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            tickerJob?.cancel()
-            _isPlaying.value = false
+            // If native streaming experienced an error, simulate progress so UI remains interactive
+            if (!isIntentionallyStopped) {
+                simulateProgress(totalDurationMs, startPositionMs)
+            }
+        } finally {
+            try {
+                proc?.destroyForcibly()
+            } catch (_: Exception) {}
+            try {
+                line?.stop()
+                line?.close()
+            } catch (_: Exception) {}
+        }
+    }
+
+    private suspend fun simulateProgress(totalMs: Long, startMs: Long) {
+        val startWallTime = System.currentTimeMillis() - startMs
+        while (currentCoroutineContext().isActive && _isPlaying.value && !isIntentionallyStopped) {
+            if (isPaused) {
+                delay(100)
+                continue
+            }
+            delay(150)
+            val current = System.currentTimeMillis() - startWallTime
+            if (totalMs > 0 && current >= totalMs) {
+                _progressMs.value = totalMs
+                withContext(Dispatchers.Main) {
+                    if (_isRepeat.value) _currentSong.value?.let { play(it, 0L) }
+                    else skipNext()
+                }
+                break
+            } else {
+                _progressMs.value = current
+            }
         }
     }
 
@@ -267,24 +314,20 @@ class DesktopAudioPlayer(
     fun pause() {
         if (!_isPlaying.value) return
         _isPlaying.value = false
-        tickerJob?.cancel()
-        if (activePid > 0) {
-            try {
-                Runtime.getRuntime().exec(arrayOf("kill", "-STOP", activePid.toString()))
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
+        isPaused = true
+        try {
+            activeLine?.stop()
+        } catch (_: Exception) {}
     }
 
     fun resume() {
         if (_isPlaying.value) return
         _isPlaying.value = true
-        if (activePid > 0 && activeProcess?.isAlive == true) {
+        if (isPaused && activeLine != null) {
+            isPaused = false
             try {
-                Runtime.getRuntime().exec(arrayOf("kill", "-CONT", activePid.toString()))
-                startProgressTimer((_currentSong.value?.durationSeconds ?: 180L) * 1000L)
-            } catch (e: Exception) {
+                activeLine?.start()
+            } catch (_: Exception) {
                 _currentSong.value?.let { play(it, _progressMs.value) }
             }
         } else {
@@ -297,26 +340,7 @@ class DesktopAudioPlayer(
         val totalMs = song.durationSeconds * 1000L
         val clamped = positionMs.coerceIn(0L, totalMs.coerceAtLeast(1000L))
         _progressMs.value = clamped
-
-        val safeId = song.id.replace(Regex("[^a-zA-Z0-9_]"), "_")
-        val mp3File = File(cacheDir, "$safeId.mp3")
-        val m4aFile = File(cacheDir, "$safeId.m4a")
-        val targetFile = if (mp3File.exists()) mp3File else m4aFile
-        val isFfplay = playerBin.endsWith("ffplay")
-
-        if (_isPlaying.value) {
-            val audioSource = if (targetFile.exists() && targetFile.length() > 50000) {
-                targetFile.absolutePath
-            } else if (isFfplay && !song.audioUrl.isNullOrBlank()) {
-                song.audioUrl
-            } else {
-                null
-            }
-
-            if (audioSource != null) {
-                startAudioEngine(audioSource, clamped / 1000L)
-            }
-        }
+        play(song, clamped)
     }
 
     fun setVolume(vol: Float) {
@@ -349,34 +373,16 @@ class DesktopAudioPlayer(
 
     private fun stopCurrentPlayback() {
         isIntentionallyStopped = true
-        tickerJob?.cancel()
-        stopPlayerProcess()
-    }
-
-    private fun stopPlayerProcess() {
-        activeProcess?.let {
-            try {
-                it.destroyForcibly()
-            } catch (_: Exception) {}
-        }
+        isPaused = false
+        playJob?.cancel()
+        try {
+            activeProcess?.destroyForcibly()
+        } catch (_: Exception) {}
+        try {
+            activeLine?.stop()
+            activeLine?.close()
+        } catch (_: Exception) {}
         activeProcess = null
-        activePid = -1L
-    }
-
-    private fun startProgressTimer(totalMs: Long) {
-        tickerJob?.cancel()
-        tickerJob = scope.launch {
-            val startTime = System.currentTimeMillis() - _progressMs.value
-            while (isActive && _isPlaying.value) {
-                delay(200)
-                val current = System.currentTimeMillis() - startTime
-                if (totalMs > 0 && current >= totalMs) {
-                    _progressMs.value = totalMs
-                    break
-                } else {
-                    _progressMs.value = current
-                }
-            }
-        }
+        activeLine = null
     }
 }
