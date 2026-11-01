@@ -56,9 +56,16 @@ fun main() = application {
 
     // Start intro splash and check if user needs to sign in on first launch
     LaunchedEffect(Unit) {
-        delay(1200)
+        delay(1800)
         showLaunchSplash = false
         if (currentUser == null) {
+            showAuthDialog = true
+        }
+    }
+
+    // Automatically prompt sign-in when currentUser becomes null (e.g. after sign-out)
+    LaunchedEffect(currentUser) {
+        if (!showLaunchSplash && currentUser == null) {
             showAuthDialog = true
         }
     }

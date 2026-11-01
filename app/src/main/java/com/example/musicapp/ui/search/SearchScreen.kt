@@ -377,10 +377,11 @@ fun SearchScreen(
                             val isCurrent = currentSong?.videoId == song.videoId
 
                             if (song.isEpisode) {
-                                // Full Episode Card matching Spotify screenshot
+                                // Full Spotify-style Episode Card matching user screenshot
                                 Card(
                                     shape = RoundedCornerShape(12.dp),
-                                    colors = CardDefaults.cardColors(containerColor = if (isCurrent) Color(0xFF162A1D) else Color(0xFF141922)),
+                                    colors = CardDefaults.cardColors(containerColor = if (isCurrent) Color(0xFF142419) else Color(0xFF131A15)),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, if (isCurrent) Color(0xFF1ED760).copy(alpha = 0.5f) else Color(0xFF223026)),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
@@ -392,77 +393,140 @@ fun SearchScreen(
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                            .padding(14.dp),
+                                        verticalAlignment = Alignment.Top
                                     ) {
-                                        TrackArtwork(
-                                            model = song.albumArtUrl,
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
+                                        // Left: Wide Thumbnail (16:9)
+                                        Box(
                                             modifier = Modifier
-                                                .size(width = 110.dp, height = 72.dp)
+                                                .size(width = 118.dp, height = 76.dp)
                                                 .clip(RoundedCornerShape(8.dp))
-                                        )
+                                                .background(Color(0xFF222622)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (song.videoId == "baps_ep_1") {
+                                                androidx.compose.foundation.Image(
+                                                    painter = androidx.compose.ui.res.painterResource(com.example.musicapp.R.drawable.somprakashdas_episode),
+                                                    contentDescription = song.title,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else {
+                                                TrackArtwork(
+                                                    model = song.albumArtUrl,
+                                                    contentDescription = null,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            }
+                                        }
+
                                         Spacer(modifier = Modifier.width(12.dp))
+
                                         Column(modifier = Modifier.weight(1f)) {
+                                            // Line 1: 2-line Title
                                             Text(
                                                 text = song.title,
-                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                                color = if (isCurrent) themeAccent else Color.White,
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.5.sp,
+                                                    lineHeight = 19.sp
+                                                ),
+                                                color = if (isCurrent) Color(0xFF1ED760) else Color.White,
                                                 maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Spacer(modifier = Modifier.height(3.dp))
+                                            // Line 2: Subtitle
                                             Text(
                                                 text = song.albumName.ifBlank { "Episode • ${song.artist}" },
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = Color(0xFF909AAB),
+                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                                color = Color(0xFFA7A7A7),
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            val desc = song.description.ifBlank { "BAPS Satsang Gujarati discourse." }
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            // Line 3: Description in Gujarati
+                                            val desc = song.description.ifBlank {
+                                                "આપણું જીવન સુખ અને દુઃખ બંનેથી ભરેલું છે. જ્યારે મુશ્કેલીઓ આવે છે, ત્યારે આપણે ઘણીવાર નિરાશ થઈ જઈએ છીએ અથવા ખોટી જગ્યાએ ઉકેલ શોધીએ છીએ. પૂજ્ય સોમપ્રકાશદાસ સ્વામી આ કથામાં સમજાવે છે કે સુખ અને..."
+                                            }
                                             Text(
                                                 text = desc,
-                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                                                color = Color(0xFF7A889B),
-                                                maxLines = 2,
+                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, lineHeight = 16.sp),
+                                                color = Color(0xFFA0A5A0),
+                                                maxLines = 3,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            // Line 4: Date & Duration
                                             val m = song.durationSeconds / 60
                                             val s = song.durationSeconds % 60
                                             val durationText = if (m >= 60) "${m / 60} hr ${m % 60} min" else "$m min $s sec"
                                             val dateText = song.releaseDate.ifBlank { "Oct 12" }
                                             Text(
                                                 text = "$dateText • $durationText",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Color(0xFF7A889B)
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                                color = Color(0xFF8E948E)
                                             )
-                                        }
-                                        IconButton(
-                                            onClick = {
-                                                if (currentSong?.videoId == song.videoId) onOpenPlayer()
-                                                else viewModel.playSong(song, tracksToShow)
-                                            },
-                                            modifier = Modifier.size(38.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = if (isCurrent) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                                contentDescription = "Play",
-                                                tint = if (isCurrent) themeAccent else Color.White,
-                                                modifier = Modifier.size(28.dp)
-                                            )
-                                        }
-                                        IconButton(
-                                            onClick = { selectedSongForOptions = song },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.MoreVert,
-                                                contentDescription = "Options",
-                                                tint = Color(0xFF909AAB),
-                                                modifier = Modifier.size(20.dp)
-                                            )
+                                            Spacer(modifier = Modifier.height(10.dp))
+
+                                            // Line 5: Spotify-style Action Row: Green Checkmark + 3-dots on left, White Circle Play Button on right
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // Green Checkmark Badge
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(24.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Color(0xFF1ED760)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.CheckCircle,
+                                                        contentDescription = "Saved",
+                                                        tint = Color.Black,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+
+                                                Spacer(modifier = Modifier.width(14.dp))
+
+                                                IconButton(
+                                                    onClick = { selectedSongForOptions = song },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.MoreVert,
+                                                        contentDescription = "Options",
+                                                        tint = Color(0xFFAAAAAA),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+
+                                                Spacer(modifier = Modifier.weight(1f))
+
+                                                // White Circular Play Button
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(36.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Color.White)
+                                                        .clickable {
+                                                            if (currentSong?.videoId == song.videoId) onOpenPlayer()
+                                                            else viewModel.playSong(song, tracksToShow)
+                                                        },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (isCurrent) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                                        contentDescription = "Play",
+                                                        tint = Color.Black,
+                                                        modifier = Modifier.size(22.dp)
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }

@@ -118,51 +118,68 @@ class DesktopAudioPlayer(
             val ext = if (isMp3) "mp3" else "m4a"
 
             val safeId = song.id.replace(Regex("[^a-zA-Z0-9_]"), "_")
-            var targetFile = File(cacheDir, "$safeId.$ext")
+            val targetFile = File(cacheDir, "$safeId.$ext")
+            val isFfplay = playerBin.endsWith("ffplay")
 
-            if (!targetFile.exists() || targetFile.length() < 10000) {
-                try {
-                    val req = Request.Builder()
-                        .url(streamUrl)
-                        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
-                        .build()
-                    val res = httpClient.newCall(req).execute()
-                    if (res.isSuccessful) {
-                        res.body?.byteStream()?.use { input ->
-                            FileOutputStream(targetFile).use { output ->
-                                input.copyTo(output)
+            if (isFfplay) {
+                // ffplay plays direct streams with zero buffering delay & full seeking!
+                val audioSource = if (targetFile.exists() && targetFile.length() > 50000) {
+                    targetFile.absolutePath
+                } else {
+                    streamUrl
+                }
+                startAudioEngine(audioSource, startPositionMs / 1000L)
+
+                // Cache in the background without blocking audio startup
+                if (!targetFile.exists() || targetFile.length() < 10000) {
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            val req = Request.Builder()
+                                .url(streamUrl)
+                                .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                                .build()
+                            val res = httpClient.newCall(req).execute()
+                            if (res.isSuccessful) {
+                                res.body?.byteStream()?.use { input ->
+                                    FileOutputStream(targetFile).use { output ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+            } else {
+                // afplay fallback requires a downloaded file on disk
+                if (!targetFile.exists() || targetFile.length() < 10000) {
+                    try {
+                        val req = Request.Builder()
+                            .url(streamUrl)
+                            .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                            .build()
+                        val res = httpClient.newCall(req).execute()
+                        if (res.isSuccessful) {
+                            res.body?.byteStream()?.use { input ->
+                                FileOutputStream(targetFile).use { output ->
+                                    input.copyTo(output)
+                                }
                             }
                         }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
                 }
-            }
 
-            // Verify file format header to prevent macOS CoreAudio 'typ?' errors
-            if (targetFile.exists() && targetFile.length() > 500) {
-                try {
-                    val bytes = ByteArray(4)
-                    targetFile.inputStream().use { it.read(bytes) }
-                    val isActuallyMp3 = (bytes[0] == 'I'.code.toByte() && bytes[1] == 'D'.code.toByte() && bytes[2] == '3'.code.toByte()) ||
-                        (bytes[0] == 0xFF.toByte() && (bytes[1].toInt() and 0xE0) == 0xE0)
-                    if (isActuallyMp3 && !targetFile.name.endsWith(".mp3")) {
-                        val renamed = File(cacheDir, "$safeId.mp3")
-                        targetFile.renameTo(renamed)
-                        targetFile = renamed
-                    }
-                } catch (_: Exception) {}
-            }
-
-            if (targetFile.exists() && targetFile.length() > 10000) {
-                startAudioEngine(targetFile, startPositionMs / 1000L)
-            } else {
-                startProgressTimer(song.durationSeconds * 1000L)
+                if (targetFile.exists() && targetFile.length() > 10000) {
+                    startAudioEngine(targetFile.absolutePath, startPositionMs / 1000L)
+                } else {
+                    startProgressTimer(song.durationSeconds * 1000L)
+                }
             }
         }
     }
 
-    private fun startAudioEngine(file: File, startSeconds: Long) {
+    private fun startAudioEngine(audioSource: String, startSeconds: Long) {
         stopPlayerProcess()
         try {
             val cmd = mutableListOf<String>()
@@ -173,20 +190,22 @@ class DesktopAudioPlayer(
                 cmd.add(playerBin)
                 cmd.add("-nodisp")
                 cmd.add("-autoexit")
+                cmd.add("-user_agent")
+                cmd.add("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 cmd.add("-volume")
                 cmd.add(volInt.toString())
                 if (startSeconds > 0) {
                     cmd.add("-ss")
                     cmd.add(startSeconds.toString())
                 }
-                cmd.add(file.absolutePath)
+                cmd.add(audioSource)
             } else {
                 val volStr = String.format(Locale.US, "%.2f", _volume.value)
                 cmd.add(playerBin)
-                cmd.add(file.absolutePath)
+                cmd.add(audioSource)
                 cmd.add("-v")
                 cmd.add(volStr)
-                // afplay does NOT support -s, so start from beginning if using afplay
+                // afplay does NOT support -s, so starts from beginning
             }
 
             val process = ProcessBuilder(cmd)
@@ -198,19 +217,34 @@ class DesktopAudioPlayer(
             startProgressTimer((_currentSong.value?.durationSeconds ?: 180L) * 1000L)
 
             scope.launch {
+                val errorLines = mutableListOf<String>()
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { line ->
+                        if (errorLines.size < 20) errorLines.add(line)
+                    }
+                }
                 val exitCode = process.waitFor()
-                if (activeProcess == process && !isIntentionallyStopped && exitCode == 0 && _isPlaying.value) {
-                    withContext(Dispatchers.Main) {
-                        if (_isRepeat.value) {
-                            _currentSong.value?.let { play(it, 0L) }
-                        } else {
-                            skipNext()
+                if (activeProcess == process && !isIntentionallyStopped && _isPlaying.value) {
+                    if (exitCode == 0) {
+                        withContext(Dispatchers.Main) {
+                            if (_isRepeat.value) {
+                                _currentSong.value?.let { play(it, 0L) }
+                            } else {
+                                skipNext()
+                            }
                         }
+                    } else {
+                        System.err.println("Audio process exited with code $exitCode: ${errorLines.joinToString("\n")}")
+                        // If ffplay exited with error and we tried a URL directly, stop ticker
+                        tickerJob?.cancel()
+                        _isPlaying.value = false
                     }
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            tickerJob?.cancel()
+            _isPlaying.value = false
         }
     }
 
@@ -268,9 +302,20 @@ class DesktopAudioPlayer(
         val mp3File = File(cacheDir, "$safeId.mp3")
         val m4aFile = File(cacheDir, "$safeId.m4a")
         val targetFile = if (mp3File.exists()) mp3File else m4aFile
+        val isFfplay = playerBin.endsWith("ffplay")
 
-        if (targetFile.exists() && _isPlaying.value) {
-            startAudioEngine(targetFile, clamped / 1000L)
+        if (_isPlaying.value) {
+            val audioSource = if (targetFile.exists() && targetFile.length() > 50000) {
+                targetFile.absolutePath
+            } else if (isFfplay && !song.audioUrl.isNullOrBlank()) {
+                song.audioUrl
+            } else {
+                null
+            }
+
+            if (audioSource != null) {
+                startAudioEngine(audioSource, clamped / 1000L)
+            }
         }
     }
 

@@ -1,5 +1,6 @@
 package com.example.musicapp.desktop.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,29 +48,36 @@ fun DesktopEpisodeCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(if (isPlayingThis) Color(0xFF1B2E21) else Color(0xFF181C19))
+            .background(if (isPlayingThis) Color(0xFF142419) else Color(0xFF131A15))
             .border(
                 width = 1.dp,
-                color = if (isPlayingThis) Color(0xFF1ED760).copy(alpha = 0.6f) else Color(0xFF263329),
+                color = if (isPlayingThis) Color(0xFF1ED760).copy(alpha = 0.5f) else Color(0xFF223026),
                 shape = RoundedCornerShape(12.dp)
             )
             .padding(16.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Top
         ) {
-            // Left: High quality Episode Artwork (click to play)
+            // Left: High quality Episode Artwork matching Image 1 (click to play)
             Box(
                 modifier = Modifier
-                    .width(160.dp)
-                    .height(96.dp)
+                    .width(180.dp)
+                    .height(102.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color(0xFF222622))
                     .clickable(onClick = onPlay),
                 contentAlignment = Alignment.Center
             ) {
-                if (episode.albumArtUrl.isNotBlank()) {
+                if (episode.id == "baps_ep_1") {
+                    Image(
+                        painter = painterResource("assets/somprakashdas_episode.png"),
+                        contentDescription = episode.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else if (episode.albumArtUrl.isNotBlank()) {
                     AsyncImage(
                         model = episode.albumArtUrl,
                         contentDescription = episode.title,
@@ -87,50 +96,59 @@ fun DesktopEpisodeCard(
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            // Middle: Episode Details (click to play)
+            // Right: Episode Info & Action Buttons matching Image 1
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .clickable(onClick = onPlay)
-                    .padding(end = 12.dp)
             ) {
+                // Line 1: Title (Full 2-line title matching Spotify screenshot)
                 Text(
                     text = episode.title,
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
+                        fontSize = 16.sp,
+                        lineHeight = 22.sp
                     ),
                     color = if (isPlayingThis) Color(0xFF1ED760) else Color.White,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(3.dp))
 
+                // Line 2: Subtitle "Episode • BAPS Satsang Gujarati"
                 Text(
                     text = episode.album.ifBlank { "Episode • ${episode.artist}" },
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
-                    color = Color(0xFFAAAAAA),
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    color = Color(0xFFA7A7A7),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
 
                 Spacer(modifier = Modifier.height(6.dp))
 
+                // Line 3: Description in Gujarati (3 lines matching Spotify screenshot)
                 val desc = episode.description.ifBlank {
-                    "Pujya Somprakashdas Swami delivers an inspiring discourse from BAPS Satsang."
+                    "આપણું જીવન સુખ અને દુઃખ બંનેથી ભરેલું છે. જ્યારે મુશ્કેલીઓ આવે છે, ત્યારે આપણે ઘણીવાર નિરાશ થઈ જઈએ છીએ અથવા ખોટી જગ્યાએ ઉકેલ શોધીએ છીએ. પૂજ્ય સોમપ્રકાશદાસ સ્વામી આ કથામાં સમજાવે છે કે સુખ અને દુઃખ એ..."
                 }
                 Text(
                     text = desc,
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 18.sp),
-                    color = Color(0xFF889988),
-                    maxLines = 2,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp
+                    ),
+                    color = Color(0xFFA0A5A0),
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Bottom row: Release date and duration
+                // Line 4: Date & Duration (e.g. "Oct 12 • 47 min 17 sec")
                 val minutes = episode.durationSeconds / 60
                 val seconds = episode.durationSeconds % 60
                 val durationStr = if (minutes >= 60) {
@@ -142,127 +160,144 @@ fun DesktopEpisodeCard(
                 }
                 val dateStr = episode.releaseDate.ifBlank { "Oct 12" }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "$dateStr • $durationStr",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                        color = Color(0xFF888888)
-                    )
-                }
-            }
+                Text(
+                    text = "$dateStr • $durationStr",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 12.5.sp
+                    ),
+                    color = Color(0xFF8E948E)
+                )
 
-            // Right: Like Icon + Play/Pause Button + 3-dots
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Like / Checkmark Icon
-                IconButton(
-                    onClick = onToggleLike,
-                    modifier = Modifier.size(40.dp)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Line 5: Spotify-style Action Row:
+                // Left: Green Checkmark (saved) + 3-dots | Right: White Circle Play Button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = if (isLiked) Icons.Default.CheckCircle else Icons.Default.FavoriteBorder,
-                        contentDescription = "Save episode",
-                        tint = if (isLiked) Color(0xFF1ED760) else Color.Gray,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                // Play / Pause Circle Button
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(Color.White)
-                        .clickable {
-                            if (isPlayingThis) onTogglePlayPause() else onPlay()
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (isPlayingThis) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlayingThis) "Pause" else "Play",
-                        tint = Color.Black,
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
-
-                // 3-dots Menu
-                Box {
-                    IconButton(
-                        onClick = { showMenu = true },
-                        modifier = Modifier.size(36.dp)
+                    // Green Checkmark Badge (Spotify Saved / Liked indicator)
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(if (isLiked) Color(0xFF1ED760) else Color.Transparent)
+                            .border(
+                                width = if (isLiked) 0.dp else 1.5.dp,
+                                color = if (isLiked) Color.Transparent else Color.Gray,
+                                shape = CircleShape
+                            )
+                            .clickable(onClick = onToggleLike),
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = "Episode options",
-                            tint = Color.Gray,
-                            modifier = Modifier.size(20.dp)
+                            imageVector = if (isLiked) Icons.Default.Check else Icons.Default.Add,
+                            contentDescription = if (isLiked) "Saved to Your Library" else "Save to Your Library",
+                            tint = if (isLiked) Color.Black else Color.White,
+                            modifier = Modifier.size(17.dp)
                         )
                     }
 
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = {
-                            showMenu = false
-                            showPlaylistSubmenu = false
-                        },
-                        modifier = Modifier.background(Color(0xFF242424))
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Play Next", color = Color.White) },
-                            leadingIcon = {
-                                Icon(Icons.Default.SkipNext, contentDescription = null, tint = Color(0xFF1ED760))
-                            },
-                            onClick = {
-                                showMenu = false
-                                onPlayNext()
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Add to Queue", color = Color.White) },
-                            leadingIcon = {
-                                Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null, tint = Color.White)
-                            },
-                            onClick = {
-                                showMenu = false
-                                onAddToQueue()
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(if (isLiked) "Remove from Library" else "Save to Library", color = Color.White) },
-                            leadingIcon = {
-                                Icon(if (isLiked) Icons.Default.CheckCircle else Icons.Default.FavoriteBorder, contentDescription = null, tint = Color(0xFF1ED760))
-                            },
-                            onClick = {
-                                showMenu = false
-                                onToggleLike()
-                            }
-                        )
-                        HorizontalDivider(color = Color(0xFF383838))
-                        DropdownMenuItem(
-                            text = { Text("Add to Playlist...", color = Color.White) },
-                            leadingIcon = {
-                                Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null, tint = Color.White)
-                            },
-                            onClick = {
-                                showPlaylistSubmenu = true
-                            }
-                        )
+                    Spacer(modifier = Modifier.width(16.dp))
 
-                        if (showPlaylistSubmenu) {
-                            playlists.forEach { pl ->
-                                DropdownMenuItem(
-                                    text = { Text("   ↳ ${pl.name}", color = Color(0xFF1ED760), fontSize = 13.sp) },
-                                    onClick = {
-                                        showMenu = false
-                                        showPlaylistSubmenu = false
-                                        onAddToPlaylist(pl.id)
-                                    }
-                                )
+                    // 3-dots Menu Button
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreHoriz,
+                                contentDescription = "Episode options",
+                                tint = Color(0xFFAAAAAA),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = {
+                                showMenu = false
+                                showPlaylistSubmenu = false
+                            },
+                            modifier = Modifier.background(Color(0xFF242424))
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Play Next", color = Color.White) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.SkipNext, contentDescription = null, tint = Color(0xFF1ED760))
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    onPlayNext()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Add to Queue", color = Color.White) },
+                                leadingIcon = {
+                                    Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null, tint = Color.White)
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    onAddToQueue()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (isLiked) "Remove from Your Library" else "Save to Your Library", color = Color.White) },
+                                leadingIcon = {
+                                    Icon(if (isLiked) Icons.Default.Check else Icons.Default.Add, contentDescription = null, tint = Color(0xFF1ED760))
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    onToggleLike()
+                                }
+                            )
+                            HorizontalDivider(color = Color(0xFF383838))
+                            DropdownMenuItem(
+                                text = { Text("Add to Playlist...", color = Color.White) },
+                                leadingIcon = {
+                                    Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null, tint = Color.White)
+                                },
+                                onClick = {
+                                    showPlaylistSubmenu = true
+                                }
+                            )
+
+                            if (showPlaylistSubmenu) {
+                                playlists.forEach { pl ->
+                                    DropdownMenuItem(
+                                        text = { Text("   ↳ ${pl.name}", color = Color(0xFF1ED760), fontSize = 13.sp) },
+                                        onClick = {
+                                            showMenu = false
+                                            showPlaylistSubmenu = false
+                                            onAddToPlaylist(pl.id)
+                                        }
+                                    )
+                                }
                             }
                         }
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    // Spotify iconic White Circle Play Button on the far right
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .clickable {
+                                if (isPlayingThis) onTogglePlayPause() else onPlay()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isPlayingThis) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isPlayingThis) "Pause" else "Play",
+                            tint = Color.Black,
+                            modifier = Modifier.size(26.dp)
+                        )
                     }
                 }
             }
