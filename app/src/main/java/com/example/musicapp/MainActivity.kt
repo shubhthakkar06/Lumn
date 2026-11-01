@@ -69,6 +69,7 @@ import kotlinx.coroutines.delay
 // Read from GitHub's public raw content endpoint first. Streamlit may show a public
 // sharing setting while its edge/auth layer still redirects anonymous app requests.
 private val LUMN_UPDATE_MANIFESTS = listOf(
+  "https://cdn.jsdelivr.net/gh/shubhthakkar06/Lumn@main/static/update.json",
   "https://raw.githubusercontent.com/shubhthakkar06/Lumn/main/static/update.json",
   "https://lumnmusic.streamlit.app/app/static/update.json"
 )

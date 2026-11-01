@@ -13,8 +13,8 @@ android {
         applicationId = "com.example.musicapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 31
-        versionName = "2.7.4"
+        versionCode = 32
+        versionName = "2.7.5"
     }
 
     signingConfigs {

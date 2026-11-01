@@ -449,6 +449,59 @@ fun HomeScreen(
                     )
                 }
             }
+
+            // 9. Podcasts & Satsang Episodes
+            item {
+                val bapsEpisodes = remember {
+                    listOf(
+                        SongInfo(
+                            videoId = "baps_ep_1",
+                            title = "Patience and True Refuge in Bhagwan | Pujya Somprakashdas Swami | BAPS Satsang",
+                            artist = "Pujya Somprakashdas Swami",
+                            albumArtUrl = "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/00/72/c6/0072c641-891b-71ff-8c1c-3e6f20be1f02/mza_13154730571231814752.jpg/600x600bb.jpg",
+                            audioStreamUrl = "https://www.buzzsprout.com/1006105/episodes/20031353-faith-is-a-muscle-how-do-we-strengthen-it-faith-part-2-pujya-chaitanyamurtidas-swami-wiw.mp3",
+                            albumName = "Episode • BAPS Satsang Gujarati",
+                            durationSeconds = 2837L,
+                            isEpisode = true,
+                            description = "આપણું જીવન સુખ અને દુઃખ બંનેથી ભરેલું છે. જ્યારે મુશ્કેલીઓ આવે છે, ત્યારે આપણે ઘણીવાર નિરાશ થઈ જઈએ છીએ અથવા ખોટી જગ્યાએ ઉકેલ શોધીએ છીએ. પૂજ્ય સોમપ્રકાશદાસ સ્વામી આ કથામાં સમજાવે છે કે સુખ અને દુઃખ એ જીવનના બે પાસાં છે.",
+                            releaseDate = "Oct 12"
+                        ),
+                        SongInfo(
+                            videoId = "baps_ep_2",
+                            title = "Faith Is a Muscle: How Do We Strengthen It? | Pujya Chaitanyamurtidas Swami",
+                            artist = "Pujya Chaitanyamurtidas Swami",
+                            albumArtUrl = "https://is1-ssl.mzstatic.com/image/thumb/PodcastSource221/v4/1a/42/0e/1a420e34-b357-ef5b-b7da-49c354795b92/08642214-e91d-4071-89b5-e2ae3b916892.png/600x600bb.jpg",
+                            audioStreamUrl = "https://www.buzzsprout.com/1006105/episodes/20031353-faith-is-a-muscle-how-do-we-strengthen-it-faith-part-2-pujya-chaitanyamurtidas-swami-wiw.mp3",
+                            albumName = "Episode • BAPS Better Living",
+                            durationSeconds = 2410L,
+                            isEpisode = true,
+                            description = "Understanding how faith in Bhagwan and Satpurush anchors our mind during testing times and keeps us centered.",
+                            releaseDate = "Oct 19"
+                        ),
+                        SongInfo(
+                            videoId = "baps_ep_3",
+                            title = "Inaugural Executive Forum on “Value-Added Life” | Pujya Brahmaviharidas Swami",
+                            artist = "Pujya Brahmaviharidas Swami",
+                            albumArtUrl = "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/00/b2/ff/00b2ff57-d8bf-b00d-a317-b6c7788b0890/mza_13015016754983816106.jpg/600x600bb.jpg",
+                            audioStreamUrl = "https://www.buzzsprout.com/1006105/episodes/19983365-inaugural-executive-forum-on-value-added-life-pujya-brahmaviharidas-swami.mp3",
+                            albumName = "Episode • BAPS Satsang Lectures",
+                            durationSeconds = 3120L,
+                            isEpisode = true,
+                            description = "Pujya Brahmaviharidas Swami delivers an inspiring discourse on leading a meaningful, value-centered life with purpose and dedication.",
+                            releaseDate = "Sep 28"
+                        )
+                    )
+                }
+
+                ShelfSection(
+                    title = "Podcasts & Satsang",
+                    items = bapsEpisodes.map { ShelfItem(it.title, it.artist, it.albumArtUrl) },
+                    onItemClick = { item ->
+                        val ep = bapsEpisodes.find { it.title == item.title }
+                        if (ep != null) viewModel?.playSong(ep, bapsEpisodes)
+                    }
+                )
+            }
         }
     }
 }

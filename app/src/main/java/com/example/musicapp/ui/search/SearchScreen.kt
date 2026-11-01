@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -64,9 +66,15 @@ fun SearchScreen(
     val currentSong by viewModel.currentSong.collectAsStateWithLifecycle()
     var selectedFilterChip by remember { mutableStateOf(0) }
     var selectedSongForOptions by remember { mutableStateOf<SongInfo?>(null) }
-    val filterChips = listOf("All", "Songs", "Artists", "Albums")
+    val filterChips = listOf("All", "Songs", "Episodes", "Artists", "Albums")
 
     val categories = listOf(
+        SearchCategory(
+            title = "Podcasts & Satsang",
+            topSong = "Patience and True Refuge",
+            gradientColors = listOf(Color(0xFFE65100), Color(0xFF6A1B9A)),
+            imageUrl = "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/00/72/c6/0072c641-891b-71ff-8c1c-3e6f20be1f02/mza_13154730571231814752.jpg/600x600bb.jpg"
+        ),
         SearchCategory(
             title = "Bollywood",
             topSong = "Kesariya",
@@ -317,7 +325,7 @@ fun SearchScreen(
                 }
                 is MainScreenUiState.Success -> {
                     val artistNames = state.songs.flatMap { song -> splitArtistCredits(song.artist) }.distinctBy { it.lowercase() }
-                    if (selectedFilterChip == 2) {
+                    if (selectedFilterChip == 3) {
                         if (artistNames.isEmpty()) {
                             item { Text("No artists found", color = Color(0xFF909AAB)) }
                         } else {
@@ -347,79 +355,179 @@ fun SearchScreen(
                                 }
                             }
                         }
-                    } else if (selectedFilterChip == 3) {
+                    } else if (selectedFilterChip == 4) {
                         item {
                             Text("Album search is coming from artist discographies.", color = Color(0xFF909AAB), modifier = Modifier.padding(vertical = 24.dp))
                         }
                     }
 
-                    // If "All" or "Songs" selected, show the songs list
-                    if ((selectedFilterChip == 0 || selectedFilterChip == 1) && state.songs.isEmpty()) {
-                        item { Text("No songs found. Try another search.", color = Color(0xFF909AAB), modifier = Modifier.padding(vertical = 24.dp)) }
-                    } else if (selectedFilterChip == 0 || selectedFilterChip == 1) {
-                        itemsIndexed(state.songs, key = { index, song -> "${song.videoId}-$index" }) { _, song ->
+                    // Filter tracks based on chip: All (0), Songs (1), Episodes (2)
+                    val tracksToShow = when (selectedFilterChip) {
+                        1 -> state.songs.filter { !it.isEpisode }
+                        2 -> state.songs.filter { it.isEpisode || it.title.contains("Satsang", true) || it.title.contains("Swami", true) || it.albumName.contains("Episode", true) }
+                        else -> state.songs
+                    }
+
+                    if ((selectedFilterChip in 0..2) && tracksToShow.isEmpty()) {
+                        val emptyMsg = if (selectedFilterChip == 2) "No podcast or satsang episodes found." else "No songs found. Try another search."
+                        item { Text(emptyMsg, color = Color(0xFF909AAB), modifier = Modifier.padding(vertical = 24.dp)) }
+                    } else if (selectedFilterChip in 0..2) {
+                        itemsIndexed(tracksToShow, key = { index, song -> "${song.videoId}-$index" }) { _, song ->
                             val isLoading = loadingSongVideoId == song.videoId
                             val isCurrent = currentSong?.videoId == song.videoId
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        if (currentSong?.videoId == song.videoId) onOpenPlayer()
-                                        else viewModel.playSong(song, state.songs)
-                                    }
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                TrackArtwork(
-                                    model = song.albumArtUrl,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp))
-                                )
-                                Spacer(modifier = Modifier.width(14.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = song.title,
-                                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                                        color = if (isCurrent) themeAccent else Color.White,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "Song • ${song.artist}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color(0xFF909AAB),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                if (isLoading) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(20.dp),
-                                        color = themeAccent,
-                                        strokeWidth = 2.dp
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                } else if (isCurrent) {
-                                    Icon(
-                                        imageVector = Icons.Default.GraphicEq,
-                                        contentDescription = "Playing",
-                                        tint = themeAccent,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                }
-                                IconButton(
-                                    onClick = { selectedSongForOptions = song },
-                                    modifier = Modifier.size(36.dp)
+
+                            if (song.isEpisode) {
+                                // Full Episode Card matching Spotify screenshot
+                                Card(
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(containerColor = if (isCurrent) Color(0xFF162A1D) else Color(0xFF141922)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            if (currentSong?.videoId == song.videoId) onOpenPlayer()
+                                            else viewModel.playSong(song, tracksToShow)
+                                        }
+                                        .padding(vertical = 6.dp)
                                 ) {
-                                    Icon(
-                                        Icons.Default.MoreVert,
-                                        contentDescription = "Song options",
-                                        tint = Color(0xFF909AAB),
-                                        modifier = Modifier.size(20.dp)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TrackArtwork(
+                                            model = song.albumArtUrl,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(width = 110.dp, height = 72.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = song.title,
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = if (isCurrent) themeAccent else Color.White,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = song.albumName.ifBlank { "Episode • ${song.artist}" },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color(0xFF909AAB),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            val desc = song.description.ifBlank { "BAPS Satsang Gujarati discourse." }
+                                            Text(
+                                                text = desc,
+                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                                color = Color(0xFF7A889B),
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            val m = song.durationSeconds / 60
+                                            val s = song.durationSeconds % 60
+                                            val durationText = if (m >= 60) "${m / 60} hr ${m % 60} min" else "$m min $s sec"
+                                            val dateText = song.releaseDate.ifBlank { "Oct 12" }
+                                            Text(
+                                                text = "$dateText • $durationText",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF7A889B)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                if (currentSong?.videoId == song.videoId) onOpenPlayer()
+                                                else viewModel.playSong(song, tracksToShow)
+                                            },
+                                            modifier = Modifier.size(38.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isCurrent) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                                contentDescription = "Play",
+                                                tint = if (isCurrent) themeAccent else Color.White,
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { selectedSongForOptions = song },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.MoreVert,
+                                                contentDescription = "Options",
+                                                tint = Color(0xFF909AAB),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            if (currentSong?.videoId == song.videoId) onOpenPlayer()
+                                            else viewModel.playSong(song, tracksToShow)
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    TrackArtwork(
+                                        model = song.albumArtUrl,
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.size(52.dp).clip(RoundedCornerShape(8.dp))
                                     )
+                                    Spacer(modifier = Modifier.width(14.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = song.title,
+                                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                                            color = if (isCurrent) themeAccent else Color.White,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "Song • ${song.artist}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color(0xFF909AAB),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    if (isLoading) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(20.dp),
+                                            color = themeAccent,
+                                            strokeWidth = 2.dp
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                    } else if (isCurrent) {
+                                        Icon(
+                                            imageVector = Icons.Default.GraphicEq,
+                                            contentDescription = "Playing",
+                                            tint = themeAccent,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                    }
+                                    IconButton(
+                                        onClick = { selectedSongForOptions = song },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.MoreVert,
+                                            contentDescription = "Song options",
+                                            tint = Color(0xFF909AAB),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
                         }

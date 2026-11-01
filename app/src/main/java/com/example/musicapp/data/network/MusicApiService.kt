@@ -23,7 +23,10 @@ data class SongInfo(
     /** Provider duration in whole seconds; zero means the provider did not report it. */
     val durationSeconds: Long = 0L,
     /** Null for ordinary catalog tracks; false marks a Spotify import with no confident Rivara match. */
-    val importMatchFound: Boolean? = null
+    val importMatchFound: Boolean? = null,
+    val isEpisode: Boolean = false,
+    val description: String = "",
+    val releaseDate: String = ""
 )
 
 class MusicApiService {

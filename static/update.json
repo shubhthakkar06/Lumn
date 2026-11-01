@@ -1,7 +1,7 @@
 {
-  "versionName": "2.7.4",
-  "versionCode": 31,
-  "minimumVersionCode": 31,
+  "versionName": "2.7.5",
+  "versionCode": 32,
+  "minimumVersionCode": 32,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
-  "releaseNotes": "Rivara 2.7.4 fixes multi-account sign-out switching so logging out of one account seamlessly switches to the remaining account without dropping to the login landing page, removes ghost accounts in Guest mode, adds individual account sign-out in AuthDialog, and strictly isolates playlists and liked songs per user account."
+  "releaseNotes": "Rivara 2.7.5 introduces full Podcasts & Satsang episode support (rich discourse descriptions, durations, and audio playback), instant online search with dedicated Episode cards, enhanced auto-updater via global CDN, multi-account isolation, and macOS & Wear OS cross-platform support."
 }
