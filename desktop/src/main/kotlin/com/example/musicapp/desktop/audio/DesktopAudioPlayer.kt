@@ -112,7 +112,7 @@ class DesktopAudioPlayer(
         _queue.value = q
     }
 
-    fun play(song: DesktopSong, startPositionMs: Long = 0L) {
+    fun play(song: DesktopSong, startPositionMs: Long = 0L, queueContext: List<DesktopSong>? = null) {
         stopCurrentPlayback()
         isIntentionallyStopped = false
         isPaused = false
@@ -120,7 +120,9 @@ class DesktopAudioPlayer(
         _progressMs.value = startPositionMs
         _isPlaying.value = true
 
-        if (_queue.value.none { it.id == song.id }) {
+        if (queueContext != null && queueContext.isNotEmpty()) {
+            _queue.value = queueContext
+        } else if (_queue.value.none { it.id == song.id }) {
             _queue.value = listOf(song) + _queue.value
         }
 
@@ -141,15 +143,18 @@ class DesktopAudioPlayer(
             val isMp3 = streamUrl.contains(".mp3", ignoreCase = true)
             val ext = if (isMp3) "mp3" else "m4a"
             val targetFile = File(cacheDir, "$safeId.$ext")
+            val tmpFile = File(cacheDir, "$safeId.tmp")
 
-            val audioSource = if (targetFile.exists() && targetFile.length() > 50000) {
+            val isCachedValid = targetFile.exists() && targetFile.length() > 500_000
+            val audioSource = if (isCachedValid) {
                 targetFile.absolutePath
             } else {
+                if (targetFile.exists()) targetFile.delete()
                 streamUrl
             }
 
-            // Cache in background for offline / replay
-            if (!targetFile.exists() || targetFile.length() < 10000) {
+            // Cache in background for offline / replay using atomic .tmp rename
+            if (!isCachedValid && !tmpFile.exists()) {
                 scope.launch(Dispatchers.IO) {
                     try {
                         val req = Request.Builder()
@@ -159,26 +164,35 @@ class DesktopAudioPlayer(
                         val res = httpClient.newCall(req).execute()
                         if (res.isSuccessful) {
                             res.body?.byteStream()?.use { input ->
-                                FileOutputStream(targetFile).use { output ->
+                                FileOutputStream(tmpFile).use { output ->
                                     input.copyTo(output)
                                 }
                             }
+                            if (tmpFile.length() > 500_000) {
+                                tmpFile.renameTo(targetFile)
+                            } else {
+                                tmpFile.delete()
+                            }
                         }
-                    } catch (_: Exception) {}
+                    } catch (_: Exception) {
+                        try { tmpFile.delete() } catch (_: Exception) {}
+                    }
                 }
             }
 
-            startDirectPcmEngine(audioSource, startPositionMs, song.durationSeconds * 1000L)
+            startDirectPcmEngine(audioSource, streamUrl, startPositionMs, song.durationSeconds * 1000L)
         }
     }
 
     private suspend fun startDirectPcmEngine(
         audioSource: String,
+        remoteStreamUrl: String,
         startPositionMs: Long,
         totalDurationMs: Long
-    ) = withContext(Dispatchers.IO) {
+    ): Unit = withContext(Dispatchers.IO) {
         var line: SourceDataLine? = null
         var proc: Process? = null
+        var bytesWritten = 0L
 
         try {
             // Open Java DirectAudio line (talks directly to CoreAudio HAL, bypasses AudioQueue)
@@ -235,7 +249,7 @@ class DesktopAudioPlayer(
 
             val inputStream = proc.inputStream
             val buffer = ByteArray(4096)
-            var bytesWritten = 0L
+            bytesWritten = 0L
             var lastUpdateMs = System.currentTimeMillis()
 
             while (isActive && !isIntentionallyStopped) {
@@ -276,9 +290,17 @@ class DesktopAudioPlayer(
             }
 
             if (!isIntentionallyStopped && isActive) {
+                val playedMs = startPositionMs + (bytesWritten / bytesPerMs)
+                val reachedEnd = totalDurationMs > 0 && playedMs >= (totalDurationMs - 4000L).coerceAtLeast(1000L)
+
                 if (bytesWritten == 0L) {
                     simulateProgress(totalDurationMs, startPositionMs)
-                } else {
+                } else if (!reachedEnd && audioSource != remoteStreamUrl && audioSource.startsWith("/")) {
+                    // Local cached file truncated/corrupt! Delete it and seamlessly retry from remote URL
+                    println("Local cached audio ended prematurely at $playedMs ms / $totalDurationMs ms. Retrying directly from remote stream.")
+                    try { File(audioSource).delete() } catch (_: Exception) {}
+                    startDirectPcmEngine(remoteStreamUrl, remoteStreamUrl, playedMs, totalDurationMs)
+                } else if (reachedEnd) {
                     line.drain()
                     withContext(Dispatchers.Main) {
                         if (_isRepeat.value) {
@@ -291,8 +313,12 @@ class DesktopAudioPlayer(
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            // If native streaming experienced an error, simulate progress so UI remains interactive
-            if (!isIntentionallyStopped) {
+            val playedMs = startPositionMs + (bytesWritten / bytesPerMs)
+            if (!isIntentionallyStopped && audioSource != remoteStreamUrl && audioSource.startsWith("/")) {
+                // If local file failed to decode, delete and retry with remoteStreamUrl
+                try { File(audioSource).delete() } catch (_: Exception) {}
+                startDirectPcmEngine(remoteStreamUrl, remoteStreamUrl, playedMs, totalDurationMs)
+            } else if (!isIntentionallyStopped) {
                 simulateProgress(totalDurationMs, startPositionMs)
             }
         } finally {

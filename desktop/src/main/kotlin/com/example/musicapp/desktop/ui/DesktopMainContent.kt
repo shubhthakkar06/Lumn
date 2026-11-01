@@ -57,6 +57,7 @@ fun DesktopMainContent(
     downloadManager: DesktopDownloadManager,
     themeAccent: Color,
     onPlaySong: (DesktopSong) -> Unit,
+    onPlaySongWithQueue: (DesktopSong, List<DesktopSong>) -> Unit = { s, _ -> onPlaySong(s) },
     onTogglePlayPause: () -> Unit,
     onPlayAll: (List<DesktopSong>) -> Unit,
     onPlayNext: (DesktopSong) -> Unit,
@@ -227,7 +228,10 @@ fun DesktopMainContent(
                         currentSong = currentSong,
                         playlists = playlists,
                         themeAccent = themeAccent,
-                        onPlaySong = onPlaySong,
+                        onPlaySong = { s ->
+                            val idx = downloadedSongs.indexOfFirst { it.id == s.id }.coerceAtLeast(0)
+                            onPlaySongWithQueue(s, downloadedSongs.drop(idx) + downloadedSongs.take(idx))
+                        },
                         onPlayAll = { onPlayAll(downloadedSongs) },
                         onToggleLike = { libraryManager.toggleLike(it) },
                         onRemoveDownload = { downloadManager.removeDownload(it.id) },
@@ -246,7 +250,10 @@ fun DesktopMainContent(
                         playlists = playlists,
                         themeAccent = themeAccent,
                         downloadManager = downloadManager,
-                        onPlaySong = onPlaySong,
+                        onPlaySong = { s ->
+                            val idx = likedSongs.indexOfFirst { it.id == s.id }.coerceAtLeast(0)
+                            onPlaySongWithQueue(s, likedSongs.drop(idx) + likedSongs.take(idx))
+                        },
                         onPlayAll = { onPlayAll(likedSongs) },
                         onToggleLike = { libraryManager.toggleLike(it) },
                         onToggleDownload = { s ->
@@ -273,7 +280,10 @@ fun DesktopMainContent(
                         playlists = playlists,
                         themeAccent = themeAccent,
                         downloadManager = downloadManager,
-                        onPlaySong = onPlaySong,
+                        onPlaySong = { s ->
+                            val idx = playlistSongs.indexOfFirst { it.id == s.id }.coerceAtLeast(0)
+                            onPlaySongWithQueue(s, playlistSongs.drop(idx) + playlistSongs.take(idx))
+                        },
                         onPlayAll = { onPlayAll(playlistSongs) },
                         onToggleLike = { libraryManager.toggleLike(it) },
                         onToggleDownload = { s ->
@@ -657,7 +667,10 @@ fun DesktopMainContent(
                                             isPlayingThis = currentSong?.id == song.id && isPlaying,
                                             isLiked = isLiked,
                                             playlists = playlists,
-                                            onPlay = { onPlaySong(song) },
+                                            onPlay = {
+                                                val q = displayedSongs.drop(index) + displayedSongs.take(index)
+                                                onPlaySongWithQueue(song, q)
+                                            },
                                             onTogglePlayPause = onTogglePlayPause,
                                             onToggleLike = { libraryManager.toggleLike(song) },
                                             onPlayNext = { onPlayNext(song) },
@@ -674,7 +687,10 @@ fun DesktopMainContent(
                                             isDownloading = isDownloading,
                                             themeAccent = themeAccent,
                                             playlists = playlists,
-                                            onPlay = { onPlaySong(song) },
+                                            onPlay = {
+                                                val q = displayedSongs.drop(index) + displayedSongs.take(index)
+                                                onPlaySongWithQueue(song, q)
+                                            },
                                             onToggleLike = { libraryManager.toggleLike(song) },
                                             onToggleDownload = {
                                                 if (isDownloaded) downloadManager.removeDownload(song.id)

@@ -196,6 +196,9 @@ fun main() = application {
                                 onPlaySong = { song ->
                                     audioPlayer.play(song)
                                 },
+                                onPlaySongWithQueue = { song, queue ->
+                                    audioPlayer.play(song, queueContext = queue)
+                                },
                                 onTogglePlayPause = {
                                     audioPlayer.togglePlayPause()
                                 },
