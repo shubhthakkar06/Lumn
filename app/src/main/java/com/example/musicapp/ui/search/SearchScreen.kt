@@ -398,10 +398,13 @@ fun SearchScreen(
                                         verticalAlignment = Alignment.Top
                                     ) {
                                         // Left: Wide Thumbnail (16:9)
-                                        val isSomprakashdas = song.videoId == "baps_ep_1" ||
-                                            song.title.contains("Somprakashdas", ignoreCase = true) ||
-                                            song.title.contains("True Refuge", ignoreCase = true) ||
-                                            song.title.contains("સોમપ્રકાશદાસ", ignoreCase = true)
+                                        val localDrawableRes = when {
+                                            song.videoId == "baps_ep_aksharatitdas" || song.title.contains("અક્ષરાતીતદાસ") -> com.example.musicapp.R.drawable.aksharatitdas_episode
+                                            song.videoId == "baps_ep_uttamcharan" || song.title.contains("ઉત્તમયોગીદાસ") -> com.example.musicapp.R.drawable.uttamyogidas_episode
+                                            song.videoId == "baps_ep_atmatruptdas" || song.title.contains("આત્મતૃપ્તદાસ") || song.title.contains("Atmatruptdas") -> com.example.musicapp.R.drawable.atmatruptdas_episode
+                                            song.videoId == "baps_ep_1" || song.title.contains("Somprakashdas", ignoreCase = true) || song.title.contains("સોમપ્રકાશદાસ") -> com.example.musicapp.R.drawable.somprakashdas_episode
+                                            else -> null
+                                        }
 
                                         Box(
                                             modifier = Modifier
@@ -410,9 +413,9 @@ fun SearchScreen(
                                                 .background(Color(0xFF222622)),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            if (isSomprakashdas) {
+                                            if (localDrawableRes != null) {
                                                 androidx.compose.foundation.Image(
-                                                    painter = androidx.compose.ui.res.painterResource(com.example.musicapp.R.drawable.somprakashdas_episode),
+                                                    painter = androidx.compose.ui.res.painterResource(localDrawableRes),
                                                     contentDescription = song.title,
                                                     contentScale = ContentScale.Crop,
                                                     modifier = Modifier.fillMaxSize()

@@ -61,10 +61,14 @@ fun DesktopEpisodeCard(
             verticalAlignment = Alignment.Top
         ) {
             // Left: High quality Episode Artwork matching Image 1 (click to play)
-            val isSomprakashdas = episode.id == "baps_ep_1" ||
-                episode.title.contains("Somprakashdas", ignoreCase = true) ||
-                episode.title.contains("True Refuge", ignoreCase = true) ||
-                episode.title.contains("સોમપ્રકાશદાસ", ignoreCase = true)
+            val localAsset = when {
+                episode.id == "baps_ep_aksharatitdas" || episode.title.contains("અક્ષરાતીતદાસ") -> "assets/aksharatitdas_episode.png"
+                episode.id == "baps_ep_uttamcharan" || episode.title.contains("ઉત્તમયોગીદાસ") -> "assets/uttamyogidas_episode.png"
+                episode.id == "baps_ep_atmatruptdas" || episode.title.contains("આત્મતૃપ્તદાસ") || episode.title.contains("Atmatruptdas") -> "assets/atmatruptdas_episode.png"
+                episode.id == "baps_ep_1" || episode.title.contains("Somprakashdas") || episode.title.contains("સોમપ્રકાશદાસ") -> "assets/somprakashdas_episode.png"
+                episode.albumArtUrl.startsWith("assets/") -> episode.albumArtUrl
+                else -> null
+            }
 
             Box(
                 modifier = Modifier
@@ -75,9 +79,9 @@ fun DesktopEpisodeCard(
                     .clickable(onClick = onPlay),
                 contentAlignment = Alignment.Center
             ) {
-                if (isSomprakashdas) {
+                if (localAsset != null) {
                     Image(
-                        painter = painterResource("assets/somprakashdas_episode.png"),
+                        painter = painterResource(localAsset),
                         contentDescription = episode.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()

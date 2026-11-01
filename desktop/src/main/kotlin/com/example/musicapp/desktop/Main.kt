@@ -5,38 +5,50 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.example.musicapp.desktop.audio.DesktopAudioPlayer
-import com.example.musicapp.desktop.data.DesktopLibraryManager
-import com.example.musicapp.desktop.data.DesktopMusicRepository
-import com.example.musicapp.desktop.data.DesktopUserManager
-import com.example.musicapp.desktop.data.SyncedLyricLine
+import com.example.musicapp.desktop.data.*
 import com.example.musicapp.desktop.mac.MacTrayIntegration
+import com.example.musicapp.desktop.model.DesktopSong
+import com.example.musicapp.desktop.theme.DesktopThemeManager
 import com.example.musicapp.desktop.ui.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 
 fun main() = application {
-    val windowState = rememberWindowState(width = 1240.dp, height = 840.dp)
+    val windowState = rememberWindowState(width = 1260.dp, height = 860.dp)
     var isWindowVisible by remember { mutableStateOf(true) }
 
     val musicRepository = remember { DesktopMusicRepository() }
     val libraryManager = remember { DesktopLibraryManager() }
     val userManager = remember { DesktopUserManager() }
+    val downloadManager = remember { DesktopDownloadManager(musicRepository) }
     val audioPlayer = remember { DesktopAudioPlayer(musicRepository) }
 
     val coroutineScope = rememberCoroutineScope()
     var currentLyrics by remember { mutableStateOf<List<SyncedLyricLine>>(emptyList()) }
+
+    val currentTheme by DesktopThemeManager.currentTheme.collectAsState()
+    val themeAccent = currentTheme.primaryColor
 
     val currentUser by userManager.currentUser.collectAsState()
     val currentSong by audioPlayer.currentSong.collectAsState()
@@ -52,7 +64,14 @@ fun main() = application {
     var isLyricsOpen by remember { mutableStateOf(false) }
     var isQueueOpen by remember { mutableStateOf(false) }
     var showAuthDialog by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
+    var showEqualizerDialog by remember { mutableStateOf(false) }
+    var showDeviceSelectorDialog by remember { mutableStateOf(false) }
+    var showPlaylistImportDialog by remember { mutableStateOf(false) }
+    var isFullscreenPlayerOpen by remember { mutableStateOf(false) }
     var showLaunchSplash by remember { mutableStateOf(true) }
+    var selectedDeviceName by remember { mutableStateOf("MacBook Pro Speakers") }
+    var toastMessage by remember { mutableStateOf<String?>(null) }
 
     // Start intro splash and check if user needs to sign in on first launch
     LaunchedEffect(Unit) {
@@ -83,6 +102,14 @@ fun main() = application {
         }
     }
 
+    // Auto-dismiss floating toast messages
+    LaunchedEffect(toastMessage) {
+        if (toastMessage != null) {
+            delay(2800)
+            toastMessage = null
+        }
+    }
+
     // Setup macOS Menu Bar Tray
     LaunchedEffect(Unit) {
         MacTrayIntegration.setupTray(
@@ -101,6 +128,17 @@ fun main() = application {
         }
     }
 
+    fun shareSong(song: DesktopSong) {
+        try {
+            val text = "🎵 Listening to \"${song.title}\" by ${song.artist} on Rivara Music! https://rivara.app/track/${song.id}"
+            val sel = StringSelection(text)
+            Toolkit.getDefaultToolkit().systemClipboard.setContents(sel, sel)
+            toastMessage = "Copied track link to clipboard!"
+        } catch (_: Exception) {
+            toastMessage = "Copied track details!"
+        }
+    }
+
     if (isWindowVisible) {
         Window(
             onCloseRequest = { isWindowVisible = false }, // Close to macOS menu bar tray
@@ -111,12 +149,15 @@ fun main() = application {
                 if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.Spacebar) {
                     audioPlayer.togglePlayPause()
                     true
+                } else if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.Escape && isFullscreenPlayerOpen) {
+                    isFullscreenPlayerOpen = false
+                    true
                 } else false
             }
         ) {
             MaterialTheme(
                 colorScheme = darkColorScheme(
-                    primary = Color(0xFF1ED760),
+                    primary = themeAccent,
                     background = Color(0xFF121212),
                     surface = Color(0xFF181818)
                 )
@@ -129,9 +170,12 @@ fun main() = application {
                                 selectedTab = selectedTab,
                                 onTabSelected = { selectedTab = it },
                                 playlists = playlists,
+                                themeAccent = themeAccent,
                                 onCreatePlaylist = { name ->
                                     libraryManager.createPlaylist(name)
-                                }
+                                },
+                                onOpenImportPlaylist = { showPlaylistImportDialog = true },
+                                onOpenSettings = { showSettingsDialog = true }
                             )
 
                             DesktopMainContent(
@@ -142,6 +186,8 @@ fun main() = application {
                                 playlists = playlists,
                                 libraryManager = libraryManager,
                                 musicRepository = musicRepository,
+                                downloadManager = downloadManager,
+                                themeAccent = themeAccent,
                                 onPlaySong = { song ->
                                     audioPlayer.play(song)
                                 },
@@ -162,6 +208,7 @@ fun main() = application {
                                 },
                                 onTabSelected = { selectedTab = it },
                                 onOpenAuth = { showAuthDialog = true },
+                                onShareSong = { shareSong(it) },
                                 modifier = Modifier.weight(1f)
                             )
 
@@ -172,10 +219,13 @@ fun main() = application {
                                     progressMs = progressMs,
                                     isQueueMode = isQueueOpen,
                                     queue = queue,
+                                    themeAccent = themeAccent,
                                     onClose = {
                                         isLyricsOpen = false
                                         isQueueOpen = false
                                     },
+                                    onOpenFullscreen = { isFullscreenPlayerOpen = true },
+                                    onShareSong = { currentSong?.let { shareSong(it) } },
                                     onSongSelected = { audioPlayer.play(it) },
                                     onSeek = { audioPlayer.seekTo(it) }
                                 )
@@ -192,6 +242,9 @@ fun main() = application {
                             isRepeat = isRepeat,
                             isLyricsOpen = isLyricsOpen,
                             isQueueOpen = isQueueOpen,
+                            isDownloaded = currentSong?.let { downloadManager.isDownloaded(it.id) } ?: false,
+                            isDownloading = currentSong?.let { downloadManager.isDownloading(it.id) } ?: false,
+                            themeAccent = themeAccent,
                             onTogglePlayPause = { audioPlayer.togglePlayPause() },
                             onSkipNext = { audioPlayer.skipNext() },
                             onSkipPrev = { audioPlayer.skipPrev() },
@@ -211,7 +264,45 @@ fun main() = application {
                                 currentSong?.let { song ->
                                     libraryManager.toggleLike(song)
                                 }
-                            }
+                            },
+                            onToggleDownload = {
+                                currentSong?.let { song ->
+                                    if (downloadManager.isDownloaded(song.id)) downloadManager.removeDownload(song.id)
+                                    else downloadManager.downloadSong(song)
+                                }
+                            },
+                            onShareSong = { currentSong?.let { shareSong(it) } },
+                            onOpenFullscreen = { isFullscreenPlayerOpen = true }
+                        )
+                    }
+
+                    // Fullscreen Player Overlay
+                    if (isFullscreenPlayerOpen && currentSong != null) {
+                        DesktopFullScreenPlayer(
+                            song = currentSong!!,
+                            isPlaying = isPlaying,
+                            progressMs = progressMs,
+                            volume = volume,
+                            isShuffle = isShuffle,
+                            isRepeat = isRepeat,
+                            isLiked = libraryManager.isLiked(currentSong!!.id),
+                            themeAccent = themeAccent,
+                            lyrics = currentLyrics,
+                            queue = queue,
+                            downloadManager = downloadManager,
+                            onTogglePlayPause = { audioPlayer.togglePlayPause() },
+                            onSkipNext = { audioPlayer.skipNext() },
+                            onSkipPrev = { audioPlayer.skipPrev() },
+                            onSeek = { audioPlayer.seekTo(it) },
+                            onVolumeChange = { audioPlayer.setVolume(it) },
+                            onToggleShuffle = { audioPlayer.toggleShuffle() },
+                            onToggleRepeat = { audioPlayer.toggleRepeat() },
+                            onToggleLike = { libraryManager.toggleLike(currentSong!!) },
+                            onOpenEqualizer = { showEqualizerDialog = true },
+                            onOpenDeviceSelector = { showDeviceSelectorDialog = true },
+                            onShareSong = { shareSong(currentSong!!) },
+                            onSongSelectedFromQueue = { audioPlayer.play(it) },
+                            onClose = { isFullscreenPlayerOpen = false }
                         )
                     }
 
@@ -230,6 +321,69 @@ fun main() = application {
                             userManager = userManager,
                             onDismiss = { showAuthDialog = false }
                         )
+                    }
+
+                    // Settings Dialog
+                    if (showSettingsDialog) {
+                        DesktopSettingsDialog(
+                            themeAccent = themeAccent,
+                            currentUser = currentUser,
+                            downloadManager = downloadManager,
+                            onOpenEqualizer = { showEqualizerDialog = true },
+                            onOpenDeviceSelector = { showDeviceSelectorDialog = true },
+                            onOpenAuth = { showAuthDialog = true },
+                            onDismiss = { showSettingsDialog = false }
+                        )
+                    }
+
+                    // Audio Equalizer Dialog
+                    if (showEqualizerDialog) {
+                        DesktopEqualizerDialog(
+                            themeAccent = themeAccent,
+                            onDismiss = { showEqualizerDialog = false }
+                        )
+                    }
+
+                    // Output Device Selector Dialog
+                    if (showDeviceSelectorDialog) {
+                        DesktopDeviceSelectorDialog(
+                            themeAccent = themeAccent,
+                            selectedDeviceName = selectedDeviceName,
+                            onDeviceSelected = {
+                                selectedDeviceName = it
+                                audioPlayer.setOutputDevice(it)
+                            },
+                            onDismiss = { showDeviceSelectorDialog = false }
+                        )
+                    }
+
+                    // Playlist Import Dialog
+                    if (showPlaylistImportDialog) {
+                        DesktopPlaylistImportDialog(
+                            themeAccent = themeAccent,
+                            libraryManager = libraryManager,
+                            musicRepository = musicRepository,
+                            onDismiss = { showPlaylistImportDialog = false }
+                        )
+                    }
+
+                    // Floating Toast Notification Pill
+                    if (toastMessage != null) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 104.dp)
+                                .clip(RoundedCornerShape(24.dp))
+                                .background(Color(0xFF262626))
+                                .border(1.dp, themeAccent.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                                .padding(horizontal = 20.dp, vertical = 10.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Check, contentDescription = null, tint = themeAccent, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(toastMessage!!, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
                     }
                 }
             }

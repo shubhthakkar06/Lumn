@@ -1,15 +1,21 @@
 package com.example.musicapp.desktop.ui
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -33,7 +40,10 @@ fun DesktopLyricsPanel(
     progressMs: Long,
     isQueueMode: Boolean,
     queue: List<DesktopSong>,
+    themeAccent: Color,
     onClose: () -> Unit,
+    onOpenFullscreen: () -> Unit,
+    onShareSong: () -> Unit,
     onSongSelected: (DesktopSong) -> Unit,
     onSeek: ((Long) -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -46,14 +56,17 @@ fun DesktopLyricsPanel(
         if (idx != -1) idx else 0
     }
 
-    // Auto-scroll smoothly to the active lyric line
+    // Auto-scroll smoothly to keep the active lyric line centered
     LaunchedEffect(activeIndex) {
         if (lyrics.isNotEmpty() && activeIndex in lyrics.indices) {
-            lyricsListState.animateScrollToItem((activeIndex - 2).coerceAtLeast(0))
+            lyricsListState.animateScrollToItem(
+                (activeIndex - 2).coerceAtLeast(0),
+                scrollOffset = 0
+            )
         }
     }
 
-    // Genre-aware font style: Italian/Romantic serif for romantic/acoustic songs, bold sans for pop/rock
+    // Genre-aware font style: elegant serif for romantic/sufi/acoustic songs, modern bold sans for pop/rock
     val isRomantic = remember(currentSong) {
         val text = "${currentSong?.title} ${currentSong?.artist}".lowercase()
         text.contains("tum hi ho") || text.contains("dil") || text.contains("love") ||
@@ -67,33 +80,45 @@ fun DesktopLyricsPanel(
     Surface(
         modifier = modifier
             .fillMaxHeight()
-            .width(360.dp),
-        color = Color(0xEB141414) // Translucent background as requested
+            .width(380.dp),
+        color = Color(0xF2121316) // Translucent deep frosted glass
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(20.dp)
         ) {
-            // Header: Title and Close Button
+            // Header: Title and Actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = if (isQueueMode) "Up Next (${queue.size})" else "Live Lyrics",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
-                )
-
-                IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = Color.Gray,
-                        modifier = Modifier.size(18.dp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(themeAccent)
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isQueueMode) "Up Next (${queue.size})" else "Live Lyrics",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onShareSong, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                    }
+                    IconButton(onClick = onOpenFullscreen, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Fullscreen, contentDescription = "Fullscreen", tint = Color.Gray, modifier = Modifier.size(18.dp))
+                    }
+                    IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray, modifier = Modifier.size(18.dp))
+                    }
                 }
             }
 
@@ -109,8 +134,9 @@ fun DesktopLyricsPanel(
                         Card(
                             onClick = { onSongSelected(song) },
                             colors = CardDefaults.cardColors(
-                                containerColor = if (isCurrent) Color(0xFF1B3D23) else Color(0xFF1E1E1E)
+                                containerColor = if (isCurrent) themeAccent.copy(alpha = 0.15f) else Color(0xFF1E1E1E)
                             ),
+                            shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
@@ -124,7 +150,21 @@ fun DesktopLyricsPanel(
                                         .background(Color(0xFF282828)),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    if (song.albumArtUrl.isNotBlank()) {
+                                    val localAsset = when {
+                                        song.id == "baps_ep_aksharatitdas" -> "assets/aksharatitdas_episode.png"
+                                        song.id == "baps_ep_uttamcharan" -> "assets/uttamyogidas_episode.png"
+                                        song.id == "baps_ep_atmatruptdas" -> "assets/atmatruptdas_episode.png"
+                                        song.id == "baps_ep_1" -> "assets/somprakashdas_episode.png"
+                                        else -> null
+                                    }
+                                    if (localAsset != null) {
+                                        Image(
+                                            painter = painterResource(localAsset),
+                                            contentDescription = song.title,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else if (song.albumArtUrl.isNotBlank()) {
                                         AsyncImage(
                                             model = song.albumArtUrl,
                                             contentDescription = song.title,
@@ -132,12 +172,7 @@ fun DesktopLyricsPanel(
                                             modifier = Modifier.fillMaxSize()
                                         )
                                     } else {
-                                        Icon(
-                                            imageVector = Icons.Default.MusicNote,
-                                            contentDescription = null,
-                                            tint = Color.Gray,
-                                            modifier = Modifier.size(20.dp)
-                                        )
+                                        Icon(Icons.Default.MusicNote, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
                                     }
                                 }
 
@@ -149,7 +184,7 @@ fun DesktopLyricsPanel(
                                         style = MaterialTheme.typography.bodyMedium.copy(
                                             fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium
                                         ),
-                                        color = if (isCurrent) Color(0xFF1ED760) else Color.White,
+                                        color = if (isCurrent) themeAccent else Color.White,
                                         maxLines = 1
                                     )
                                     Text(
@@ -167,45 +202,35 @@ fun DesktopLyricsPanel(
                 if (lyrics.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = Icons.Default.MusicNote,
-                                contentDescription = null,
-                                tint = Color.Gray,
-                                modifier = Modifier.size(48.dp)
-                            )
+                            Icon(Icons.Default.MusicNote, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(48.dp))
                             Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "Lyrics not available for this track",
-                                color = Color.Gray,
-                                fontSize = 14.sp
-                            )
+                            Text("Lyrics not available for this track", color = Color.Gray, fontSize = 14.sp)
                         }
                     }
                 } else {
                     LazyColumn(
                         state = lyricsListState,
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp),
                         contentPadding = PaddingValues(vertical = 40.dp)
                     ) {
                         itemsIndexed(lyrics) { index, line ->
                             val isActive = index == activeIndex
+                            // Clean typography matching Apple Music / Spotify without bounding boxes
                             Text(
                                 text = line.text,
                                 fontFamily = lyricFontFamily,
                                 fontStyle = lyricFontStyle,
                                 style = MaterialTheme.typography.bodyLarge.copy(
-                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold,
-                                    fontSize = if (isActive) 22.sp else 16.sp,
-                                    lineHeight = if (isActive) 30.sp else 24.sp
+                                    fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Medium,
+                                    fontSize = if (isActive) 24.sp else 16.5.sp,
+                                    lineHeight = if (isActive) 32.sp else 23.sp
                                 ),
-                                color = if (isActive) Color(0xFF1ED760) else Color(0x88FFFFFF),
+                                color = if (isActive) Color.White else Color(0x66FFFFFF),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isActive) Color(0x331ED760) else Color.Transparent)
                                     .clickable { onSeek?.invoke(line.timestampMs) }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    .padding(vertical = 4.dp)
                             )
                         }
                     }

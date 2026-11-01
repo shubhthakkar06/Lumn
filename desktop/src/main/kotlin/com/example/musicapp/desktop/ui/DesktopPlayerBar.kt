@@ -2,7 +2,9 @@ package com.example.musicapp.desktop.ui
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -24,6 +26,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,6 +46,9 @@ fun DesktopPlayerBar(
     isRepeat: Boolean,
     isLyricsOpen: Boolean,
     isQueueOpen: Boolean,
+    isDownloaded: Boolean,
+    isDownloading: Boolean,
+    themeAccent: Color,
     onTogglePlayPause: () -> Unit,
     onSkipNext: () -> Unit,
     onSkipPrev: () -> Unit,
@@ -53,6 +59,9 @@ fun DesktopPlayerBar(
     onToggleLyrics: () -> Unit,
     onToggleQueue: () -> Unit,
     onToggleLike: () -> Unit,
+    onToggleDownload: () -> Unit,
+    onShareSong: () -> Unit,
+    onOpenFullscreen: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val durationSeconds = currentSong?.durationSeconds ?: 180L
@@ -73,9 +82,12 @@ fun DesktopPlayerBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Left Section: Album Art & Track Info
+            // Left Section: Album Art & Track Info (Clickable -> Opens Fullscreen Player)
             Row(
-                modifier = Modifier.width(280.dp),
+                modifier = Modifier
+                    .width(300.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onOpenFullscreen),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -85,11 +97,25 @@ fun DesktopPlayerBar(
                         .background(Color(0xFF282828)),
                     contentAlignment = Alignment.Center
                 ) {
-                    val artUrl = currentSong?.albumArtUrl.orEmpty()
-                    if (artUrl.isNotBlank()) {
-                        AsyncImage(
-                            model = artUrl,
+                    val localAsset = when {
+                        currentSong?.id == "baps_ep_aksharatitdas" -> "assets/aksharatitdas_episode.png"
+                        currentSong?.id == "baps_ep_uttamcharan" -> "assets/uttamyogidas_episode.png"
+                        currentSong?.id == "baps_ep_atmatruptdas" -> "assets/atmatruptdas_episode.png"
+                        currentSong?.id == "baps_ep_1" -> "assets/somprakashdas_episode.png"
+                        else -> null
+                    }
+
+                    if (localAsset != null) {
+                        Image(
+                            painter = painterResource(localAsset),
                             contentDescription = currentSong?.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else if (currentSong != null && currentSong.albumArtUrl.isNotBlank()) {
+                        AsyncImage(
+                            model = currentSong.albumArtUrl,
+                            contentDescription = currentSong.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
@@ -123,13 +149,26 @@ fun DesktopPlayerBar(
                 }
 
                 if (currentSong != null) {
-                    IconButton(onClick = onToggleLike) {
+                    IconButton(onClick = onToggleLike, modifier = Modifier.size(32.dp)) {
                         Icon(
                             imageVector = if (currentSong.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                             contentDescription = "Like",
-                            tint = if (currentSong.isLiked) Color(0xFF1ED760) else Color.Gray,
+                            tint = if (currentSong.isLiked) themeAccent else Color.Gray,
                             modifier = Modifier.size(20.dp)
                         )
+                    }
+
+                    IconButton(onClick = onToggleDownload, modifier = Modifier.size(32.dp)) {
+                        if (isDownloading) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = themeAccent, strokeWidth = 2.dp)
+                        } else {
+                            Icon(
+                                imageVector = if (isDownloaded) Icons.Default.CheckCircle else Icons.Default.ArrowCircleDown,
+                                contentDescription = if (isDownloaded) "Downloaded" else "Download",
+                                tint = if (isDownloaded) themeAccent else Color.Gray,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -148,7 +187,7 @@ fun DesktopPlayerBar(
                         Icon(
                             Icons.Default.Shuffle,
                             contentDescription = "Shuffle",
-                            tint = if (isShuffle) Color(0xFF1ED760) else Color.Gray,
+                            tint = if (isShuffle) themeAccent else Color.Gray,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -182,7 +221,7 @@ fun DesktopPlayerBar(
                         Icon(
                             Icons.Default.Repeat,
                             contentDescription = "Repeat",
-                            tint = if (isRepeat) Color(0xFF1ED760) else Color.Gray,
+                            tint = if (isRepeat) themeAccent else Color.Gray,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -205,6 +244,7 @@ fun DesktopPlayerBar(
                     DesktopWavySlider(
                         progressFraction = progressFraction,
                         isPlaying = isPlaying,
+                        themeAccent = themeAccent,
                         onSeekFraction = { frac ->
                             onSeek((frac * totalMs).toLong())
                         },
@@ -223,49 +263,69 @@ fun DesktopPlayerBar(
                 }
             }
 
-            // Right Section: Lyrics, Queue, and Volume Slider
+            // Right Section: Share, Lyrics, Queue, Volume Slider, and Fullscreen Expand
             Row(
-                modifier = Modifier.width(260.dp),
+                modifier = Modifier.width(300.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.End
             ) {
-                IconButton(onClick = onToggleLyrics) {
+                IconButton(onClick = onShareSong, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = "Share Track",
+                        tint = Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                IconButton(onClick = onToggleLyrics, modifier = Modifier.size(32.dp)) {
                     Icon(
                         imageVector = Icons.Default.Lyrics,
                         contentDescription = "Lyrics",
-                        tint = if (isLyricsOpen) Color(0xFF1ED760) else Color.Gray,
-                        modifier = Modifier.size(20.dp)
+                        tint = if (isLyricsOpen) themeAccent else Color.Gray,
+                        modifier = Modifier.size(19.dp)
                     )
                 }
 
-                IconButton(onClick = onToggleQueue) {
+                IconButton(onClick = onToggleQueue, modifier = Modifier.size(32.dp)) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.QueueMusic,
                         contentDescription = "Queue",
-                        tint = if (isQueueOpen) Color(0xFF1ED760) else Color.Gray,
-                        modifier = Modifier.size(20.dp)
+                        tint = if (isQueueOpen) themeAccent else Color.Gray,
+                        modifier = Modifier.size(19.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(4.dp))
 
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                     contentDescription = "Volume",
                     tint = Color.Gray,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)
                 )
 
                 Slider(
                     value = volume,
                     onValueChange = onVolumeChange,
-                    modifier = Modifier.width(100.dp),
+                    modifier = Modifier.width(80.dp),
                     colors = SliderDefaults.colors(
                         thumbColor = Color.White,
-                        activeTrackColor = Color(0xFF1ED760),
+                        activeTrackColor = themeAccent,
                         inactiveTrackColor = Color(0xFF404040)
                     )
                 )
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                IconButton(onClick = onOpenFullscreen, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Fullscreen,
+                        contentDescription = "Fullscreen Player",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }
@@ -275,6 +335,7 @@ fun DesktopPlayerBar(
 private fun DesktopWavySlider(
     progressFraction: Float,
     isPlaying: Boolean,
+    themeAccent: Color,
     onSeekFraction: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -334,7 +395,7 @@ private fun DesktopWavySlider(
 
             drawPath(
                 path = wavePath,
-                color = Color(0xFF1ED760),
+                color = themeAccent,
                 style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
             )
 

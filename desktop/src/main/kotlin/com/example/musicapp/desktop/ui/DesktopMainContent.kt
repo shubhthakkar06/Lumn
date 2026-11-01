@@ -1,5 +1,6 @@
 package com.example.musicapp.desktop.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
@@ -20,23 +22,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.example.musicapp.desktop.data.DesktopDownloadManager
 import com.example.musicapp.desktop.data.DesktopLibraryManager
 import com.example.musicapp.desktop.data.DesktopMusicRepository
 import com.example.musicapp.desktop.data.DesktopUser
-import com.example.musicapp.desktop.model.DesktopArtist
 import com.example.musicapp.desktop.model.DesktopPlaylist
 import com.example.musicapp.desktop.model.DesktopSong
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import java.util.Calendar
+
+data class DesktopArtistHighlight(
+    val name: String,
+    val imageUrl: String,
+    val borderColorHex: Long
+)
 
 @Composable
 fun DesktopMainContent(
@@ -47,6 +54,8 @@ fun DesktopMainContent(
     playlists: List<DesktopPlaylist>,
     libraryManager: DesktopLibraryManager,
     musicRepository: DesktopMusicRepository,
+    downloadManager: DesktopDownloadManager,
+    themeAccent: Color,
     onPlaySong: (DesktopSong) -> Unit,
     onTogglePlayPause: () -> Unit,
     onPlayAll: (List<DesktopSong>) -> Unit,
@@ -54,109 +63,127 @@ fun DesktopMainContent(
     onAddToQueue: (DesktopSong) -> Unit,
     onTabSelected: (String) -> Unit,
     onOpenAuth: () -> Unit,
+    onShareSong: (DesktopSong) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scope = rememberCoroutineScope()
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("All") }
     var displayedSongs by remember { mutableStateOf<List<DesktopSong>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
 
-    val categories = remember {
-        listOf("All", "Pop", "Bollywood", "Lo-Fi", "Hip-Hop", "Punjabi", "Podcasts & Satsang")
-    }
+    val likedSongs by libraryManager.likedSongs.collectAsState()
+    val downloadedSongs by downloadManager.downloadedSongs.collectAsState()
+    val downloadingIds by downloadManager.downloadingIds.collectAsState()
 
-    val topArtists = remember {
+    // Filter categories matching Spotify reference (Image 1)
+    val categories = listOf("All", "Podcasts & Shows", "Artists", "Songs", "Playlists", "Albums", "Genres & Moods")
+
+    val popularArtists = remember {
         listOf(
-            DesktopArtist("Coldplay", "https://c.saavncdn.com/artists/Coldplay_500x500.jpg", 0xFFE0C45C),
-            DesktopArtist("Arijit Singh", "https://c.saavncdn.com/artists/Arijit_Singh_500x500.jpg", 0xFFE58B43),
-            DesktopArtist("Taylor Swift", "https://c.saavncdn.com/artists/Taylor_Swift_500x500.jpg", 0xFFE85D75),
-            DesktopArtist("Diljit Dosanjh", "https://c.saavncdn.com/artists/Diljit_Dosanjh_500x500.jpg", 0xFFFF851B),
-            DesktopArtist("The Weeknd", "https://c.saavncdn.com/artists/The_Weeknd_500x500.jpg", 0xFFE74C3C),
-            DesktopArtist("Pujya Somprakashdas Swami", "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/00/72/c6/0072c641-891b-71ff-8c1c-3e6f20be1f02/mza_13154730571231814752.jpg/600x600bb.jpg", 0xFFF39C12)
+            DesktopArtistHighlight("Coldplay", "https://c.saavncdn.com/artists/Coldplay_002_20240909072937_500x500.jpg", 0xFF00E5FF),
+            DesktopArtistHighlight("Arijit Singh", "https://c.saavncdn.com/artists/Arijit_Singh_002_20230323062147_500x500.jpg", 0xFFE040FB),
+            DesktopArtistHighlight("The Weeknd", "https://c.saavncdn.com/artists/The_Weeknd_002_20230323065330_500x500.jpg", 0xFFFFD700),
+            DesktopArtistHighlight("Dua Lipa", "https://c.saavncdn.com/artists/Dua_Lipa_004_20230323063517_500x500.jpg", 0xFFFF4081),
+            DesktopArtistHighlight("Atif Aslam", "https://c.saavncdn.com/artists/Atif_Aslam_500x500.jpg", 0xFF69F0AE),
+            DesktopArtistHighlight("Pritam", "https://c.saavncdn.com/artists/Pritam_500x500.jpg", 0xFFFFAB40),
+            DesktopArtistHighlight("Sadhus of BAPS", "assets/sadhus_of_baps.png", 0xFFFF9100)
         )
     }
 
-    // Dynamic gradient based on time of day
-    val gradientColors = remember {
-        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        when (hour) {
-            in 5..11 -> listOf(Color(0xFF263321), Color(0xFF141A14), Color(0xFF101010)) // Morning
-            in 12..17 -> listOf(Color(0xFF143B23), Color(0xFF102116), Color(0xFF0F0F10)) // Afternoon
-            in 18..21 -> listOf(Color(0xFF281836), Color(0xFF1A1224), Color(0xFF0E0E12)) // Evening
-            else -> listOf(Color(0xFF0F2030), Color(0xFF0B141E), Color(0xFF0A0A0A)) // Night
-        }
-    }
-
-    // Reset search when switching back to Home tab
     LaunchedEffect(selectedTab) {
-        if (selectedTab == "Home") {
+        if (selectedTab != "Search") {
             searchQuery = ""
-            selectedCategory = "All"
         }
     }
 
-    // Debounced Online Search or Category Switch
-    var searchJob by remember { mutableStateOf<Job?>(null) }
+    // Live search query & filter execution
     LaunchedEffect(searchQuery, selectedCategory) {
-        searchJob?.cancel()
-        searchJob = scope.launch {
+        isLoading = true
+        try {
             if (searchQuery.isNotBlank()) {
-                delay(350)
-                isLoading = true
-                displayedSongs = musicRepository.searchSongs(searchQuery)
-                isLoading = false
+                val results = musicRepository.searchSongs(searchQuery)
+                displayedSongs = when (selectedCategory) {
+                    "Podcasts & Shows" -> results.filter { it.isEpisode }
+                    "Songs" -> results.filter { !it.isEpisode }
+                    else -> results
+                }
             } else {
-                isLoading = true
-                displayedSongs = musicRepository.getCategorySongs(selectedCategory)
-                isLoading = false
+                val trending = musicRepository.getTrendingSongs()
+                displayedSongs = when (selectedCategory) {
+                    "Podcasts & Shows" -> musicRepository.getBapsSatsangEpisodes()
+                    "Songs" -> trending.filter { !it.isEpisode }
+                    else -> trending
+                }
             }
+        } finally {
+            isLoading = false
         }
     }
 
-    val likedSongs by libraryManager.likedSongs.collectAsState()
+    val isBapsQuery = searchQuery.contains("baps", ignoreCase = true) ||
+        searchQuery.contains("satsang", ignoreCase = true) ||
+        searchQuery.contains("gujarati", ignoreCase = true)
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Brush.verticalGradient(colors = gradientColors))
-            .padding(24.dp)
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = Color(0xFF121212)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Header Bar: Search input & User profile pill
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 28.dp, vertical = 20.dp)
+        ) {
+            // Header Bar: Search input (BasicTextField with NO clipping) & User profile pill
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedTextField(
+                // Completely unclipped Custom Rounded Search Field matching Spotify
+                BasicTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("What do you want to play? (Songs, Artists, Podcasts)", color = Color.Gray, fontSize = 14.sp) },
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotBlank()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Clear", tint = Color.Gray, modifier = Modifier.size(18.dp))
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        color = Color.White,
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    cursorBrush = SolidColor(themeAccent),
+                    modifier = Modifier.width(480.dp),
+                    decorationBox = { innerTextField ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp)
+                                .clip(RoundedCornerShape(23.dp))
+                                .background(Color(0xFF1E1E1E))
+                                .border(
+                                    1.dp,
+                                    if (searchQuery.isNotBlank()) themeAccent else Color(0xFF2E2E2E),
+                                    RoundedCornerShape(23.dp)
+                                )
+                                .padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                                if (searchQuery.isEmpty()) {
+                                    Text("What do you want to play? (Songs, Artists, Podcasts)", color = Color.Gray, fontSize = 13.5.sp)
+                                }
+                                innerTextField()
+                            }
+                            if (searchQuery.isNotBlank()) {
+                                IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Clear", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                }
                             }
                         }
-                    },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF1ED760),
-                        unfocusedBorderColor = Color(0xFF2E2E2E),
-                        focusedContainerColor = Color(0xFF1E1E1E),
-                        unfocusedContainerColor = Color(0xFF1E1E1E)
-                    ),
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.width(460.dp).height(50.dp)
+                    }
                 )
 
-                // User Profile Pill (Clickable -> Opens Auth & Profiles Dialog)
+                // User Profile Pill (Clickable -> Opens Auth & Account Dialog)
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
@@ -169,7 +196,7 @@ fun DesktopMainContent(
                         modifier = Modifier
                             .size(28.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF1ED760)),
+                            .background(themeAccent),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -192,15 +219,40 @@ fun DesktopMainContent(
             Spacer(modifier = Modifier.height(20.dp))
 
             when {
+                // Downloaded Songs View (Offline Mode)
+                selectedTab == "Downloaded" -> {
+                    DownloadedSongsView(
+                        downloadedSongs = downloadedSongs,
+                        currentSong = currentSong,
+                        playlists = playlists,
+                        themeAccent = themeAccent,
+                        onPlaySong = onPlaySong,
+                        onPlayAll = { onPlayAll(downloadedSongs) },
+                        onToggleLike = { libraryManager.toggleLike(it) },
+                        onRemoveDownload = { downloadManager.removeDownload(it.id) },
+                        onShareSong = onShareSong,
+                        onPlayNext = onPlayNext,
+                        onAddToQueue = onAddToQueue,
+                        onAddToPlaylist = { plId, s -> libraryManager.addSongToPlaylist(plId, s) }
+                    )
+                }
+
                 // Liked Songs View
                 selectedTab == "Liked" -> {
                     LikedSongsView(
                         likedSongs = likedSongs,
                         currentSong = currentSong,
                         playlists = playlists,
+                        themeAccent = themeAccent,
+                        downloadManager = downloadManager,
                         onPlaySong = onPlaySong,
                         onPlayAll = { onPlayAll(likedSongs) },
                         onToggleLike = { libraryManager.toggleLike(it) },
+                        onToggleDownload = { s ->
+                            if (downloadManager.isDownloaded(s.id)) downloadManager.removeDownload(s.id)
+                            else downloadManager.downloadSong(s)
+                        },
+                        onShareSong = onShareSong,
                         onPlayNext = onPlayNext,
                         onAddToQueue = onAddToQueue,
                         onAddToPlaylist = { plId, s -> libraryManager.addSongToPlaylist(plId, s) }
@@ -217,9 +269,16 @@ fun DesktopMainContent(
                         songs = playlistSongs,
                         currentSong = currentSong,
                         playlists = playlists,
+                        themeAccent = themeAccent,
+                        downloadManager = downloadManager,
                         onPlaySong = onPlaySong,
                         onPlayAll = { onPlayAll(playlistSongs) },
                         onToggleLike = { libraryManager.toggleLike(it) },
+                        onToggleDownload = { s ->
+                            if (downloadManager.isDownloaded(s.id)) downloadManager.removeDownload(s.id)
+                            else downloadManager.downloadSong(s)
+                        },
+                        onShareSong = onShareSong,
                         onPlayNext = onPlayNext,
                         onAddToQueue = onAddToQueue,
                         onAddToPlaylist = { plId, s -> libraryManager.addSongToPlaylist(plId, s) }
@@ -231,38 +290,39 @@ fun DesktopMainContent(
                     LibraryOverviewView(
                         playlists = playlists,
                         likedCount = likedSongs.size,
+                        downloadedCount = downloadedSongs.size,
+                        themeAccent = themeAccent,
                         onSelectPlaylist = onTabSelected,
-                        onSelectLiked = { onTabSelected("Liked") }
+                        onSelectLiked = { onTabSelected("Liked") },
+                        onSelectDownloaded = { onTabSelected("Downloaded") }
                     )
                 }
 
                 // Home or Search View
                 else -> {
-                    // Category Filter Chips
+                    // Category Filter Pills matching Image 1
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         items(categories) { category ->
-                            val isSelected = category == selectedCategory && searchQuery.isBlank()
-                            AssistChip(
-                                onClick = {
-                                    searchQuery = ""
-                                    selectedCategory = category
-                                },
-                                label = {
-                                    Text(
-                                        text = category,
-                                        color = if (isSelected) Color.Black else Color.White,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                    )
-                                },
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = if (isSelected) Color(0xFF1ED760) else Color(0xFF282828)
-                                ),
-                                border = null,
-                                shape = RoundedCornerShape(16.dp)
-                            )
+                            val isSelected = category == selectedCategory
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(if (isSelected) themeAccent else Color(0xFF282828))
+                                    .clickable {
+                                        selectedCategory = category
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 7.dp)
+                            ) {
+                                Text(
+                                    text = category,
+                                    color = if (isSelected) Color.Black else Color.White,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 12.5.sp
+                                )
+                            }
                         }
                     }
 
@@ -273,29 +333,193 @@ fun DesktopMainContent(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
-                        // Top Artists Row (shown when on Home and not actively querying)
+                        // If searching BAPS / Satsang: Render Spotify-style Top Result Show Card + Artist Card (Image 1)
+                        if (isBapsQuery && (selectedCategory == "All" || selectedCategory == "Podcasts & Shows")) {
+                            item {
+                                Text("Top Result", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // BAPS Satsang Gujarati Top Show Card matching Image 1
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(20.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Image(
+                                            painter = painterResource("assets/baps_podcast_logo.png"),
+                                            contentDescription = "BAPS Satsang Gujarati",
+                                            modifier = Modifier
+                                                .size(100.dp)
+                                                .clip(RoundedCornerShape(12.dp)),
+                                            contentScale = ContentScale.Crop
+                                        )
+
+                                        Spacer(modifier = Modifier.width(20.dp))
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "BAPS Satsang Gujarati",
+                                                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, fontSize = 24.sp),
+                                                color = Color.White
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "Podcast • BAPS Swaminarayan Sanstha",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Color(0xFFAAAAAA)
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = "Spiritual kathas, discourses, and life guidance in Gujarati by revered Swamis of BAPS Swaminarayan Sanstha.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color.Gray,
+                                                maxLines = 2
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(16.dp))
+
+                                        // Following Button
+                                        Button(
+                                            onClick = {},
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.Gray),
+                                            shape = RoundedCornerShape(20.dp),
+                                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                                        ) {
+                                            Text("Following", color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                                        }
+
+                                        Spacer(modifier = Modifier.width(14.dp))
+
+                                        // Big Play Button
+                                        Box(
+                                            modifier = Modifier
+                                                .size(52.dp)
+                                                .clip(CircleShape)
+                                                .background(themeAccent)
+                                                .clickable {
+                                                    val firstEp = displayedSongs.firstOrNull { it.isEpisode }
+                                                    if (firstEp != null) onPlaySong(firstEp)
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.PlayArrow, contentDescription = "Play", tint = Color.Black, modifier = Modifier.size(32.dp))
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Podcasts & Shows Row & Artist Row (Image 1)
+                            item {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    // Row 1: Podcast Show
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color(0xFF161616))
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Image(
+                                            painter = painterResource("assets/baps_podcast_logo.png"),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(44.dp).clip(RoundedCornerShape(6.dp))
+                                        )
+                                        Spacer(modifier = Modifier.width(14.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text("BAPS Satsang Gujarati", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                                            Text("BAPS Satsang Gujarati", color = Color.Gray, fontSize = 12.sp)
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(Color(0xFF262626))
+                                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                        ) {
+                                            Text("Podcast", color = Color(0xFFCCCCCC), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                        }
+                                        Spacer(modifier = Modifier.width(14.dp))
+                                        Button(
+                                            onClick = {},
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.Gray),
+                                            shape = RoundedCornerShape(16.dp),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("Follow", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+
+                                    // Row 2: Sadhus of BAPS Artist
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color(0xFF161616))
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Image(
+                                            painter = painterResource("assets/sadhus_of_baps.png"),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(44.dp).clip(CircleShape)
+                                        )
+                                        Spacer(modifier = Modifier.width(14.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text("Sadhus of BAPS", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                                            Text("Artist • BAPS Swaminarayan Sanstha", color = Color.Gray, fontSize = 12.sp)
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(Color(0xFF262626))
+                                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                        ) {
+                                            Text("Artist", color = Color(0xFFCCCCCC), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                        }
+                                        Spacer(modifier = Modifier.width(14.dp))
+                                        Button(
+                                            onClick = {},
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.Gray),
+                                            shape = RoundedCornerShape(16.dp),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("Following", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Popular Artists Carousel (only shown when not searching)
                         if (searchQuery.isBlank() && selectedCategory == "All") {
                             item {
-                                Column(modifier = Modifier.padding(bottom = 12.dp)) {
+                                Column {
                                     Text(
-                                        text = "Top Artists",
+                                        text = "Popular Artists",
                                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                         color = Color.White
                                     )
                                     Spacer(modifier = Modifier.height(12.dp))
                                     LazyRow(
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        items(topArtists) { artist ->
+                                        items(popularArtists) { artist ->
                                             Column(
                                                 horizontalAlignment = Alignment.CenterHorizontally,
                                                 modifier = Modifier
-                                                    .width(100.dp)
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .clickable {
-                                                        searchQuery = artist.name
-                                                    }
-                                                    .padding(4.dp)
+                                                    .width(88.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .clickable { searchQuery = artist.name }
+                                                    .padding(vertical = 4.dp)
                                             ) {
                                                 Box(
                                                     modifier = Modifier
@@ -305,12 +529,21 @@ fun DesktopMainContent(
                                                         .background(Color(0xFF282828)),
                                                     contentAlignment = Alignment.Center
                                                 ) {
-                                                    AsyncImage(
-                                                        model = artist.imageUrl,
-                                                        contentDescription = artist.name,
-                                                        contentScale = ContentScale.Crop,
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
+                                                    if (artist.imageUrl.startsWith("assets/")) {
+                                                        Image(
+                                                            painter = painterResource(artist.imageUrl),
+                                                            contentDescription = artist.name,
+                                                            contentScale = ContentScale.Crop,
+                                                            modifier = Modifier.fillMaxSize()
+                                                        )
+                                                    } else {
+                                                        AsyncImage(
+                                                            model = artist.imageUrl,
+                                                            contentDescription = artist.name,
+                                                            contentScale = ContentScale.Crop,
+                                                            modifier = Modifier.fillMaxSize()
+                                                        )
+                                                    }
                                                 }
                                                 Spacer(modifier = Modifier.height(6.dp))
                                                 Text(
@@ -349,16 +582,20 @@ fun DesktopMainContent(
                                     modifier = Modifier.fillMaxWidth().height(160.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    CircularProgressIndicator(color = Color(0xFF1ED760))
+                                    CircularProgressIndicator(color = themeAccent)
                                 }
                             }
                         } else {
                             itemsIndexed(displayedSongs, key = { index, s -> "${s.id}_$index" }) { index, song ->
+                                val isLiked = libraryManager.isLiked(song.id)
+                                val isDownloaded = downloadManager.isDownloaded(song.id)
+                                val isDownloading = downloadingIds.contains(song.id)
+
                                 if (song.isEpisode) {
                                     DesktopEpisodeCard(
                                         episode = song,
                                         isPlayingThis = currentSong?.id == song.id && isPlaying,
-                                        isLiked = libraryManager.isLiked(song.id),
+                                        isLiked = isLiked,
                                         playlists = playlists,
                                         onPlay = { onPlaySong(song) },
                                         onTogglePlayPause = onTogglePlayPause,
@@ -372,10 +609,18 @@ fun DesktopMainContent(
                                         index = index,
                                         song = song,
                                         isCurrent = song.id == currentSong?.id,
-                                        isLiked = libraryManager.isLiked(song.id),
+                                        isLiked = isLiked,
+                                        isDownloaded = isDownloaded,
+                                        isDownloading = isDownloading,
+                                        themeAccent = themeAccent,
                                         playlists = playlists,
                                         onPlay = { onPlaySong(song) },
                                         onToggleLike = { libraryManager.toggleLike(song) },
+                                        onToggleDownload = {
+                                            if (isDownloaded) downloadManager.removeDownload(song.id)
+                                            else downloadManager.downloadSong(song)
+                                        },
+                                        onShareSong = { onShareSong(song) },
                                         onPlayNext = { onPlayNext(song) },
                                         onAddToQueue = { onAddToQueue(song) },
                                         onAddToPlaylist = { plId -> libraryManager.addSongToPlaylist(plId, song) }
@@ -391,28 +636,26 @@ fun DesktopMainContent(
 }
 
 @Composable
-private fun LikedSongsView(
-    likedSongs: List<DesktopSong>,
+private fun DownloadedSongsView(
+    downloadedSongs: List<DesktopSong>,
     currentSong: DesktopSong?,
     playlists: List<DesktopPlaylist>,
+    themeAccent: Color,
     onPlaySong: (DesktopSong) -> Unit,
     onPlayAll: () -> Unit,
     onToggleLike: (DesktopSong) -> Unit,
+    onRemoveDownload: (DesktopSong) -> Unit,
+    onShareSong: (DesktopSong) -> Unit,
     onPlayNext: (DesktopSong) -> Unit,
     onAddToQueue: (DesktopSong) -> Unit,
     onAddToPlaylist: (String, DesktopSong) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // Hero Header Card
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(Color(0xFF450AF5), Color(0xFF1ED760))
-                    )
-                )
+                .background(Brush.horizontalGradient(listOf(Color(0xFF0083B0), Color(0xFF00B4DB))))
                 .padding(24.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -423,38 +666,117 @@ private fun LikedSongsView(
                     .background(Color(0x33000000)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Favorite,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(48.dp)
-                )
+                Icon(Icons.Default.ArrowCircleDown, contentDescription = null, tint = Color.White, modifier = Modifier.size(52.dp))
+            }
+
+            Spacer(modifier = Modifier.width(20.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text("OFFLINE STORAGE", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
+                Text("Downloaded Songs", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
+                Text("${downloadedSongs.size} tracks available offline on this Mac", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.9f))
+            }
+
+            if (downloadedSongs.isNotEmpty()) {
+                Button(
+                    onClick = onPlayAll,
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                    modifier = Modifier.size(52.dp),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = "Play All", tint = Color.Black, modifier = Modifier.size(30.dp))
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        if (downloadedSongs.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(56.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("No downloaded songs yet. Click the download icon on any song to save it for offline listening!", color = Color.Gray)
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                itemsIndexed(downloadedSongs, key = { index, s -> "${s.id}_$index" }) { index, song ->
+                    DesktopSongRow(
+                        index = index,
+                        song = song,
+                        isCurrent = song.id == currentSong?.id,
+                        isLiked = false,
+                        isDownloaded = true,
+                        isDownloading = false,
+                        themeAccent = themeAccent,
+                        playlists = playlists,
+                        onPlay = { onPlaySong(song) },
+                        onToggleLike = { onToggleLike(song) },
+                        onToggleDownload = { onRemoveDownload(song) },
+                        onShareSong = { onShareSong(song) },
+                        onPlayNext = { onPlayNext(song) },
+                        onAddToQueue = { onAddToQueue(song) },
+                        onAddToPlaylist = { plId -> onAddToPlaylist(plId, song) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LikedSongsView(
+    likedSongs: List<DesktopSong>,
+    currentSong: DesktopSong?,
+    playlists: List<DesktopPlaylist>,
+    themeAccent: Color,
+    downloadManager: DesktopDownloadManager,
+    onPlaySong: (DesktopSong) -> Unit,
+    onPlayAll: () -> Unit,
+    onToggleLike: (DesktopSong) -> Unit,
+    onToggleDownload: (DesktopSong) -> Unit,
+    onShareSong: (DesktopSong) -> Unit,
+    onPlayNext: (DesktopSong) -> Unit,
+    onAddToQueue: (DesktopSong) -> Unit,
+    onAddToPlaylist: (String, DesktopSong) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Brush.horizontalGradient(listOf(Color(0xFF450AF5), themeAccent)))
+                .padding(24.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(90.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0x33000000)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Favorite, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
             }
 
             Spacer(modifier = Modifier.width(20.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text("PLAYLIST", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
-                Text(
-                    text = "Liked Songs",
-                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
-                )
-                Text(
-                    text = "${likedSongs.size} tracks saved",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.9f)
-                )
+                Text("Liked Songs", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
+                Text("${likedSongs.size} tracks saved", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.9f))
             }
 
             if (likedSongs.isNotEmpty()) {
                 Button(
                     onClick = onPlayAll,
                     shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color.Black
-                    ),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
                     modifier = Modifier.size(52.dp),
                     contentPadding = PaddingValues(0.dp)
                 ) {
@@ -475,14 +797,21 @@ private fun LikedSongsView(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 itemsIndexed(likedSongs, key = { index, s -> "${s.id}_$index" }) { index, song ->
+                    val isDownloaded = downloadManager.isDownloaded(song.id)
+                    val isDownloading = downloadManager.isDownloading(song.id)
                     DesktopSongRow(
                         index = index,
                         song = song,
                         isCurrent = song.id == currentSong?.id,
                         isLiked = true,
+                        isDownloaded = isDownloaded,
+                        isDownloading = isDownloading,
+                        themeAccent = themeAccent,
                         playlists = playlists,
                         onPlay = { onPlaySong(song) },
                         onToggleLike = { onToggleLike(song) },
+                        onToggleDownload = { onToggleDownload(song) },
+                        onShareSong = { onShareSong(song) },
                         onPlayNext = { onPlayNext(song) },
                         onAddToQueue = { onAddToQueue(song) },
                         onAddToPlaylist = { plId -> onAddToPlaylist(plId, song) }
@@ -499,9 +828,13 @@ private fun PlaylistDetailView(
     songs: List<DesktopSong>,
     currentSong: DesktopSong?,
     playlists: List<DesktopPlaylist>,
+    themeAccent: Color,
+    downloadManager: DesktopDownloadManager,
     onPlaySong: (DesktopSong) -> Unit,
     onPlayAll: () -> Unit,
     onToggleLike: (DesktopSong) -> Unit,
+    onToggleDownload: (DesktopSong) -> Unit,
+    onShareSong: (DesktopSong) -> Unit,
     onPlayNext: (DesktopSong) -> Unit,
     onAddToQueue: (DesktopSong) -> Unit,
     onAddToPlaylist: (String, DesktopSong) -> Unit
@@ -519,7 +852,7 @@ private fun PlaylistDetailView(
                 modifier = Modifier
                     .size(80.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF1ED760)),
+                    .background(themeAccent),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -550,10 +883,7 @@ private fun PlaylistDetailView(
                 Button(
                     onClick = onPlayAll,
                     shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF1ED760),
-                        contentColor = Color.Black
-                    ),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
                     modifier = Modifier.size(48.dp),
                     contentPadding = PaddingValues(0.dp)
                 ) {
@@ -566,7 +896,7 @@ private fun PlaylistDetailView(
 
         if (songs.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("This playlist is empty. Add tracks from the 3-dots menu on any song!", color = Color.Gray)
+                Text("This playlist is empty. Add tracks from Home or Search!", color = Color.Gray)
             }
         } else {
             LazyColumn(
@@ -574,14 +904,21 @@ private fun PlaylistDetailView(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 itemsIndexed(songs, key = { index, s -> "${s.id}_$index" }) { index, song ->
+                    val isDownloaded = downloadManager.isDownloaded(song.id)
+                    val isDownloading = downloadManager.isDownloading(song.id)
                     DesktopSongRow(
                         index = index,
                         song = song,
                         isCurrent = song.id == currentSong?.id,
                         isLiked = false,
+                        isDownloaded = isDownloaded,
+                        isDownloading = isDownloading,
+                        themeAccent = themeAccent,
                         playlists = playlists,
                         onPlay = { onPlaySong(song) },
                         onToggleLike = { onToggleLike(song) },
+                        onToggleDownload = { onToggleDownload(song) },
+                        onShareSong = { onShareSong(song) },
                         onPlayNext = { onPlayNext(song) },
                         onAddToQueue = { onAddToQueue(song) },
                         onAddToPlaylist = { plId -> onAddToPlaylist(plId, song) }
@@ -596,78 +933,93 @@ private fun PlaylistDetailView(
 private fun LibraryOverviewView(
     playlists: List<DesktopPlaylist>,
     likedCount: Int,
+    downloadedCount: Int,
+    themeAccent: Color,
     onSelectPlaylist: (String) -> Unit,
-    onSelectLiked: () -> Unit
+    onSelectLiked: () -> Unit,
+    onSelectDownloaded: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        Text(
-            text = "Your Library",
-            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-            color = Color.White
-        )
+        Text("Your Library", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
+        Spacer(modifier = Modifier.height(16.dp))
 
-        Spacer(modifier = Modifier.height(18.dp))
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Liked Songs Card
-            item {
-                Card(
-                    onClick = onSelectLiked,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
-                    modifier = Modifier.fillMaxWidth()
+            Card(
+                onClick = onSelectLiked,
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF2E1B5B)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f).height(120.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(50.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Brush.linearGradient(listOf(Color(0xFF450AF5), Color(0xFF1ED760)))),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Favorite, contentDescription = null, tint = Color.White)
-                        }
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text("Liked Songs", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
-                            Text("$likedCount songs saved", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                        }
+                    Icon(Icons.Default.Favorite, contentDescription = null, tint = themeAccent, modifier = Modifier.size(28.dp))
+                    Column {
+                        Text("Liked Songs", fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("$likedCount tracks", fontSize = 12.sp, color = Color.LightGray)
                     }
                 }
             }
 
-            // Playlists List
-            items(playlists) { pl ->
+            // Downloaded Songs Card
+            Card(
+                onClick = onSelectDownloaded,
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1B3D5B)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f).height(120.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Icon(Icons.Default.ArrowCircleDown, contentDescription = null, tint = themeAccent, modifier = Modifier.size(28.dp))
+                    Column {
+                        Text("Downloaded", fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("$downloadedCount tracks offline", fontSize = 12.sp, color = Color.LightGray)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        Text("Your Playlists", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
+        Spacer(modifier = Modifier.height(12.dp))
+
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            items(playlists) { playlist ->
                 Card(
-                    onClick = { onSelectPlaylist("Playlist_${pl.id}") },
-                    shape = RoundedCornerShape(10.dp),
+                    onClick = { onSelectPlaylist("Playlist_${playlist.id}") },
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+                    shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(50.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFF282828)),
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(themeAccent.copy(alpha = 0.2f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null, tint = Color(0xFF1ED760))
+                            Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null, tint = themeAccent)
                         }
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text(pl.name, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
-                            Text("Playlist • ${pl.songCount} tracks", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(playlist.name, fontWeight = FontWeight.SemiBold, color = Color.White)
+                            Text("Playlist • ${playlist.songCount} songs", color = Color.Gray, fontSize = 12.sp)
                         }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
                     }
                 }
             }

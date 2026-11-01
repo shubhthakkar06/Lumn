@@ -301,6 +301,42 @@ class SaavnProvider(
     fun getBapsSatsangEpisodes(): List<SongInfo> {
         return listOf(
             SongInfo(
+                videoId = "baps_ep_aksharatitdas",
+                title = "વચનામૃત ગઢડા પ્રથમ ૫૮: સત્પુરુષનો પ્રસંગ | પૂજ્ય અક્ષરાતીતદાસ સ્વામી | BAPS Satsang Gujarati",
+                artist = "પૂજ્ય અક્ષરાતીતદાસ સ્વામી",
+                albumArtUrl = "assets/aksharatitdas_episode.png",
+                audioStreamUrl = "https://p.scdn.co/mp3-preview/fa88a13eafcd9aa77ca98e20ceb435c786e229c6.mp3",
+                albumName = "Episode • BAPS Satsang Gujarati",
+                durationSeconds = 3600L,
+                isEpisode = true,
+                description = "આજે આપણે પૂજા, દર્શન અને ભક્તિ તો કરીએ છીએ, પણ શું આપણી ભક્તિ સાચી છે કે પછી આપણે ભગવાન સાથે માત્ર વ્યવહાર સાચવી રહ્યા છીએ? આ કથામાં પૂજ્ય અક્ષરાતીતદાસ સ્વામી વચનામૃત ગઢડા પ્રથમ ૫૮ ના આધારે સત્પુરુષના સાચા મહિમા અને દિવ્ય પ્રસંગોની સુંદર છણાવટ કરે છે.",
+                releaseDate = "Aug 3"
+            ),
+            SongInfo(
+                videoId = "baps_ep_uttamcharan",
+                title = "મહંત સ્વામી મહારાજનો નિઃસ્વાર્થ સ્નેહ | પૂજ્ય ઉત્તમયોગીદાસ સ્વામી | BAPS Satsang",
+                artist = "પૂજ્ય ઉત્તમયોગીદાસ સ્વામી",
+                albumArtUrl = "assets/uttamyogidas_episode.png",
+                audioStreamUrl = "https://anchor.fm/s/11be3c80/podcast/play/9702112/https%3A%2F%2Fd3ctxlq1ktw2nl.cloudfront.net%2Fproduction%2F2020-0-15%2F43524604-44100-2-6f1b842bf8afb.mp3",
+                albumName = "Episode • BAPS Satsang Gujarati",
+                durationSeconds = 3660L,
+                isEpisode = true,
+                description = "સ્વાર્થી જગતમાં કોઈ નિરપેક્ષ પ્રેમ કરી શકે? આ કથામાં પૂજ્ય ઉત્તમયોગીદાસ સ્વામી વચનામૃત સારંગપુર ૨ ના આધારે સમજાવે છે કે સામાન્ય રીતે આપણો પ્રેમ સ્વાર્થથી જોડાયેલો હોય છે. પરમ પૂજ્ય મહંત સ્વામી મહારાજનો સ્નેહ કેવો નિર્દોષ, નિઃસ્વાર્થ અને દિવ્ય છે તેની પ્રેરક વાતો.",
+                releaseDate = "Jul 27"
+            ),
+            SongInfo(
+                videoId = "baps_ep_atmatruptdas",
+                title = "ચમત્કારો પાછળ ન દોડો: ભગવાનને ઓળખવાનો આ છે સાચો માર્ગ | Pujya Atmatruptdas Swami | BAPS Satsang",
+                artist = "Pujya Atmatruptdas Swami",
+                albumArtUrl = "assets/atmatruptdas_episode.png",
+                audioStreamUrl = "https://anchor.fm/s/11be3c80/podcast/play/10202928/https%3A%2F%2Fd3ctxlq1ktw2nl.cloudfront.net%2Fstaging%2F2020-02-06%2F4e117b5b3a1fd9ab4821bb33e862a648.m4a",
+                albumName = "Episode • BAPS Satsang Gujarati",
+                durationSeconds = 3480L,
+                isEpisode = true,
+                description = "આજના યુગમાં ચમત્કારો પાછળ દોડવાને બદલે ભગવાનના સાચા સ્વરૂપને સમજવું અને જીવનમાં નિયમ, ધર્મ અને સત્સંગનું પાલન કરવું એ જ કલ્યાણનો રાજમાર્ગ છે.",
+                releaseDate = "Jul 20"
+            ),
+            SongInfo(
                 videoId = "baps_ep_1",
                 title = "Patience and True Refuge in Bhagwan | Pujya Somprakashdas Swami | BAPS Satsang",
                 artist = "Pujya Somprakashdas Swami",

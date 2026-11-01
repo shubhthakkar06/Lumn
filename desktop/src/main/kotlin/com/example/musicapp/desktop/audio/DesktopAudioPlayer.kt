@@ -45,9 +45,19 @@ class DesktopAudioPlayer(
 
     private var activeLine: SourceDataLine? = null
     private var activeProcess: Process? = null
+    private var targetDeviceName: String? = null
     private var isIntentionallyStopped = false
     @Volatile private var isPaused = false
     private var playJob: Job? = null
+
+    fun setOutputDevice(name: String) {
+        targetDeviceName = name
+        val song = _currentSong.value
+        val pos = _progressMs.value
+        if (song != null && _isPlaying.value) {
+            play(song, pos)
+        }
+    }
 
     private val _currentSong = MutableStateFlow<DesktopSong?>(null)
     val currentSong: StateFlow<DesktopSong?> = _currentSong.asStateFlow()
@@ -173,7 +183,19 @@ class DesktopAudioPlayer(
         try {
             // Open Java DirectAudio line (talks directly to CoreAudio HAL, bypasses AudioQueue)
             val lineInfo = DataLine.Info(SourceDataLine::class.java, audioFormat)
-            line = (AudioSystem.getLine(lineInfo) as SourceDataLine).apply {
+            line = try {
+                val mixer = targetDeviceName?.let { devName ->
+                    AudioSystem.getMixerInfo().firstOrNull { it.name.equals(devName, ignoreCase = true) }
+                }
+                if (mixer != null) {
+                    AudioSystem.getMixer(mixer).getLine(lineInfo) as SourceDataLine
+                } else {
+                    AudioSystem.getLine(lineInfo) as SourceDataLine
+                }
+            } catch (_: Exception) {
+                AudioSystem.getLine(lineInfo) as SourceDataLine
+            }
+            line.apply {
                 open(audioFormat, 48000 * 4) // 1 second hardware buffer
                 start()
             }
@@ -233,6 +255,9 @@ class DesktopAudioPlayer(
                         i += 2
                     }
                 }
+
+                // Apply DSP Equalizer adjustments
+                DesktopEqualizer.processPcm(buffer, read)
 
                 line.write(buffer, 0, read)
                 bytesWritten += read
