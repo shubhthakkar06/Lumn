@@ -331,7 +331,7 @@ fun DesktopMainContent(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(bottom = 24.dp)
+                        contentPadding = PaddingValues(bottom = 120.dp)
                     ) {
                         // If searching BAPS / Satsang: Render Spotify-style Top Result Show Card + Artist Card (Image 1)
                         if (isBapsQuery && (selectedCategory == "All" || selectedCategory == "Podcasts & Shows")) {

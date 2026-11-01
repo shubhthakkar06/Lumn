@@ -206,10 +206,11 @@ fun DesktopFullScreenPlayer(
                                 contentAlignment = Alignment.Center
                             ) {
                                 val localAsset = when {
-                                    song.id == "baps_ep_aksharatitdas" -> "assets/aksharatitdas_episode.png"
-                                    song.id == "baps_ep_uttamcharan" -> "assets/uttamyogidas_episode.png"
-                                    song.id == "baps_ep_atmatruptdas" -> "assets/atmatruptdas_episode.png"
-                                    song.id == "baps_ep_1" -> "assets/somprakashdas_episode.png"
+                                    song.id == "baps_ep_aksharatitdas" || song.title.contains("અક્ષરાતીતદાસ") -> "assets/aksharatitdas_episode.png"
+                                    song.id == "baps_ep_uttamcharan" || song.title.contains("ઉત્તમયોગીદાસ") -> "assets/uttamyogidas_episode.png"
+                                    song.id == "baps_ep_atmatruptdas" || song.title.contains("આત્મતૃપ્તદાસ") || song.title.contains("Atmatruptdas") -> "assets/atmatruptdas_episode.png"
+                                    song.id == "baps_ep_1" || song.title.contains("Somprakashdas") || song.title.contains("સોમપ્રકાશદાસ") -> "assets/somprakashdas_episode.png"
+                                    song.albumArtUrl.startsWith("assets/") -> song.albumArtUrl
                                     else -> null
                                 }
 

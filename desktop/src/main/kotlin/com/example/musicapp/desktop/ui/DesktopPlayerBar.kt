@@ -98,10 +98,11 @@ fun DesktopPlayerBar(
                     contentAlignment = Alignment.Center
                 ) {
                     val localAsset = when {
-                        currentSong?.id == "baps_ep_aksharatitdas" -> "assets/aksharatitdas_episode.png"
-                        currentSong?.id == "baps_ep_uttamcharan" -> "assets/uttamyogidas_episode.png"
-                        currentSong?.id == "baps_ep_atmatruptdas" -> "assets/atmatruptdas_episode.png"
-                        currentSong?.id == "baps_ep_1" -> "assets/somprakashdas_episode.png"
+                        currentSong?.id == "baps_ep_aksharatitdas" || currentSong?.title?.contains("અક્ષરાતીતદાસ") == true -> "assets/aksharatitdas_episode.png"
+                        currentSong?.id == "baps_ep_uttamcharan" || currentSong?.title?.contains("ઉત્તમયોગીદાસ") == true -> "assets/uttamyogidas_episode.png"
+                        currentSong?.id == "baps_ep_atmatruptdas" || currentSong?.title?.contains("આત્મતૃપ્તદાસ") == true || currentSong?.title?.contains("Atmatruptdas") == true -> "assets/atmatruptdas_episode.png"
+                        currentSong?.id == "baps_ep_1" || currentSong?.title?.contains("Somprakashdas") == true || currentSong?.title?.contains("સોમપ્રકાશદાસ") == true -> "assets/somprakashdas_episode.png"
+                        currentSong?.albumArtUrl?.startsWith("assets/") == true -> currentSong.albumArtUrl
                         else -> null
                     }
 

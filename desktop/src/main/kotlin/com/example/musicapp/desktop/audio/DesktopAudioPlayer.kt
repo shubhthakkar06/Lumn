@@ -202,13 +202,17 @@ class DesktopAudioPlayer(
             activeLine = line
 
             // Build ffmpeg decoding process to output raw 48kHz 16-bit stereo PCM
-            val cmd = mutableListOf(
-                ffmpegBin,
-                "-user_agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "-reconnect", "1",
-                "-reconnect_streamed", "1",
-                "-reconnect_delay_max", "5"
-            )
+            val isRemote = audioSource.startsWith("http://", ignoreCase = true) || audioSource.startsWith("https://", ignoreCase = true)
+            val cmd = mutableListOf(ffmpegBin)
+
+            if (isRemote) {
+                cmd.addAll(listOf(
+                    "-headers", "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\r\n",
+                    "-reconnect", "1",
+                    "-reconnect_streamed", "1",
+                    "-reconnect_delay_max", "5"
+                ))
+            }
 
             if (startPositionMs > 0) {
                 cmd.add("-ss")
@@ -272,12 +276,16 @@ class DesktopAudioPlayer(
             }
 
             if (!isIntentionallyStopped && isActive) {
-                line.drain()
-                withContext(Dispatchers.Main) {
-                    if (_isRepeat.value) {
-                        _currentSong.value?.let { play(it, 0L) }
-                    } else {
-                        skipNext()
+                if (bytesWritten == 0L) {
+                    simulateProgress(totalDurationMs, startPositionMs)
+                } else {
+                    line.drain()
+                    withContext(Dispatchers.Main) {
+                        if (_isRepeat.value) {
+                            _currentSong.value?.let { play(it, 0L) }
+                        } else {
+                            skipNext()
+                        }
                     }
                 }
             }
