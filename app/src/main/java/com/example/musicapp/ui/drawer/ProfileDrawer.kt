@@ -164,8 +164,14 @@ fun ProfileDrawerContent(
                 icon = Icons.Default.ExitToApp,
                 title = "Log out",
                 onClick = {
+                    val currentName = userManager.currentUser.value.name
                     userManager.logout()
-                    Toast.makeText(context, "Logged out successfully", Toast.LENGTH_SHORT).show()
+                    val newCurrent = userManager.currentUser.value
+                    if (userManager.isLoggedIn.value && !newCurrent.isGuest) {
+                        Toast.makeText(context, "Logged out of $currentName. Switched to ${newCurrent.name}", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Logged out successfully", Toast.LENGTH_SHORT).show()
+                    }
                     onClose()
                 }
             )

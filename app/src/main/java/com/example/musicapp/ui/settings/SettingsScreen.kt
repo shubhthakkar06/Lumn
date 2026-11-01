@@ -354,9 +354,15 @@ fun SettingsScreen(onBack: () -> Unit) {
                 confirmButton = {
                     TextButton(onClick = {
                         showLogoutConfirm = false
+                        val currentName = userManager.currentUser.value.name
                         userManager.logout()
-                        Toast.makeText(context, "Logged out successfully", Toast.LENGTH_SHORT).show()
-                        onBack()
+                        val newCurrent = userManager.currentUser.value
+                        if (userManager.isLoggedIn.value && !newCurrent.isGuest) {
+                            Toast.makeText(context, "Logged out of $currentName. Switched to ${newCurrent.name}", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Logged out successfully", Toast.LENGTH_SHORT).show()
+                            onBack()
+                        }
                     }) {
                         Text("Log out", color = Color(0xFFFF5252), fontWeight = FontWeight.Bold)
                     }

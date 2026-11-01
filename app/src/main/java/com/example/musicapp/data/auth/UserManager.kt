@@ -50,6 +50,12 @@ class UserManager private constructor(private val context: Context) {
             }
         }
 
+        fun resetForTesting(context: Context) {
+            instance = null
+            File(context.filesDir, "accounts.json").delete()
+            context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        }
+
         fun hashPassword(password: String): String {
             if (password.isEmpty()) return ""
             val bytes = MessageDigest.getInstance("SHA-256").digest(password.toByteArray())
@@ -147,8 +153,12 @@ class UserManager private constructor(private val context: Context) {
             .putString("active_user_id", user.id)
             .putBoolean("is_logged_in", true)
             .apply()
-        scope.launch {
-            saveAccounts(updated)
+        saveAccounts(updated)
+        try {
+            com.example.musicapp.data.playlist.PlaylistManager.getInstance(context).switchUser(user.id)
+            com.example.musicapp.data.artist.ArtistFollowManager.getInstance(context).switchUser(user.id)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -270,6 +280,12 @@ class UserManager private constructor(private val context: Context) {
             .putString("active_user_id", guestId)
             .putBoolean("is_logged_in", true)
             .apply()
+        try {
+            com.example.musicapp.data.playlist.PlaylistManager.getInstance(context).switchUser(guestId)
+            com.example.musicapp.data.artist.ArtistFollowManager.getInstance(context).switchUser(guestId)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         return guest
     }
 
@@ -283,9 +299,7 @@ class UserManager private constructor(private val context: Context) {
         _currentUser.value = updated
         val updatedList = _allUsers.value.map { if (it.id == updated.id) updated else it }
         _allUsers.value = updatedList
-        scope.launch {
-            saveAccounts(updatedList)
-        }
+        saveAccounts(updatedList)
     }
 
     fun switchUser(userId: String) {
@@ -296,21 +310,79 @@ class UserManager private constructor(private val context: Context) {
             .putString("active_user_id", userId)
             .putBoolean("is_logged_in", true)
             .apply()
+        try {
+            com.example.musicapp.data.playlist.PlaylistManager.getInstance(context).switchUser(userId)
+            com.example.musicapp.data.artist.ArtistFollowManager.getInstance(context).switchUser(userId)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
-    fun logout() {
-        _isLoggedIn.value = false
-        _currentUser.value = defaultGuest
-        // Clear the account pointer too; otherwise a stale active ID can restore the
-        // previous profile after process recreation or a fast app restart.
-        prefs.edit()
-            .remove("active_user_id")
-            .putBoolean("is_logged_in", false)
-            .apply()
-        // Firebase can hold a session even when the active local profile has changed,
-        // so always clear both auth providers on explicit logout.
-        scope.launch {
-            GoogleAuthManager.signOut(context)
+    fun logout(userId: String? = null) {
+        val current = _currentUser.value
+        val userToLogout = userId?.let { id -> _allUsers.value.find { it.id == id } } ?: current
+
+        // If logging out while in guest mode and no specific user ID was specified
+        if (current.isGuest && (userId == null || userId == current.id)) {
+            _isLoggedIn.value = false
+            _currentUser.value = defaultGuest
+            prefs.edit()
+                .remove("active_user_id")
+                .putBoolean("is_logged_in", false)
+                .apply()
+            try {
+                com.example.musicapp.data.playlist.PlaylistManager.getInstance(context).switchUser(defaultGuest.id)
+                com.example.musicapp.data.artist.ArtistFollowManager.getInstance(context).switchUser(defaultGuest.id)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            return
+        }
+
+        // Remove this account from the device's saved accounts
+        val remaining = _allUsers.value.filter { it.id != userToLogout.id && !it.isGuest }
+        _allUsers.value = remaining
+        saveAccounts(remaining)
+
+        if (userToLogout.id.startsWith("google_")) {
+            scope.launch {
+                GoogleAuthManager.signOut(context)
+            }
+        }
+
+        val isLoggingOutActiveUser = (userId == null || userId == current.id)
+
+        if (isLoggingOutActiveUser) {
+            if (remaining.isNotEmpty()) {
+                // Seamlessly switch to another signed-in account without bouncing to login landing page
+                val nextUser = remaining.first()
+                _currentUser.value = nextUser
+                _isLoggedIn.value = true
+                prefs.edit()
+                    .putString("active_user_id", nextUser.id)
+                    .putBoolean("is_logged_in", true)
+                    .apply()
+                try {
+                    com.example.musicapp.data.playlist.PlaylistManager.getInstance(context).switchUser(nextUser.id)
+                    com.example.musicapp.data.artist.ArtistFollowManager.getInstance(context).switchUser(nextUser.id)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            } else {
+                // No remaining accounts on device, return to login landing screen
+                _isLoggedIn.value = false
+                _currentUser.value = defaultGuest
+                prefs.edit()
+                    .remove("active_user_id")
+                    .putBoolean("is_logged_in", false)
+                    .apply()
+                try {
+                    com.example.musicapp.data.playlist.PlaylistManager.getInstance(context).switchUser(defaultGuest.id)
+                    com.example.musicapp.data.artist.ArtistFollowManager.getInstance(context).switchUser(defaultGuest.id)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
         }
     }
 }

@@ -23,7 +23,8 @@ data class UserPlaylist(
     val songs: List<SongInfo> = emptyList(),
     val isPinned: Boolean = false,
     val createdAtMs: Long = System.currentTimeMillis(),
-    val sourceUrl: String = ""
+    val sourceUrl: String = "",
+    val userId: String = ""
 )
 
 class PlaylistManager private constructor(private val context: Context) {
@@ -73,14 +74,30 @@ class PlaylistManager private constructor(private val context: Context) {
         val userPlaylistsFile = getPlaylistsFile(userId)
         val userLikedSongsFile = getLikedSongsFile(userId)
 
+        val primaryAccountId = userManager.allUsers.value.firstOrNull { !it.isGuest }?.id.orEmpty()
+        val currentProfile = userManager.allUsers.value.find { it.id == userId }
+            ?: userManager.currentUser.value
+
         // 1. Liked Songs
         try {
             if (userLikedSongsFile.exists()) {
                 val content = userLikedSongsFile.readText()
                 val list = json.decodeFromString<List<SongInfo>>(content)
-                _likedSongs.value = list
+                val primaryLikedSongsFile = if (primaryAccountId.isNotBlank() && primaryAccountId != userId) {
+                    getLikedSongsFile(primaryAccountId)
+                } else null
+
+                // If this non-primary account has an exact copy of the primary user's liked songs file
+                // from an earlier buggy migration, isolate and clear it for the secondary account.
+                if (primaryLikedSongsFile != null && primaryLikedSongsFile.exists() &&
+                    primaryLikedSongsFile.readText() == content && list.isNotEmpty()) {
+                    _likedSongs.value = emptyList()
+                    userLikedSongsFile.writeText(json.encodeToString(emptyList<SongInfo>()))
+                } else {
+                    _likedSongs.value = list
+                }
             } else if (!userId.startsWith("guest_") && legacyLikedSongsFile.exists()) {
-                // Migrate legacy global liked songs for existing users
+                // Migrate legacy global liked songs for primary existing user
                 val content = legacyLikedSongsFile.readText()
                 val list = json.decodeFromString<List<SongInfo>>(content)
                 _likedSongs.value = list
@@ -98,14 +115,33 @@ class PlaylistManager private constructor(private val context: Context) {
         try {
             if (userPlaylistsFile.exists()) {
                 val content = userPlaylistsFile.readText()
-                val list = json.decodeFromString<List<UserPlaylist>>(content)
-                _playlists.value = list
+                val rawList = json.decodeFromString<List<UserPlaylist>>(content)
+                val sanitized = rawList.mapNotNull { pl ->
+                    when {
+                        // Explicitly owned by this user
+                        pl.userId == userId -> pl
+                        // Explicitly owned by another user -> filter out
+                        pl.userId.isNotBlank() && pl.userId != userId -> null
+                        // Legacy unassigned playlists without userId:
+                        // If this is the primary account, assign ownership to this user
+                        primaryAccountId.isNotBlank() && userId == primaryAccountId -> pl.copy(userId = userId)
+                        // If creator matches this profile's name/username, assign ownership
+                        currentProfile.name.isNotBlank() && pl.creator.equals(currentProfile.name, ignoreCase = true) -> pl.copy(userId = userId)
+                        currentProfile.username.isNotBlank() && pl.creator.equals(currentProfile.username, ignoreCase = true) -> pl.copy(userId = userId)
+                        // Otherwise it belongs to another account on this device
+                        else -> null
+                    }
+                }
+                _playlists.value = sanitized
+                if (sanitized != rawList) {
+                    userPlaylistsFile.writeText(json.encodeToString(sanitized))
+                }
             } else if (!userId.startsWith("guest_") && legacyPlaylistsFile.exists()) {
-                // Migrate legacy global playlists for existing users
                 val content = legacyPlaylistsFile.readText()
-                val list = json.decodeFromString<List<UserPlaylist>>(content)
-                _playlists.value = list
-                userPlaylistsFile.writeText(content)
+                val rawList = json.decodeFromString<List<UserPlaylist>>(content)
+                val assignedList = rawList.map { it.copy(userId = userId) }
+                _playlists.value = assignedList
+                userPlaylistsFile.writeText(json.encodeToString(assignedList))
                 legacyPlaylistsFile.delete()
             } else {
                 _playlists.value = emptyList()
@@ -179,7 +215,8 @@ class PlaylistManager private constructor(private val context: Context) {
             creator = resolvedCreator,
             coverUrl = coverUrl,
             songs = songs,
-            sourceUrl = sourceUrl
+            sourceUrl = sourceUrl,
+            userId = activeUserId
         )
         _playlists.value = listOf(newPlaylist) + _playlists.value
         savePlaylists()
@@ -249,6 +286,13 @@ class PlaylistManager private constructor(private val context: Context) {
             return instance ?: synchronized(this) {
                 instance ?: PlaylistManager(context.applicationContext).also { instance = it }
             }
+        }
+
+        fun resetForTesting(context: Context) {
+            instance = null
+            context.filesDir.listFiles()?.filter {
+                it.name.startsWith("user_playlists") || it.name.startsWith("liked_songs")
+            }?.forEach { it.delete() }
         }
     }
 }

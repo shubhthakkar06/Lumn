@@ -1,5 +1,6 @@
 package com.example.musicapp.ui.auth
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -85,70 +88,125 @@ fun AuthDialog(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(allUsers, key = { it.id }) { user ->
-                            val isSelected = user.id == currentUser.id
-                            val avatarColor = remember(user.avatarColorHex) {
-                                try {
-                                    Color(android.graphics.Color.parseColor(user.avatarColorHex))
-                                } catch (e: Exception) {
-                                    Color(0xFFFF5722)
+                    if (allUsers.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF181818))
+                                .padding(vertical = 20.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No saved accounts on this device",
+                                color = Color.Gray,
+                                fontSize = 13.sp
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(allUsers, key = { it.id }) { user ->
+                                val isSelected = user.id == currentUser.id
+                                val avatarColor = remember(user.avatarColorHex) {
+                                    try {
+                                        Color(android.graphics.Color.parseColor(user.avatarColorHex))
+                                    } catch (e: Exception) {
+                                        Color(0xFFFF5722)
+                                    }
                                 }
-                            }
 
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isSelected) Color(0xFF2A2A2A) else Color(0xFF181818))
-                                    .clickable {
-                                        userManager.switchUser(user.id)
-                                        onDismiss()
-                                    }
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(CircleShape)
-                                            .background(avatarColor),
-                                        contentAlignment = Alignment.Center
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (isSelected) Color(0xFF2A2A2A) else Color(0xFF181818))
+                                        .clickable {
+                                            if (!isSelected) {
+                                                userManager.switchUser(user.id)
+                                            }
+                                            onDismiss()
+                                        }
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = user.avatarLetter,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.Black,
-                                            fontSize = 18.sp
-                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape)
+                                                .background(avatarColor),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = user.avatarLetter,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.Black,
+                                                fontSize = 18.sp
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = user.name,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color.White,
+                                                fontSize = 15.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = if (user.isGuest) "Guest Account" else "@${user.username.ifEmpty { user.name }}",
+                                                color = Color.Gray,
+                                                fontSize = 12.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            text = user.name,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = Color.White,
-                                            fontSize = 15.sp
-                                        )
-                                        Text(
-                                            text = if (user.isGuest) "Guest Account" else "@${user.username.ifEmpty { user.name }}",
-                                            color = Color.Gray,
-                                            fontSize = 12.sp
-                                        )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Active",
+                                                tint = Color(0xFF1DB954),
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                val isLoggingOutCurrent = user.id == currentUser.id
+                                                val loggedOutName = user.name
+                                                userManager.logout(user.id)
+                                                val newCurrent = userManager.currentUser.value
+                                                if (isLoggingOutCurrent) {
+                                                    if (userManager.isLoggedIn.value && !newCurrent.isGuest) {
+                                                        Toast.makeText(context, "Logged out of $loggedOutName. Switched to ${newCurrent.name}", Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        Toast.makeText(context, "Logged out successfully", Toast.LENGTH_SHORT).show()
+                                                        onDismiss()
+                                                    }
+                                                } else {
+                                                    Toast.makeText(context, "Signed out $loggedOutName", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ExitToApp,
+                                                contentDescription = "Sign out ${user.name}",
+                                                tint = Color(0xFFFF5252),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
                                     }
-                                }
-                                if (isSelected) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = "Active",
-                                        tint = Color(0xFF1DB954),
-                                        modifier = Modifier.size(22.dp)
-                                    )
                                 }
                             }
                         }
@@ -182,7 +240,14 @@ fun AuthDialog(
                     // Logout current account button
                     OutlinedButton(
                         onClick = {
+                            val currentName = currentUser.name
                             userManager.logout()
+                            val newCurrent = userManager.currentUser.value
+                            if (userManager.isLoggedIn.value && !newCurrent.isGuest) {
+                                Toast.makeText(context, "Logged out of $currentName. Switched to ${newCurrent.name}", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Logged out successfully", Toast.LENGTH_SHORT).show()
+                            }
                             onDismiss()
                         },
                         modifier = Modifier
@@ -191,7 +256,10 @@ fun AuthDialog(
                         shape = RoundedCornerShape(24.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF5252))
                     ) {
-                        Text("Log out of current account", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = if (currentUser.isGuest) "Exit Guest Mode" else "Log out of current account",
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 } else {
                     // Create account form

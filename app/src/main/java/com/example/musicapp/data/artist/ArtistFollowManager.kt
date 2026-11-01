@@ -107,5 +107,10 @@ class ArtistFollowManager private constructor(context: Context) {
                 instance ?: ArtistFollowManager(context.applicationContext).also { instance = it }
             }
         }
+
+        fun resetForTesting(context: Context) {
+            instance = null
+            context.getSharedPreferences("artist_follow_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        }
     }
 }
