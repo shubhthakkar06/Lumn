@@ -2,6 +2,7 @@ package com.example.musicapp.data.playlist
 
 import android.content.Context
 import com.example.musicapp.data.MusicCatalog
+import com.example.musicapp.data.auth.UserProfile
 import com.example.musicapp.data.network.SongInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -73,39 +74,26 @@ class PlaylistManager private constructor(private val context: Context) {
         activeUserId = userId
         val userPlaylistsFile = getPlaylistsFile(userId)
         val userLikedSongsFile = getLikedSongsFile(userId)
-
-        val primaryAccountId = userManager.allUsers.value.firstOrNull { !it.isGuest }?.id.orEmpty()
-        val currentProfile = userManager.allUsers.value.find { it.id == userId }
-            ?: userManager.currentUser.value
+        val otherUsers = userManager.allUsers.value.filter { it.id != userId }
 
         // 1. Liked Songs
         try {
-            if (userLikedSongsFile.exists()) {
+            var loadedLiked = emptyList<SongInfo>()
+            if (userLikedSongsFile.exists() && userLikedSongsFile.length() > 5) {
                 val content = userLikedSongsFile.readText()
-                val list = json.decodeFromString<List<SongInfo>>(content)
-                val primaryLikedSongsFile = if (primaryAccountId.isNotBlank() && primaryAccountId != userId) {
-                    getLikedSongsFile(primaryAccountId)
-                } else null
-
-                // If this non-primary account has an exact copy of the primary user's liked songs file
-                // from an earlier buggy migration, isolate and clear it for the secondary account.
-                if (primaryLikedSongsFile != null && primaryLikedSongsFile.exists() &&
-                    primaryLikedSongsFile.readText() == content && list.isNotEmpty()) {
-                    _likedSongs.value = emptyList()
-                    userLikedSongsFile.writeText(json.encodeToString(emptyList<SongInfo>()))
-                } else {
-                    _likedSongs.value = list
-                }
-            } else if (!userId.startsWith("guest_") && legacyLikedSongsFile.exists()) {
-                // Migrate legacy global liked songs for primary existing user
-                val content = legacyLikedSongsFile.readText()
-                val list = json.decodeFromString<List<SongInfo>>(content)
-                _likedSongs.value = list
-                userLikedSongsFile.writeText(content)
-                legacyLikedSongsFile.delete()
-            } else {
-                _likedSongs.value = emptyList()
+                loadedLiked = runCatching { json.decodeFromString<List<SongInfo>>(content) }.getOrDefault(emptyList())
             }
+
+            // If empty or missing, search and recover from backups, google_*, guest_*, or legacy files
+            if (loadedLiked.isEmpty()) {
+                val recovered = recoverLikedSongsOnDevice(userId, otherUsers)
+                if (recovered.isNotEmpty()) {
+                    loadedLiked = recovered
+                    userLikedSongsFile.writeText(json.encodeToString(loadedLiked))
+                }
+            }
+
+            _likedSongs.value = loadedLiked
         } catch (e: Exception) {
             e.printStackTrace()
             _likedSongs.value = emptyList()
@@ -113,50 +101,145 @@ class PlaylistManager private constructor(private val context: Context) {
 
         // 2. Playlists
         try {
-            if (userPlaylistsFile.exists()) {
+            var loadedPlaylists = emptyList<UserPlaylist>()
+            if (userPlaylistsFile.exists() && userPlaylistsFile.length() > 5) {
                 val content = userPlaylistsFile.readText()
-                val rawList = json.decodeFromString<List<UserPlaylist>>(content)
-                val sanitized = rawList.mapNotNull { pl ->
-                    when {
-                        // Explicitly owned by this user
-                        pl.userId == userId -> pl
-                        // Explicitly owned by another user -> filter out
-                        pl.userId.isNotBlank() && pl.userId != userId -> null
-                        // Legacy unassigned playlists without userId:
-                        // If this is the primary account, assign ownership to this user
-                        primaryAccountId.isNotBlank() && userId == primaryAccountId -> pl.copy(userId = userId)
-                        // If creator matches this profile's name/username, assign ownership
-                        currentProfile.name.isNotBlank() && pl.creator.equals(currentProfile.name, ignoreCase = true) -> pl.copy(userId = userId)
-                        currentProfile.username.isNotBlank() && pl.creator.equals(currentProfile.username, ignoreCase = true) -> pl.copy(userId = userId)
-                        // Otherwise it belongs to another account on this device
-                        else -> null
+                val rawList = runCatching { json.decodeFromString<List<UserPlaylist>>(content) }.getOrDefault(emptyList())
+                if (rawList.isNotEmpty()) {
+                    // Sanitize against duplicate or foreign playlists while preserving user's own playlists
+                    val sanitized = rawList.mapNotNull { pl ->
+                        when {
+                            // Explicitly matches this user
+                            pl.userId == userId -> pl
+                            // Explicitly assigned to another active account on this device -> filter out
+                            pl.userId.isNotBlank() && otherUsers.any { it.id == pl.userId } -> null
+                            // Legacy unassigned with creator matching another registered account -> filter out
+                            pl.userId.isBlank() && otherUsers.any {
+                                it.name.equals(pl.creator, ignoreCase = true) || it.username.equals(pl.creator, ignoreCase = true)
+                            } -> null
+                            // Otherwise it belongs to this user (e.g. legacy or migrated from google_ / guest)
+                            else -> pl.copy(userId = userId)
+                        }
+                    }
+                    loadedPlaylists = sanitized
+                    if (loadedPlaylists != rawList) {
+                        userPlaylistsFile.writeText(json.encodeToString(loadedPlaylists))
                     }
                 }
-                _playlists.value = sanitized
-                if (sanitized != rawList) {
-                    userPlaylistsFile.writeText(json.encodeToString(sanitized))
-                }
-            } else if (!userId.startsWith("guest_") && legacyPlaylistsFile.exists()) {
-                val content = legacyPlaylistsFile.readText()
-                val rawList = json.decodeFromString<List<UserPlaylist>>(content)
-                val assignedList = rawList.map { it.copy(userId = userId) }
-                _playlists.value = assignedList
-                userPlaylistsFile.writeText(json.encodeToString(assignedList))
-                legacyPlaylistsFile.delete()
-            } else {
-                _playlists.value = emptyList()
             }
+
+            // If empty, recover from previous Google / Guest / legacy files on device (excluding other users' files)
+            if (loadedPlaylists.isEmpty()) {
+                val recovered = recoverPlaylistsOnDevice(userId, otherUsers)
+                if (recovered.isNotEmpty()) {
+                    loadedPlaylists = recovered.map { it.copy(userId = userId) }
+                    userPlaylistsFile.writeText(json.encodeToString(loadedPlaylists))
+                }
+            }
+
+            _playlists.value = loadedPlaylists
         } catch (e: Exception) {
             e.printStackTrace()
             _playlists.value = emptyList()
         }
     }
 
+    private fun recoverPlaylistsOnDevice(userId: String, otherUsers: List<UserProfile>): List<UserPlaylist> {
+        val filesDir = context.filesDir ?: return emptyList()
+        val allFiles = filesDir.listFiles() ?: return emptyList()
+
+        // 1. User backup file
+        val backupFile = File(filesDir, "user_playlists_${sanitizeUserId(userId)}_backup.json")
+        if (backupFile.exists() && backupFile.length() > 5) {
+            runCatching {
+                val list = json.decodeFromString<List<UserPlaylist>>(backupFile.readText())
+                if (list.isNotEmpty()) return list
+            }
+        }
+
+        // Files that belong to other named accounts (usr_* or user_*) must NEVER be adopted
+        val currentFileName = "user_playlists_${sanitizeUserId(userId)}.json"
+
+        // Candidate legacy files: only older un-namespaced files or google_/guest_ transitions
+        val candidateFiles = allFiles.filter { f ->
+            f.name.endsWith(".json") &&
+            f.length() > 5 &&
+            f.name != currentFileName &&
+            !f.name.startsWith("user_playlists_usr_") &&
+            !f.name.startsWith("user_playlists_user_") &&
+            (f.name.startsWith("user_playlists_google_") ||
+             f.name.startsWith("user_playlists_guest_") ||
+             f.name == "user_playlists.json")
+        }.sortedByDescending { it.lastModified() }
+
+        var bestMatch: List<UserPlaylist> = emptyList()
+        var maxSongs = -1
+
+        for (file in candidateFiles) {
+            runCatching {
+                val list = json.decodeFromString<List<UserPlaylist>>(file.readText())
+                val validForThisUser = list.filter { pl ->
+                    !otherUsers.any { it.id == pl.userId || (pl.userId.isBlank() && it.name.equals(pl.creator, true)) }
+                }
+                val totalSongs = validForThisUser.sumOf { it.songs.size }
+                if (validForThisUser.isNotEmpty() && totalSongs > maxSongs) {
+                    maxSongs = totalSongs
+                    bestMatch = validForThisUser
+                }
+            }
+        }
+
+        return bestMatch
+    }
+
+    private fun recoverLikedSongsOnDevice(userId: String, otherUsers: List<UserProfile>): List<SongInfo> {
+        val filesDir = context.filesDir ?: return emptyList()
+        val allFiles = filesDir.listFiles() ?: return emptyList()
+
+        val backupFile = File(filesDir, "liked_songs_${sanitizeUserId(userId)}_backup.json")
+        if (backupFile.exists() && backupFile.length() > 5) {
+            runCatching {
+                val list = json.decodeFromString<List<SongInfo>>(backupFile.readText())
+                if (list.isNotEmpty()) return list
+            }
+        }
+
+        val currentFileName = "liked_songs_${sanitizeUserId(userId)}.json"
+
+        val candidateFiles = allFiles.filter { f ->
+            f.name.endsWith(".json") &&
+            f.length() > 5 &&
+            f.name != currentFileName &&
+            !f.name.startsWith("liked_songs_usr_") &&
+            !f.name.startsWith("liked_songs_user_") &&
+            (f.name.startsWith("liked_songs_google_") ||
+             f.name.startsWith("liked_songs_guest_") ||
+             f.name == "liked_songs.json")
+        }.sortedByDescending { it.lastModified() }
+
+        var bestMatch: List<SongInfo> = emptyList()
+
+        for (file in candidateFiles) {
+            runCatching {
+                val list = json.decodeFromString<List<SongInfo>>(file.readText())
+                if (list.size > bestMatch.size) {
+                    bestMatch = list
+                }
+            }
+        }
+
+        return bestMatch
+    }
+
     private fun savePlaylists() {
         val targetFile = getPlaylistsFile(activeUserId)
         val current = _playlists.value
         try {
-            targetFile.writeText(json.encodeToString(current))
+            val content = json.encodeToString(current)
+            targetFile.writeText(content)
+            if (current.isNotEmpty()) {
+                File(context.filesDir, "user_playlists_${sanitizeUserId(activeUserId)}_backup.json").writeText(content)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -166,7 +249,11 @@ class PlaylistManager private constructor(private val context: Context) {
         val targetFile = getLikedSongsFile(activeUserId)
         val current = _likedSongs.value
         try {
-            targetFile.writeText(json.encodeToString(current))
+            val content = json.encodeToString(current)
+            targetFile.writeText(content)
+            if (current.isNotEmpty()) {
+                File(context.filesDir, "liked_songs_${sanitizeUserId(activeUserId)}_backup.json").writeText(content)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -196,7 +283,7 @@ class PlaylistManager private constructor(private val context: Context) {
         sourceUrl: String = ""
     ): UserPlaylist? {
         val currentProfile = userManager.currentUser.value
-        val isGuest = if (activeUserId.startsWith("user_") || activeUserId.startsWith("google_")) {
+        val isGuest = if (activeUserId.startsWith("user_") || activeUserId.startsWith("google_") || activeUserId.startsWith("usr_")) {
             false
         } else {
             currentProfile.isGuest || activeUserId.startsWith("guest_")
@@ -279,6 +366,16 @@ class PlaylistManager private constructor(private val context: Context) {
 
     fun getPlaylist(playlistId: String): UserPlaylist? {
         return _playlists.value.find { it.id == playlistId }
+    }
+
+    fun applyMergedPlaylists(merged: List<UserPlaylist>) {
+        _playlists.value = merged
+        savePlaylists()
+    }
+
+    fun applyMergedLikedSongs(merged: List<SongInfo>) {
+        _likedSongs.value = merged
+        saveLikedSongs()
     }
 
     companion object {

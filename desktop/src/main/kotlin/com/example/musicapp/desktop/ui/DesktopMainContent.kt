@@ -928,19 +928,33 @@ private fun PlaylistDetailView(
                 .padding(20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(themeAccent),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                    contentDescription = null,
-                    tint = Color.Black,
-                    modifier = Modifier.size(40.dp)
+            val cover = playlist?.coverUrl.orEmpty().ifBlank {
+                songs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
+            }
+            if (cover.isNotBlank()) {
+                AsyncImage(
+                    model = cover,
+                    contentDescription = playlist?.name,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(RoundedCornerShape(8.dp))
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(themeAccent),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                        contentDescription = null,
+                        tint = Color.Black,
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(18.dp))

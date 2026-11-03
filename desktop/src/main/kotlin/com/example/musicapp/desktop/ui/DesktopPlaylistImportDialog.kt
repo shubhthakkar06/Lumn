@@ -156,36 +156,82 @@ fun DesktopPlaylistImportDialog(
                     Spacer(modifier = Modifier.width(12.dp))
                     Button(
                         onClick = {
-                            val name = playlistTitle.ifBlank { "Imported Playlist" }
-                            val lines = importInput.lines().map { it.trim() }.filter { it.isNotBlank() }
-                            if (lines.isEmpty()) {
+                            val trimmedInput = importInput.trim()
+                            if (trimmedInput.isBlank()) {
                                 statusMessage = "Please enter songs or a playlist link"
                                 return@Button
                             }
 
                             isImporting = true
-                            statusMessage = "Importing songs..."
+                            statusMessage = "Analyzing playlist..."
 
                             scope.launch(Dispatchers.IO) {
-                                val playlist = libraryManager.createPlaylist(name)
-                                var addedCount = 0
+                                try {
+                                    if (com.example.musicapp.desktop.data.DesktopSpotifyImporter.isSpotifyUrl(trimmedInput)) {
+                                        withContext(Dispatchers.Main) {
+                                            statusMessage = "Connecting to Spotify Pathfinder..."
+                                        }
+                                        val spotifyResult = com.example.musicapp.desktop.data.DesktopSpotifyImporter.importPlaylist(
+                                            url = trimmedInput,
+                                            musicRepository = musicRepository,
+                                            onProgress = { cur, tot ->
+                                                scope.launch(Dispatchers.Main) {
+                                                    statusMessage = "Loaded $cur of $tot tracks from Spotify..."
+                                                }
+                                            }
+                                        )
 
-                                for (line in lines) {
-                                    val query = line.replace(Regex("https?://\\S+"), "").trim()
-                                    val searchQuery = if (query.isNotBlank()) query else line
-                                    val hits = musicRepository.searchSongs(searchQuery)
-                                    val songToAdd = hits.firstOrNull()
-                                    if (songToAdd != null) {
-                                        libraryManager.addSongToPlaylist(playlist.id, songToAdd)
-                                        addedCount++
+                                        if (spotifyResult != null && spotifyResult.songs.isNotEmpty()) {
+                                            val finalName = playlistTitle.ifBlank { spotifyResult.name }
+                                            val createdPl = libraryManager.createPlaylist(
+                                                name = finalName,
+                                                coverUrl = spotifyResult.coverUrl
+                                            )
+                                            for (song in spotifyResult.songs) {
+                                                libraryManager.addSongToPlaylist(createdPl.id, song)
+                                            }
+
+                                            withContext(Dispatchers.Main) {
+                                                isImporting = false
+                                                statusMessage = "Success! Imported ${spotifyResult.songs.size} tracks into \"$finalName\""
+                                                kotlinx.coroutines.delay(1200)
+                                                onDismiss()
+                                            }
+                                            return@launch
+                                        }
                                     }
-                                }
 
-                                withContext(Dispatchers.Main) {
-                                    isImporting = false
-                                    statusMessage = "Success! Added $addedCount songs to \"$name\""
-                                    kotlinx.coroutines.delay(1000)
-                                    onDismiss()
+                                    // Fallback: line-by-line search import
+                                    val name = playlistTitle.ifBlank { "Imported Playlist" }
+                                    val lines = importInput.lines().map { it.trim() }.filter { it.isNotBlank() }
+                                    val playlist = libraryManager.createPlaylist(name)
+                                    var addedCount = 0
+
+                                    for ((idx, line) in lines.withIndex()) {
+                                        val query = line.replace(Regex("https?://\\S+"), "").trim()
+                                        val searchQuery = if (query.isNotBlank()) query else line
+                                        withContext(Dispatchers.Main) {
+                                            statusMessage = "Matching song ${idx + 1}/${lines.size}: $searchQuery"
+                                        }
+                                        val hits = musicRepository.searchSongs(searchQuery)
+                                        val songToAdd = hits.firstOrNull()
+                                        if (songToAdd != null) {
+                                            libraryManager.addSongToPlaylist(playlist.id, songToAdd)
+                                            addedCount++
+                                        }
+                                    }
+
+                                    withContext(Dispatchers.Main) {
+                                        isImporting = false
+                                        statusMessage = "Success! Added $addedCount songs to \"$name\""
+                                        kotlinx.coroutines.delay(1000)
+                                        onDismiss()
+                                    }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) {
+                                        isImporting = false
+                                        statusMessage = "Import error: ${e.message}"
+                                    }
                                 }
                             }
                         },

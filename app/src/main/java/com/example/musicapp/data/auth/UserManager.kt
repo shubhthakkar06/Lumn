@@ -351,7 +351,7 @@ class UserManager private constructor(private val context: Context) {
         _allUsers.value = remaining
         saveAccounts(remaining)
 
-        if (userToLogout.id.startsWith("google_")) {
+        if (userToLogout.id.startsWith("google_") || userToLogout.id.startsWith("usr_")) {
             scope.launch {
                 GoogleAuthManager.signOut(context)
             }

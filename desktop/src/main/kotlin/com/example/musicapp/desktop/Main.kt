@@ -27,6 +27,7 @@ import com.example.musicapp.desktop.audio.DesktopAudioPlayer
 import com.example.musicapp.desktop.data.*
 import com.example.musicapp.desktop.mac.MacTrayIntegration
 import com.example.musicapp.desktop.model.DesktopSong
+import com.example.musicapp.desktop.sync.DesktopSyncService
 import com.example.musicapp.desktop.theme.DesktopThemeManager
 import com.example.musicapp.desktop.ui.*
 import kotlinx.coroutines.delay
@@ -77,8 +78,12 @@ fun main() = application {
 
     val isCurrentSongLiked = currentSong?.let { s -> likedSongs.any { it.id == s.id } } ?: false
 
-    // Start intro splash and check if user needs to sign in on first launch
+    // Start sync service, intro splash and check if user needs to sign in on first launch
     LaunchedEffect(Unit) {
+        DesktopSyncService.start(libraryManager, currentUser)
+        DesktopSyncService.onSyncCompleted = { payload ->
+            toastMessage = "✓ Synced with ${payload.deviceName} (${payload.playlists.size} playlists)!"
+        }
         delay(1800)
         showLaunchSplash = false
         if (currentUser == null) {
@@ -89,6 +94,7 @@ fun main() = application {
     // Automatically sync library data & prompt sign-in when currentUser changes
     LaunchedEffect(currentUser) {
         libraryManager.switchUser(currentUser)
+        DesktopSyncService.updateUser(currentUser)
         if (!showLaunchSplash && currentUser == null) {
             showAuthDialog = true
         }

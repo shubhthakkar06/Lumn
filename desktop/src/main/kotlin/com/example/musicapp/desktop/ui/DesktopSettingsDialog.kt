@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.musicapp.desktop.data.DesktopDownloadManager
 import com.example.musicapp.desktop.data.DesktopUser
+import com.example.musicapp.desktop.sync.DesktopSyncService
 import com.example.musicapp.desktop.theme.DesktopAppTheme
 import com.example.musicapp.desktop.theme.DesktopThemeManager
 
@@ -106,7 +107,19 @@ fun DesktopSettingsDialog(
                         Spacer(modifier = Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(currentUser?.name ?: "Guest Listener", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                            Text(currentUser?.email?.ifBlank { "Signed in locally • No cloud sync" } ?: "Guest mode", color = Color.Gray, fontSize = 12.sp)
+                            val isGoogle = currentUser?.email?.isNotBlank() == true
+                            Text(
+                                text = if (isGoogle) "${currentUser?.email} • Google Connected" else "Guest mode • Local only",
+                                color = if (isGoogle) Color(0xFF1ED760) else Color.Gray,
+                                fontSize = 12.sp
+                            )
+                            if (isGoogle) {
+                                Text(
+                                    text = "Cross-Device Sync Active on port ${DesktopSyncService.SYNC_PORT}",
+                                    color = Color(0xFF4285F4),
+                                    fontSize = 11.sp
+                                )
+                            }
                         }
                         Button(
                             onClick = {

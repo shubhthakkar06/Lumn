@@ -40,6 +40,7 @@ import com.example.musicapp.data.auth.UserManager
 import com.example.musicapp.data.download.MusicDownloadManager
 import com.example.musicapp.data.playlist.PlaylistManager
 import com.example.musicapp.data.playlist.SpotifyPlaylistImporter
+import com.example.musicapp.data.sync.DeviceSyncManager
 import com.example.musicapp.data.network.SongInfo
 import com.example.musicapp.data.settings.SettingsManager
 import com.example.musicapp.theme.AppThemeHelper
@@ -67,6 +68,7 @@ fun LibraryScreen(
     viewModel: MainScreenViewModel? = null
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val settingsManager = remember { SettingsManager.getInstance(context) }
     val appTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
     val themeAccent = remember(appTheme) { AppThemeHelper.getThemeAccent(appTheme) }
@@ -101,6 +103,13 @@ fun LibraryScreen(
     var showAddArtistsSheet by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
     var pendingLibraryDelete by remember { mutableStateOf<Pair<LibraryItem, Boolean>?>(null) }
+    var isSyncingWithMac by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentUser.id) {
+        if (!currentUser.isGuest) {
+            runCatching { DeviceSyncManager.syncWithMac(context) }
+        }
+    }
 
     val avatarColor = remember(currentUser.avatarColorHex) {
         try {
@@ -248,6 +257,32 @@ fun LibraryScreen(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = {
+                            isSyncingWithMac = true
+                            coroutineScope.launch {
+                                val result = DeviceSyncManager.syncWithMac(context)
+                                isSyncingWithMac = false
+                                result.onSuccess { count ->
+                                    Toast.makeText(context, "✓ Synced $count playlists with Mac!", Toast.LENGTH_SHORT).show()
+                                }.onFailure { err ->
+                                    Toast.makeText(context, "Could not reach Mac on Wi-Fi: ${err.message}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        },
+                        enabled = !currentUser.isGuest && !isSyncingWithMac
+                    ) {
+                        if (isSyncingWithMac) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = themeAccent, strokeWidth = 2.dp)
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = "Sync Playlists with Mac",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
                     IconButton(onClick = { isSearchActive = !isSearchActive }) {
                         Icon(
                             imageVector = Icons.Default.Search,

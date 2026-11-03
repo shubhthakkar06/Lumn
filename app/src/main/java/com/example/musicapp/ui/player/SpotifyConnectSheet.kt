@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.musicapp.data.network.SongInfo
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -328,6 +329,74 @@ fun SpotifyConnectSheet(
                             color = Color.White,
                             maxLines = 1,
                             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+                }
+            }
+
+            // Sync with Mac
+            val coroutineScope = rememberCoroutineScope()
+            var isSyncingMac by remember { mutableStateOf(false) }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF1E293B))
+                    .clickable(enabled = !isSyncingMac) {
+                        isSyncingMac = true
+                        coroutineScope.launch {
+                            val res = com.example.musicapp.data.sync.DeviceSyncManager.syncWithMac(context)
+                            isSyncingMac = false
+                            res.onSuccess { count ->
+                                Toast.makeText(context, "✓ Synced $count playlists with Mac!", Toast.LENGTH_SHORT).show()
+                            }.onFailure { err ->
+                                Toast.makeText(context, "Could not reach Mac on Wi-Fi: ${err.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Computer,
+                            contentDescription = null,
+                            tint = Color(0xFF00D2FF),
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Sync Playlists with Mac",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "Syncs liked songs & playlists over Wi-Fi",
+                                color = Color(0xFF94A3B8),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    if (isSyncingMac) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = Color(0xFF00D2FF),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = "Sync Now",
+                            tint = Color(0xFF00D2FF),
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }

@@ -2,6 +2,9 @@ package com.example.musicapp.desktop.data
 
 import com.example.musicapp.desktop.model.DesktopPlaylist
 import com.example.musicapp.desktop.model.DesktopSong
+import com.example.musicapp.desktop.sync.RivaraSyncPayload
+import com.example.musicapp.desktop.sync.SyncPlaylist
+import com.example.musicapp.desktop.sync.SyncSong
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -133,11 +136,31 @@ class DesktopLibraryManager {
         }
 
         try {
-            if (plSongsFile.exists()) {
-                val map = json.decodeFromString<Map<String, List<DesktopSong>>>(plSongsFile.readText())
-                _playlistSongs.value = map
-            } else {
-                _playlistSongs.value = emptyMap()
+            val map = if (plSongsFile.exists()) {
+                json.decodeFromString<Map<String, List<DesktopSong>>>(plSongsFile.readText()).toMutableMap()
+            } else mutableMapOf()
+
+            // Ensure default playlists have their songs populated
+            if (map["pl_1"].isNullOrEmpty() && _playlists.value.any { it.id == "pl_1" }) {
+                map["pl_1"] = listOf(
+                    DesktopSong("tum_hi_ho", "Tum Hi Ho", "Arijit Singh", "Aashiqui 2", 262L, "https://c.saavncdn.com/026/Aashiqui-2-Hindi-2013-500x500.jpg", "https://aac.saavncdn.com/026/02dfef8e359a35e38d6df72aebf8ad22_320.mp4"),
+                    DesktopSong("yellow_coldplay", "Yellow", "Coldplay", "Parachutes", 269L, "https://c.saavncdn.com/712/Parachutes-English-2000-20201020084321-500x500.jpg", "https://aac.saavncdn.com/712/f2a4f4d2fb2d35889fa6e9f1a260f8ea_320.mp4")
+                )
+            }
+            if (map["pl_2"].isNullOrEmpty() && _playlists.value.any { it.id == "pl_2" }) {
+                map["pl_2"] = listOf(
+                    DesktopSong("starboy_weeknd", "Starboy", "The Weeknd, Daft Punk", "Starboy", 230L, "https://c.saavncdn.com/408/Starboy-English-2016-500x500.jpg", "https://aac.saavncdn.com/408/8d7cae0b969c3a387ee3b6a73c914eb4_320.mp4")
+                )
+            }
+            if (map["pl_3"].isNullOrEmpty() && _playlists.value.any { it.id == "pl_3" }) {
+                map["pl_3"] = listOf(
+                    DesktopSong("baps_ep_1", "Patience and True Refuge in Bhagwan | Pujya Somprakashdas Swami | BAPS Satsang", "Pujya Somprakashdas Swami", "Episode • BAPS Satsang Gujarati", 2837L, "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/00/72/c6/0072c641-891b-71ff-8c1c-3e6f20be1f02/mza_13154730571231814752.jpg/600x600bb.jpg", "https://p.scdn.co/mp3-preview/fa88a13eafcd9aa77ca98e20ceb435c786e229c6.mp3")
+                )
+            }
+
+            _playlistSongs.value = map
+            if (!plSongsFile.exists() && map.isNotEmpty()) {
+                savePlaylistSongs(userId)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -168,14 +191,138 @@ class DesktopLibraryManager {
         return !alreadyLiked
     }
 
-    fun createPlaylist(name: String): DesktopPlaylist {
+    fun createPlaylist(name: String, coverUrl: String = ""): DesktopPlaylist {
         val clean = name.trim().ifBlank { "New Playlist" }
         val id = "pl_" + System.currentTimeMillis()
-        val playlist = DesktopPlaylist(id, clean, songCount = 0)
+        val playlist = DesktopPlaylist(id, clean, songCount = 0, coverUrl = coverUrl)
         val updated = _playlists.value + playlist
         _playlists.value = updated
         savePlaylists(activeUserId)
         return playlist
+    }
+
+    fun getSyncPayload(user: DesktopUser?): RivaraSyncPayload {
+        val uId = user?.id ?: activeUserId
+        val email = user?.email.orEmpty().ifBlank { "navya.shubh2006@gmail.com" }
+        val syncPlaylists = _playlists.value.map { pl ->
+            val songs = getSongsForPlaylist(pl.id).map { s ->
+                SyncSong(
+                    id = s.id,
+                    title = s.title,
+                    artist = s.artist,
+                    album = s.album,
+                    durationSeconds = s.durationSeconds,
+                    albumArtUrl = s.albumArtUrl,
+                    audioUrl = s.audioUrl
+                )
+            }
+            SyncPlaylist(
+                id = pl.id,
+                name = pl.name,
+                creator = pl.creator,
+                coverUrl = pl.coverUrl.ifBlank { songs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty() },
+                songs = songs
+            )
+        }
+        val syncLiked = _likedSongs.value.map { s ->
+            SyncSong(
+                id = s.id,
+                title = s.title,
+                artist = s.artist,
+                album = s.album,
+                durationSeconds = s.durationSeconds,
+                albumArtUrl = s.albumArtUrl,
+                audioUrl = s.audioUrl
+            )
+        }
+        return RivaraSyncPayload(
+            userEmail = email,
+            userId = uId,
+            playlists = syncPlaylists,
+            likedSongs = syncLiked
+        )
+    }
+
+    fun mergeFromSync(payload: RivaraSyncPayload) {
+        val incomingPlaylists = payload.playlists
+        val incomingLiked = payload.likedSongs
+
+        val currentPls = _playlists.value.toMutableList()
+        val currentSongsMap = _playlistSongs.value.toMutableMap()
+
+        for (inc in incomingPlaylists) {
+            val existingIdx = currentPls.indexOfFirst {
+                it.id == inc.id || it.name.trim().equals(inc.name.trim(), ignoreCase = true)
+            }
+            val incSongs = inc.songs.map { s ->
+                DesktopSong(
+                    id = s.id,
+                    title = s.title,
+                    artist = s.artist,
+                    album = s.album,
+                    durationSeconds = s.durationSeconds,
+                    albumArtUrl = s.albumArtUrl,
+                    audioUrl = s.audioUrl,
+                    isLiked = isLiked(s.id)
+                )
+            }
+
+            if (existingIdx >= 0) {
+                val existing = currentPls[existingIdx]
+                val existingSongs = currentSongsMap[existing.id].orEmpty()
+                val mergedSongs = (existingSongs + incSongs).distinctBy {
+                    it.id.ifBlank { "${it.title}_${it.artist}".lowercase() }
+                }
+                currentSongsMap[existing.id] = mergedSongs
+                val updatedCover = existing.coverUrl.ifBlank { inc.coverUrl }.ifBlank {
+                    mergedSongs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
+                }
+                currentPls[existingIdx] = existing.copy(
+                    songCount = mergedSongs.size,
+                    coverUrl = updatedCover
+                )
+            } else {
+                val plId = inc.id.ifBlank { "pl_" + System.currentTimeMillis() }
+                val cover = inc.coverUrl.ifBlank {
+                    incSongs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
+                }
+                currentPls.add(
+                    DesktopPlaylist(
+                        id = plId,
+                        name = inc.name,
+                        creator = inc.creator.ifBlank { payload.userEmail.substringBefore("@") },
+                        songCount = incSongs.size,
+                        coverUrl = cover
+                    )
+                )
+                currentSongsMap[plId] = incSongs
+            }
+        }
+
+        // Merge liked songs
+        val currentLiked = _likedSongs.value.toMutableList()
+        for (l in incomingLiked) {
+            if (currentLiked.none { it.id == l.id || (it.title.equals(l.title, true) && it.artist.equals(l.artist, true)) }) {
+                currentLiked.add(
+                    DesktopSong(
+                        id = l.id,
+                        title = l.title,
+                        artist = l.artist,
+                        album = l.album,
+                        durationSeconds = l.durationSeconds,
+                        albumArtUrl = l.albumArtUrl,
+                        audioUrl = l.audioUrl,
+                        isLiked = true
+                    )
+                )
+            }
+        }
+
+        _playlists.value = currentPls
+        _playlistSongs.value = currentSongsMap
+        _likedSongs.value = currentLiked
+
+        saveDataForUser(activeUserId)
     }
 
     fun addSongToPlaylist(playlistId: String, song: DesktopSong) {

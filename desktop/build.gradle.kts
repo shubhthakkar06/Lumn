@@ -27,12 +27,13 @@ compose.desktop {
     application {
         mainClass = "com.example.musicapp.desktop.MainKt"
         nativeDistributions {
+            modules("jdk.httpserver", "java.instrument")
             targetFormats(
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg,
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Pkg
             )
             packageName = "Rivara"
-            packageVersion = "2.7.9"
+            packageVersion = "2.8.1"
             description = "Rivara Music for macOS"
             copyright = "© 2026 Rivara. All rights reserved."
             vendor = "Rivara Music"

@@ -169,7 +169,7 @@ fun DesktopAuthDialog(
                                 Text("G", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
                             }
                             Spacer(modifier = Modifier.width(10.dp))
-                            Text("Continue with Google (Navya Shubh)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Continue with Google", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                     }
 
