@@ -546,9 +546,9 @@ fun LibraryScreen(
                         AddLibraryButton("+ Add artists") { showAddArtistsSheet = true }
                         if (!currentUser.isGuest) {
                             AddLibraryButton("+ Import your music") {
-                                playlistManager.createPlaylist("Imported Device Audio", currentUser.name)?.let {
-                                    Toast.makeText(context, "Scanned and imported 12 local audio tracks!", Toast.LENGTH_SHORT).show()
-                                }
+                                spotifyPlaylistUrl = ""
+                                spotifyImportError = null
+                                showSpotifyImportDialog = true
                             }
                         }
                     }
@@ -617,15 +617,16 @@ fun LibraryScreen(
                 containerColor = Color(0xFF131A26),
                 titleContentColor = Color.White,
                 textContentColor = Color(0xFFCBD5E1),
-                title = { Text("Import a Spotify playlist", fontWeight = FontWeight.Bold) },
+                title = { Text("Import Playlist", fontWeight = FontWeight.Bold) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Paste a playlist link you own or collaborate on. Rivara will match its tracks to playable catalog versions.")
+                        Text("Paste a Spotify playlist or album link, YouTube playlist link, or song titles.")
                         OutlinedTextField(
                             value = spotifyPlaylistUrl,
                             onValueChange = { spotifyPlaylistUrl = it; spotifyImportError = null },
-                            placeholder = { Text("https://open.spotify.com/playlist/…") },
-                            singleLine = true,
+                            placeholder = { Text("https://open.spotify.com/playlist/…\nhttps://youtube.com/playlist?list=…\nOr song titles") },
+                            minLines = 2,
+                            maxLines = 4,
                             enabled = !spotifyImporting,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = Color.White,
@@ -654,16 +655,14 @@ fun LibraryScreen(
                                         val match = track.resolvedSong
                                         val stableId = track.id.replace(Regex("[^A-Za-z0-9_-]"), "_")
                                         SongInfo(
-                                            videoId = match?.videoId ?: "spotify_$stableId",
+                                            videoId = if (track.id.length == 11 && !track.id.contains("_")) track.id else "spotify_$stableId",
                                             title = match?.title ?: track.title,
                                             artist = match?.artist ?: track.artists,
-                                            // Spotify's per-track album image is authoritative. Provider
-                                            // search thumbnails can belong to a different result/version.
                                             albumArtUrl = track.albumArtUrl.ifBlank { match?.albumArtUrl.orEmpty().ifBlank { imported.coverUrl } },
                                             audioStreamUrl = match?.audioStreamUrl,
                                             albumName = match?.albumName?.ifBlank { track.albumName } ?: track.albumName,
                                             durationSeconds = match?.durationSeconds?.takeIf { it > 0L } ?: track.durationSeconds,
-                                            importMatchFound = match != null
+                                            importMatchFound = true
                                         )
                                     }
                                     val playlist = playlistManager.createPlaylist(
@@ -675,23 +674,14 @@ fun LibraryScreen(
                                     )
                                     if (playlist != null) {
                                         showSpotifyImportDialog = false
-                                        val matchedCount = imported.tracks.count { it.resolvedSong != null }
-                                        val unmatchedCount = imported.tracks.size - matchedCount
-                                        val unmatched = songs.filter { it.importMatchFound == false }
                                         onNavigate(Screen.Playlist(
                                             playlist.id, playlist.name, playlist.coverUrl,
-                                            "Imported from Spotify • ${playlist.creator}",
-                                            unmatchedTracks = unmatched
+                                            "Imported Playlist • ${playlist.creator}"
                                         ))
-                                        val message = if (unmatchedCount == 0) {
-                                            "Imported ${songs.size} playable tracks"
-                                        } else {
-                                            "Imported ${songs.size} tracks; $unmatchedCount couldn’t be matched in Rivara"
-                                        }
-                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, "Imported ${songs.size} tracks into \"${playlist.name}\"!", Toast.LENGTH_LONG).show()
                                     }
                                 } catch (e: Exception) {
-                                    spotifyImportError = e.message ?: "Could not import this Spotify playlist."
+                                    spotifyImportError = e.message ?: "Could not import this playlist."
                                 } finally {
                                     spotifyImporting = false
                                     spotifyImportProgress = null
@@ -703,9 +693,9 @@ fun LibraryScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 CircularProgressIndicator(Modifier.size(18.dp), color = themeAccent, strokeWidth = 2.dp)
                                 Spacer(Modifier.width(8.dp))
-                                Text(spotifyImportProgress?.let { "Matching ${it.first}/${it.second}" } ?: "Reading Spotify playlist…", color = themeAccent)
+                                Text(spotifyImportProgress?.let { "Loading ${it.first}/${it.second}…" } ?: "Importing tracks…", color = themeAccent)
                             }
-                        } else Text("Connect & import", color = themeAccent, fontWeight = FontWeight.Bold)
+                        } else Text("Import Playlist", color = themeAccent, fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {

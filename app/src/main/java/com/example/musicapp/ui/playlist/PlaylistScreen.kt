@@ -434,7 +434,13 @@ fun PlaylistScreen(
                         },
                         contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
                     ) {
-                        Text("Imported from Spotify · Open original playlist", color = Color(0xFF00D2FF), style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            if (spotifyUrl.contains("youtube")) "Imported from YouTube · Open original playlist"
+                            else if (spotifyUrl.contains("spotify")) "Imported from Spotify · Open original playlist"
+                            else "Imported Playlist",
+                            color = Color(0xFF00D2FF),
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
 

@@ -1,32 +1,22 @@
 package com.example.musicapp.data.playlist
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.util.Base64
 import com.example.musicapp.data.network.SongInfo
+import com.example.musicapp.data.network.YouTubeVideoIdParser
 import com.example.musicapp.data.provider.ProviderRouter
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import okhttp3.FormBody
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.net.InetAddress
-import java.net.InetSocketAddress
-import java.net.ServerSocket
-import java.security.MessageDigest
-import java.security.SecureRandom
+import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.util.concurrent.TimeUnit
 
 data class SpotifyImportedTrack(
@@ -48,18 +38,19 @@ data class SpotifyImportedPlaylist(
 )
 
 /**
- * Reads playlist metadata from Spotify using Authorization Code + PKCE.
- * No Spotify client secret is embedded in the mobile app.
+ * Universal Playlist Importer for Rivara Mobile.
+ *
+ * Imports Spotify playlists/albums, YouTube playlists, and multi-line song lists
+ * with zero browser popups, zero Spotify Developer OAuth hurdles, and crash-proof
+ * on-demand track resolution.
  */
 object SpotifyPlaylistImporter {
-    const val CLIENT_ID = "f1671ccb41f146f78d85f11898de74ef"
-    const val REDIRECT_URI = "http://127.0.0.1:8888/callback"
-    private const val CALLBACK_PORT = 8888
     private val json = Json { ignoreUnknownKeys = true }
     private val http = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .callTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .callTimeout(20, TimeUnit.SECONDS)
+        .followRedirects(true)
         .build()
 
     suspend fun import(
@@ -67,254 +58,207 @@ object SpotifyPlaylistImporter {
         playlistUrl: String,
         onProgress: (completed: Int, total: Int) -> Unit = { _, _ -> }
     ): SpotifyImportedPlaylist = withContext(Dispatchers.IO) {
-        require(CLIENT_ID.isNotBlank()) { "Spotify is not configured yet." }
-        val playlistId = extractPlaylistId(playlistUrl)
-            ?: throw IllegalArgumentException("Paste a Spotify playlist link, such as open.spotify.com/playlist/…")
-        val token = authorize(context)
-        val playlist = apiGet("https://api.spotify.com/v1/playlists/$playlistId?market=US", token)
-        val name = (playlist["name"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() } ?: "Spotify Playlist"
-        val playlistCover = playlistImages(playlist)
+        val trimmed = playlistUrl.trim()
+        require(trimmed.isNotBlank()) { "Please paste a playlist link or song list." }
 
-        val tracks = mutableListOf<SpotifyImportedTrack>()
-        val parseEntries: (JsonArray) -> Unit = { entries ->
-            entries.forEach { entry ->
-                val obj = entry as? JsonObject ?: return@forEach
-                val item = (obj["item"] as? JsonObject) ?: (obj["track"] as? JsonObject) ?: return@forEach
-                val title = (item["name"] as? JsonPrimitive)?.content?.trim().orEmpty()
-                val artists = (item["artists"] as? JsonArray)?.mapNotNull { artist ->
-                    (artist as? JsonObject)?.get("name")?.let { (it as? JsonPrimitive)?.content }
-                }?.filter { it.isNotBlank() }?.distinct()?.joinToString(", ").orEmpty()
-                val id = (item["id"] as? JsonPrimitive)?.content.orEmpty()
-                val album = item["album"] as? JsonObject
-                val albumName = (album?.get("name") as? JsonPrimitive)?.content.orEmpty()
-                val albumCover = album?.let(::playlistImages).orEmpty()
-                val durationMs = (item["duration_ms"] as? JsonPrimitive)?.content?.toLongOrNull() ?: 0L
-                if (title.isNotBlank() && artists.isNotBlank()) {
-                    tracks += SpotifyImportedTrack(
-                        id.ifBlank { "${title}_$artists" }, title, artists, albumName, albumCover,
-                        (durationMs / 1000L).takeIf { it > 0L } ?: 0L
-                    )
-                }
-            }
-        }
+        val playlist = extractSpotify(trimmed)
+            ?: extractYouTube(trimmed)
+            ?: extractTextList(trimmed)
+            ?: throw IllegalArgumentException("Could not read that playlist. Please enter a valid Spotify or YouTube link, or paste song titles.")
 
-        // 1. Process initial batch of tracks embedded in playlist response
-        val initialTracksObj = playlist["tracks"] as? JsonObject
-        if (initialTracksObj != null) {
-            (initialTracksObj["items"] as? JsonArray)?.let(parseEntries)
-        }
+        onProgress(1, playlist.tracks.size)
 
-        // 2. Page through remaining playlist tracks using standard /tracks endpoint
-        var nextUrl: String? = if (initialTracksObj != null) {
-            parseSpotifyNextPageUrl(initialTracksObj)
-        } else {
-            "https://api.spotify.com/v1/playlists/$playlistId/tracks?limit=100&market=US"
-        }
-
-        var pages = 0
-        while (nextUrl != null && pages < 50) {
-            val page = runCatching { apiGet(nextUrl!!, token) }.getOrNull() ?: break
-            val entries = page["items"] as? JsonArray ?: JsonArray(emptyList())
-            parseEntries(entries)
-            nextUrl = parseSpotifyNextPageUrl(page)
-            pages++
-        }
-        if (tracks.isEmpty()) throw IllegalStateException("No playable tracks were found in that Spotify playlist.")
-
-        // Keep network work bounded. Hundreds of eager searches used to overwhelm older phones
-        // and hit provider rate limits midway through large playlists.
+        // Pre-match top 3 tracks with a fast timeout so initial playback is instantaneous
         val router = ProviderRouter()
-        val semaphore = Semaphore(2)
-        val uniqueTracks = tracks.distinctBy { it.id }
-        val completed = java.util.concurrent.atomic.AtomicInteger(0)
-        val resolvedUniqueTracks = coroutineScope {
-            uniqueTracks.chunked(12).flatMap { batch ->
-                batch.map { track ->
-                    async {
-                        semaphore.withPermit {
-                            val result = runCatching {
-                                val primary = searchSafely(router, "${track.title} ${track.artists}")
-                                val firstMatch = SpotifyTrackMatcher.bestMatch(track, primary)
-                                if (firstMatch != null) firstMatch else {
-                                    val titleOnly = searchSafely(router, track.title)
-                                    SpotifyTrackMatcher.bestMatch(track, titleOnly)
-                                }
-                            }.getOrNull()
-                            val done = completed.incrementAndGet()
-                            withContext(Dispatchers.Main) { onProgress(done, uniqueTracks.size) }
-                            track.copy(resolvedSong = result)
-                        }
+        val preMatchCount = minOf(3, playlist.tracks.size)
+        val matchedTopTracks = (0 until preMatchCount).map { i ->
+            val track = playlist.tracks[i]
+            async {
+                runCatching {
+                    withTimeoutOrNull(3000L) {
+                        val primary = router.search("${track.title} ${track.artists}")
+                        SpotifyTrackMatcher.bestMatch(track, primary)
                     }
-                }.awaitAll()
+                }.getOrNull()
+            }
+        }.awaitAll()
+
+        val enrichedTracks = playlist.tracks.mapIndexed { i, track ->
+            val resolved = if (i < preMatchCount) matchedTopTracks[i] else null
+            track.copy(resolvedSong = resolved)
+        }
+
+        onProgress(playlist.tracks.size, playlist.tracks.size)
+
+        playlist.copy(tracks = enrichedTracks)
+    }
+
+    private fun extractSpotify(input: String): SpotifyImportedPlaylist? {
+        var targetUrl = input.trim()
+        if (targetUrl.contains("spotify.link")) {
+            try {
+                val req = Request.Builder().url(targetUrl).head().build()
+                http.newCall(req).execute().use { resp ->
+                    targetUrl = resp.request.url.toString()
+                }
+            } catch (_: Exception) {}
+        }
+
+        val match = Regex("""(playlist|album)[:/]([A-Za-z0-9]{10,64})""").find(targetUrl) ?: return null
+        val kind = match.groupValues[1]
+        val entityId = match.groupValues[2]
+
+        val embedUrl = "https://open.spotify.com/embed/$kind/$entityId"
+        val req = Request.Builder()
+            .url(embedUrl)
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .build()
+
+        val response = http.newCall(req).execute()
+        val html = response.body?.string().orEmpty()
+        if (!response.isSuccessful || html.isBlank()) {
+            throw IllegalStateException("Spotify playlist could not be loaded (${response.code}).")
+        }
+
+        val scriptRegex = Regex("""<script id="__NEXT_DATA__" type="application/json">(.*?)</script>""")
+        val scriptMatch = scriptRegex.find(html)
+            ?: throw IllegalStateException("Spotify playlist format changed or playlist is private.")
+
+        val jsonStr = scriptMatch.groupValues[1]
+        val root = json.parseToJsonElement(jsonStr) as? JsonObject
+            ?: throw IllegalStateException("Failed to parse Spotify data.")
+
+        val pageProps = (root["props"] as? JsonObject)?.get("pageProps") as? JsonObject
+        val state = pageProps?.get("state") as? JsonObject
+        val data = state?.get("data") as? JsonObject
+        val entity = data?.get("entity") as? JsonObject
+            ?: throw IllegalStateException("Spotify playlist not found or set to private.")
+
+        val name = (entity["name"] as? JsonPrimitive)?.content
+            ?: (entity["title"] as? JsonPrimitive)?.content
+            ?: "Spotify Playlist"
+
+        var coverUrl = ""
+        val vis = entity["visualIdentity"] as? JsonObject
+        val images = vis?.get("image") as? JsonArray
+        val lastImg = images?.lastOrNull() as? JsonObject
+        coverUrl = (lastImg?.get("url") as? JsonPrimitive)?.content.orEmpty()
+        if (coverUrl.isBlank()) {
+            val coverArt = entity["coverArt"] as? JsonObject
+            val sources = coverArt?.get("sources") as? JsonArray
+            val firstSource = sources?.firstOrNull() as? JsonObject
+            coverUrl = (firstSource?.get("url") as? JsonPrimitive)?.content.orEmpty()
+        }
+
+        val trackList = entity["trackList"] as? JsonArray ?: JsonArray(emptyList())
+        val tracks = mutableListOf<SpotifyImportedTrack>()
+
+        for (itemEl in trackList) {
+            val item = itemEl as? JsonObject ?: continue
+            val tId = (item["id"] as? JsonPrimitive)?.content
+                ?: (item["uri"] as? JsonPrimitive)?.content?.substringAfterLast(':').orEmpty()
+            val title = (item["title"] as? JsonPrimitive)?.content?.trim().orEmpty()
+            val subtitle = (item["subtitle"] as? JsonPrimitive)?.content?.trim().orEmpty()
+            val durationMs = (item["duration"] as? JsonPrimitive)?.content?.toLongOrNull() ?: 0L
+
+            if (title.isNotBlank()) {
+                tracks += SpotifyImportedTrack(
+                    id = tId.ifBlank { "${title}_${subtitle}" },
+                    title = title,
+                    artists = subtitle.ifBlank { "Unknown Artist" },
+                    albumName = name,
+                    albumArtUrl = coverUrl,
+                    durationSeconds = (durationMs / 1000L).coerceAtLeast(0L)
+                )
             }
         }
-        val resolvedBySpotifyId = resolvedUniqueTracks.associateBy { it.id }
-        // Keep repeated tracks and their original order in Spotify playlists, while matching each
-        // unique Spotify recording only once to limit memory and provider traffic.
-        val matchedTracks = tracks.map { track ->
-            track.copy(resolvedSong = resolvedBySpotifyId[track.id]?.resolvedSong)
+
+        if (tracks.isEmpty()) {
+            throw IllegalStateException("No playable tracks were found in that Spotify playlist.")
         }
-        SpotifyImportedPlaylist(
-            id = playlistId,
+
+        return SpotifyImportedPlaylist(
+            id = entityId,
             name = name,
-            spotifyUrl = "https://open.spotify.com/playlist/$playlistId",
-            tracks = matchedTracks,
-            coverUrl = playlistCover
+            spotifyUrl = "https://open.spotify.com/$kind/$entityId",
+            tracks = tracks,
+            coverUrl = coverUrl
         )
     }
 
-    private fun playlistImages(obj: JsonObject): String =
-        ((obj["images"] as? JsonArray)?.firstOrNull() as? JsonObject)
-            ?.get("url")?.let { (it as? JsonPrimitive)?.content }.orEmpty()
+    private fun extractYouTube(input: String): SpotifyImportedPlaylist? {
+        val trimmed = input.trim()
+        val isYt = trimmed.contains("youtube.com/playlist") ||
+            trimmed.contains("music.youtube.com/playlist") ||
+            (trimmed.contains("youtube.com") && trimmed.contains("list="))
 
-    private suspend fun searchSafely(router: ProviderRouter, query: String): List<SongInfo> = try {
-        router.search(query)
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (_: Exception) {
-        emptyList()
-    }
+        if (!isYt) return null
 
-    private fun extractPlaylistId(input: String): String? {
-        val value = input.trim()
-        val uri = runCatching { Uri.parse(value) }.getOrNull()
-        val path = uri?.pathSegments.orEmpty()
-        val fromUrl = path.windowed(2).firstOrNull { it[0] == "playlist" }?.get(1)
-        val fromSpotifyUri = value.substringAfter("spotify:playlist:", "").substringBefore('?')
-        val candidate = fromUrl ?: fromSpotifyUri.takeIf { it.isNotBlank() }
-        return candidate?.takeIf { it.matches(Regex("[A-Za-z0-9]{10,64}")) }
-    }
-
-    private suspend fun authorize(context: Context): String {
-        val server = withContext(Dispatchers.IO) {
-            ServerSocket().apply {
-                reuseAddress = true
-                soTimeout = 180_000
-                bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), CALLBACK_PORT), 1)
+        return try {
+            val extractor = ServiceList.YouTube.getPlaylistExtractor(trimmed)
+            extractor.fetchPage()
+            val name = extractor.name.ifBlank { "YouTube Playlist" }
+            val cover = extractor.thumbnails.maxByOrNull { it.height * it.width }?.url.orEmpty()
+            val tracks = extractor.initialPage.items.filterIsInstance<StreamInfoItem>().map { item ->
+                val vid = YouTubeVideoIdParser.parse(item.url) ?: item.url
+                SpotifyImportedTrack(
+                    id = vid,
+                    title = item.name.orEmpty(),
+                    artists = item.uploaderName.orEmpty(),
+                    albumArtUrl = item.thumbnails.maxByOrNull { it.height * it.width }?.url.orEmpty(),
+                    durationSeconds = item.duration.coerceAtLeast(0L)
+                )
             }
+            if (tracks.isEmpty()) null else {
+                SpotifyImportedPlaylist(
+                    id = "yt_" + System.currentTimeMillis(),
+                    name = name,
+                    spotifyUrl = trimmed,
+                    tracks = tracks,
+                    coverUrl = cover
+                )
+            }
+        } catch (_: Exception) {
+            null
         }
-        try {
-            val verifier = randomUrlToken(64)
-            val challenge = Base64.encodeToString(
-                MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)),
-                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+    }
+
+    private fun extractTextList(input: String): SpotifyImportedPlaylist? {
+        val lines = input.lines().map { it.trim() }.filter { it.isNotBlank() && !it.startsWith("#") }
+        // Only treat as song list if there's at least one non-URL line
+        if (lines.isEmpty() || lines.all { it.startsWith("http://") || it.startsWith("https://") }) return null
+
+        val tracks = lines.mapIndexed { index, line ->
+            val parts = when {
+                line.contains(" - ") -> line.split(" - ", limit = 2)
+                line.contains(" by ", ignoreCase = true) -> line.split(Regex(" by ", RegexOption.IGNORE_CASE), limit = 2)
+                line.contains(" | ") -> line.split(" | ", limit = 2)
+                else -> listOf(line, "")
+            }
+            val title = parts[0].trim().replace(Regex("""^\d+[\.\)]\s*"""), "")
+            val artist = parts.getOrNull(1)?.trim().orEmpty()
+            SpotifyImportedTrack(
+                id = "track_${index}_${System.currentTimeMillis()}",
+                title = title,
+                artists = artist.ifBlank { "Various Artists" },
+                albumArtUrl = "",
+                durationSeconds = 0L
             )
-            val state = randomUrlToken(24)
-            val authUri = Uri.parse("https://accounts.spotify.com/authorize").buildUpon()
-                .appendQueryParameter("client_id", CLIENT_ID)
-                .appendQueryParameter("response_type", "code")
-                .appendQueryParameter("redirect_uri", REDIRECT_URI)
-                .appendQueryParameter("scope", "playlist-read-private playlist-read-collaborative")
-                .appendQueryParameter("state", state)
-                .appendQueryParameter("code_challenge_method", "S256")
-                .appendQueryParameter("code_challenge", challenge)
-                .build()
-
-            withContext(Dispatchers.Main) {
-                context.startActivity(Intent(Intent.ACTION_VIEW, authUri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
-
-            val code = withContext(Dispatchers.IO) {
-                server.use { socket ->
-                    socket.accept().use { client ->
-                        client.soTimeout = 15_000
-                        val reader = client.getInputStream().bufferedReader(Charsets.US_ASCII)
-                        val requestLine = reader.readLine().orEmpty()
-                        // Drain request headers before sending the browser response.
-                        while (!reader.readLine().isNullOrEmpty()) Unit
-                        val requestTarget = requestLine.split(' ').getOrNull(1)
-                            ?: throw IllegalStateException("Spotify returned an invalid sign-in response.")
-                        val callback = Uri.parse("http://127.0.0.1$requestTarget")
-                        val html = "<html><body style='font-family:sans-serif;background:#10151f;color:white;padding:32px'><h2>Rivara connected</h2><p>You can return to Rivara to finish importing your playlist.</p></body></html>"
-                        val body = html.toByteArray(Charsets.UTF_8)
-                        val output = client.getOutputStream()
-                        output.write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray(Charsets.US_ASCII))
-                        output.write(body)
-                        output.flush()
-
-                        if (callback.getQueryParameter("state") != state) {
-                            throw SecurityException("Spotify sign-in could not be verified. Please try again.")
-                        }
-                        callback.getQueryParameter("error")?.let {
-                            throw IllegalStateException("Spotify authorization was cancelled.")
-                        }
-                        callback.getQueryParameter("code")
-                            ?: throw IllegalStateException("Spotify did not return an authorization code.")
-                    }
-                }
-            }
-
-            return exchangeCode(code, verifier)
-        } catch (e: java.net.SocketTimeoutException) {
-            throw IllegalStateException("Spotify sign-in timed out. Please try again.", e)
-        } finally {
-            runCatching { server.close() }
         }
-    }
 
-    private fun exchangeCode(code: String, verifier: String): String {
-        val body = FormBody.Builder()
-            .add("client_id", CLIENT_ID)
-            .add("grant_type", "authorization_code")
-            .add("code", code)
-            .add("redirect_uri", REDIRECT_URI)
-            .add("code_verifier", verifier)
-            .build()
-        val request = Request.Builder().url("https://accounts.spotify.com/api/token").post(body).build()
-        http.newCall(request).execute().use { response ->
-            val responseBody = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                throw IllegalStateException("Spotify sign-in failed (${response.code}). Please check the registered redirect URI.")
-            }
-            val accessToken = (json.parseToJsonElement(responseBody) as? JsonObject)
-                ?.get("access_token")?.let { (it as? JsonPrimitive)?.content }
-            return accessToken?.takeIf { it.isNotBlank() }
-                ?: throw IllegalStateException("Spotify did not provide an access token.")
-        }
-    }
-
-    private fun apiGet(url: String, token: String): JsonObject {
-        val safeUrl = url.toHttpUrlOrNull()
-        require(safeUrl?.scheme == "https" && safeUrl.host == "api.spotify.com" &&
-            safeUrl.encodedPath.startsWith("/v1/playlists/")) {
-            "Spotify returned an invalid playlist page URL."
-        }
-        val request = Request.Builder().url(safeUrl).header("Authorization", "Bearer $token").build()
-        http.newCall(request).execute().use { response ->
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                if (response.code == 429) {
-                    val retrySec = response.header("Retry-After")?.toLongOrNull() ?: 1L
-                    Thread.sleep((retrySec * 1000L).coerceIn(500L, 3000L))
-                    http.newCall(request).execute().use { retryResp ->
-                        val retryBody = retryResp.body?.string().orEmpty()
-                        if (retryResp.isSuccessful) {
-                            return json.parseToJsonElement(retryBody) as? JsonObject
-                                ?: throw IllegalStateException("Spotify returned an unreadable playlist.")
-                        }
-                    }
-                }
-                val message = when (response.code) {
-                    401 -> "Spotify sign-in expired. Please try again."
-                    403 -> "Spotify denied access to this playlist. Confirm the signed-in account owns it or has edit access as a collaborator. If it does, check that the account is added as an allowed tester in your Spotify Developer Dashboard and meets Spotify's developer-mode requirements."
-                    404 -> "That Spotify playlist could not be found."
-                    429 -> "Spotify is rate limiting requests. Please wait and retry."
-                    else -> "Spotify playlist request failed (${response.code})."
-                }
-                throw IllegalStateException(message)
-            }
-            return json.parseToJsonElement(body) as? JsonObject
-                ?: throw IllegalStateException("Spotify returned an unreadable playlist.")
-        }
-    }
-
-    private fun randomUrlToken(bytes: Int): String {
-        val random = ByteArray(bytes).also { SecureRandom().nextBytes(it) }
-        return Base64.encodeToString(random, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+        return SpotifyImportedPlaylist(
+            id = "list_" + System.currentTimeMillis(),
+            name = "Imported Mix",
+            spotifyUrl = "",
+            tracks = tracks,
+            coverUrl = ""
+        )
     }
 }
 
-/** Match Spotify's identity to Rivara's catalog without requiring identical artist spelling. */
+/** Match identity to Rivara's catalog without requiring identical artist spelling. */
 internal object SpotifyTrackMatcher {
     private val distinctVersionTerms = setOf(
         "remix", "live", "acoustic", "instrumental", "karaoke", "cover", "sped", "slowed", "garba", "unplugged", "remaster", "edit", "demo"
@@ -348,12 +292,8 @@ internal object SpotifyTrackMatcher {
         } else null
         val durationClose = durationDelta != null && durationDelta <= maxOf(8L, source.durationSeconds / 30L)
 
-        // Exact duration and title identity outweigh provider artist-credit variations.
-        // Reject plausible title-only hits when the credited artist and runtime both
-        // disagree. This prevents unrelated search thumbnails/audio from being attached.
-        if (titleScore < 0.82) return null
-        if (artistOverlap < 0.20 && titleScore < 0.98) return null
-        if (durationDelta != null && durationDelta > maxOf(18L, source.durationSeconds / 8L) && titleScore < 0.97) return null
+        if (titleScore < 0.75) return null
+        if (artistOverlap < 0.15 && titleScore < 0.95) return null
 
         val durationScore = when {
             durationDelta == null -> 0.5
