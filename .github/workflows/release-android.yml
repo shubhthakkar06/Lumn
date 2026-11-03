@@ -70,7 +70,7 @@ jobs:
           echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
 
       - name: Build release APK
-        run: ./gradlew --no-daemon assembleRelease
+        run: ./gradlew --no-daemon :app:assembleRelease
 
       - name: Name release APK
         run: cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/Lumn.apk"
