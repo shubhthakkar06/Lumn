@@ -32,6 +32,7 @@ fun DesktopSidebar(
     onCreatePlaylist: (String) -> Unit,
     onOpenImportPlaylist: () -> Unit,
     onOpenSoundCapsule: () -> Unit,
+    onOpenSync: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -171,6 +172,13 @@ fun DesktopSidebar(
                     isSelected = selectedTab == "SoundCapsule",
                     themeAccent = themeAccent,
                     onClick = onOpenSoundCapsule
+                )
+                SidebarItem(
+                    icon = Icons.Default.Sync,
+                    label = "Sync Devices",
+                    isSelected = false,
+                    themeAccent = themeAccent,
+                    onClick = onOpenSync
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))

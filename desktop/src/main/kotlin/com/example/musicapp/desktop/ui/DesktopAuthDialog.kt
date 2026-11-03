@@ -5,17 +5,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import com.example.musicapp.desktop.auth.DesktopGoogleAuth
 import com.example.musicapp.desktop.data.DesktopUser
 import com.example.musicapp.desktop.data.DesktopUserManager
+import com.example.musicapp.desktop.sync.DesktopSyncService
 
 @Composable
 fun DesktopAuthDialog(
@@ -79,6 +74,23 @@ fun DesktopAuthDialog(
         map.values.toList()
     }
 
+    val launchBrowser = { targetEmail: String ->
+        isAuthenticating = true
+        statusMessage = "Browser tab opened! Please choose your Google account in the browser."
+        DesktopGoogleAuth.launchBrowserAuth(
+            preferredEmail = targetEmail,
+            onSuccess = { res ->
+                isAuthenticating = false
+                userManager.signIn(name = res.name, email = res.email, isGuest = false)
+                onDismiss()
+            },
+            onError = { err ->
+                isAuthenticating = false
+                statusMessage = err
+            }
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {},
@@ -101,15 +113,13 @@ fun DesktopAuthDialog(
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = if (currentUser == null) "Welcome to Rivara" else "Account & Profiles",
+                        text = if (currentUser == null || currentUser?.isGuest == true) "Sign in with Google" else "Account & Profiles",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                         color = Color.White
                     )
                 }
-                if (currentUser != null) {
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray, modifier = Modifier.size(20.dp))
-                    }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray, modifier = Modifier.size(20.dp))
                 }
             }
         },
@@ -128,56 +138,82 @@ fun DesktopAuthDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Primary "Continue with Google" Button (if no user or guest)
-                if (currentUser == null || currentUser?.isGuest == true) {
-                    Button(
-                        onClick = {
-                            isAuthenticating = true
-                            DesktopGoogleAuth.launchBrowserAuth(
-                                preferredEmail = "navya.shubh2006@gmail.com",
-                                onSuccess = { res ->
-                                    isAuthenticating = false
-                                    userManager.signIn(name = res.name, email = res.email, isGuest = false)
-                                    onDismiss()
-                                },
-                                onError = {
-                                    isAuthenticating = false
-                                    userManager.signIn(name = "Navya Shubh", email = "navya.shubh2006@gmail.com", isGuest = false)
-                                    onDismiss()
-                                }
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth().height(46.dp),
-                        shape = RoundedCornerShape(23.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.White,
-                            contentColor = Color.Black
-                        )
+                // Primary "Sign in with Google in Browser" Button (Always Available)
+                Button(
+                    onClick = {
+                        val preferred = currentUser?.email?.ifBlank { "navya.shubh2006@gmail.com" } ?: "navya.shubh2006@gmail.com"
+                        launchBrowser(preferred)
+                    },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color.Black
+                    )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF4285F4)),
+                        contentAlignment = Alignment.Center
                     ) {
-                        if (isAuthenticating) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.Black, strokeWidth = 2.dp)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("Connecting...", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF4285F4)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("G", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("Continue with Google", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
+                        Text("G", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
                     }
-
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = if (currentUser == null || currentUser?.isGuest == true) "Sign In with Google in Browser" else "Re-authenticate with Google in Browser",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
                 }
 
+                if (isAuthenticating || statusMessage != null) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2633)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (isAuthenticating) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color(0xFF4285F4), strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                }
+                                Text(
+                                    text = statusMessage ?: "Waiting for browser sign-in...",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "http://127.0.0.1:${DesktopSyncService.SYNC_PORT}/auth",
+                                    color = Color(0xFF4285F4),
+                                    fontSize = 11.sp
+                                )
+                                TextButton(
+                                    onClick = { launchBrowser("navya.shubh2006@gmail.com") },
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("Re-open Browser", color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 Text(
-                    text = "SELECT GOOGLE ACCOUNT",
+                    text = "SAVED GOOGLE ACCOUNTS",
                     style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold),
                     color = Color(0xFF8E99A8)
                 )
@@ -244,15 +280,24 @@ fun DesktopAuthDialog(
                                 }
                             }
 
-                            if (isActive) {
-                                Icon(Icons.Default.Check, contentDescription = "Active", tint = Color(0xFF1ED760), modifier = Modifier.size(20.dp))
-                            } else {
-                                Text(
-                                    text = "Sign In",
-                                    color = Color(0xFF4285F4),
-                                    fontSize = 12.5.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // Small Browser prompt icon button
+                                IconButton(
+                                    onClick = { launchBrowser(user.email) },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.OpenInBrowser,
+                                        contentDescription = "Log in via browser",
+                                        tint = Color(0xFF4285F4),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                if (isActive) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(Icons.Default.Check, contentDescription = "Active", tint = Color(0xFF1ED760), modifier = Modifier.size(20.dp))
+                                }
                             }
                         }
                     }

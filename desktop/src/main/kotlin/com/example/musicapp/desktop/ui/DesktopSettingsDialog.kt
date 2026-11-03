@@ -34,6 +34,7 @@ fun DesktopSettingsDialog(
     onOpenDeviceSelector: () -> Unit,
     onOpenSoundCapsule: () -> Unit,
     onOpenAuth: () -> Unit,
+    onOpenSync: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val currentTheme by DesktopThemeManager.currentTheme.collectAsState()
@@ -121,20 +122,31 @@ fun DesktopSettingsDialog(
                                 )
                             }
                         }
-                        Button(
-                            onClick = {
-                                onDismiss()
-                                onOpenSoundCapsule()
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = themeAccent.copy(alpha = 0.2f)),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, themeAccent),
-                            shape = RoundedCornerShape(20.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            modifier = Modifier.height(32.dp)
-                        ) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = themeAccent, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Sound Capsule", color = themeAccent, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        Column(horizontalAlignment = Alignment.End) {
+                            Button(
+                                onClick = {
+                                    onDismiss()
+                                    onOpenSync()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = themeAccent.copy(alpha = 0.2f)),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, themeAccent),
+                                shape = RoundedCornerShape(20.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.Sync, contentDescription = null, tint = themeAccent, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Sync Hub", color = themeAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            TextButton(
+                                onClick = {
+                                    onDismiss()
+                                    onOpenAuth()
+                                },
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text("Accounts", color = Color.Gray, fontSize = 11.sp)
+                            }
                         }
                     }
                 }

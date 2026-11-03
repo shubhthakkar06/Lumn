@@ -3,7 +3,9 @@ package com.example.musicapp.desktop.auth
 import com.example.musicapp.desktop.sync.DesktopSyncService
 import kotlinx.coroutines.*
 import java.awt.Desktop
+import java.io.File
 import java.net.URI
+import java.net.URLEncoder
 
 data class GoogleAuthResult(
     val email: String,
@@ -39,45 +41,59 @@ object DesktopGoogleAuth {
 
         scope.launch {
             try {
-                val authUrl = "http://127.0.0.1:${DesktopSyncService.SYNC_PORT}/auth"
+                val encodedEmail = URLEncoder.encode(targetEmail, "UTF-8")
+                val authUrl = "http://127.0.0.1:${DesktopSyncService.SYNC_PORT}/auth?preferredEmail=$encodedEmail"
                 var browserOpened = false
 
+                // Method 1: Native macOS /usr/bin/open
                 try {
-                    if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                        Desktop.getDesktop().browse(URI(authUrl))
+                    val openBin = File("/usr/bin/open")
+                    if (openBin.exists() && openBin.canExecute()) {
+                        val pb = ProcessBuilder("/usr/bin/open", authUrl)
+                        pb.redirectErrorStream(true)
+                        val p = pb.start()
+                        p.waitFor()
                         browserOpened = true
+                        println("✓ Opened Google Auth in default browser via /usr/bin/open: $authUrl")
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    System.err.println("Method 1 /usr/bin/open failed: ${e.message}")
+                }
 
+                // Method 2: Standard Desktop.getDesktop().browse
+                if (!browserOpened) {
+                    try {
+                        if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                            Desktop.getDesktop().browse(URI(authUrl))
+                            browserOpened = true
+                            println("✓ Opened Google Auth in browser via AWT Desktop: $authUrl")
+                        }
+                    } catch (e: Exception) {
+                        System.err.println("Method 2 Desktop.browse failed: ${e.message}")
+                    }
+                }
+
+                // Method 3: Shell open command
                 if (!browserOpened) {
                     try {
                         ProcessBuilder("open", authUrl).start()
                         browserOpened = true
-                    } catch (_: Exception) {}
+                    } catch (_: Exception) {
+                        try {
+                            ProcessBuilder("xdg-open", authUrl).start()
+                            browserOpened = true
+                        } catch (_: Exception) {}
+                    }
                 }
 
-                // If browser couldn't be opened, complete immediately with target account
                 if (!browserOpened) {
                     withContext(Dispatchers.Main) {
-                        onSuccess(
-                            GoogleAuthResult(
-                                email = targetEmail,
-                                name = targetName,
-                                id = targetId
-                            )
-                        )
+                        onError("Could not open browser automatically. Please visit $authUrl")
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    // Fail-safe: ensure user is never blocked from using the app
-                    onSuccess(
-                        GoogleAuthResult(
-                            email = targetEmail,
-                            name = targetName,
-                            id = targetId
-                        )
-                    )
+                    onError(e.message ?: "Failed to open browser for Google authentication")
                 }
             }
         }

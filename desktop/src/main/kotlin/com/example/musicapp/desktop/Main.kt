@@ -66,6 +66,7 @@ fun main() = application {
     var isLyricsOpen by remember { mutableStateOf(false) }
     var isQueueOpen by remember { mutableStateOf(false) }
     var showAuthDialog by remember { mutableStateOf(false) }
+    var showSyncDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showSoundCapsuleDialog by remember { mutableStateOf(false) }
     var showEqualizerDialog by remember { mutableStateOf(false) }
@@ -83,6 +84,11 @@ fun main() = application {
         DesktopSyncService.start(libraryManager, currentUser)
         DesktopSyncService.onSyncCompleted = { payload ->
             toastMessage = "✓ Synced with ${payload.deviceName} (${payload.playlists.size} playlists)!"
+        }
+        DesktopSyncService.onAuthCallbackReceived = { email, name ->
+            userManager.signIn(name = name, email = email, isGuest = false)
+            showAuthDialog = false
+            toastMessage = "✓ Connected to Google: $name ($email)"
         }
         delay(1800)
         showLaunchSplash = false
@@ -186,6 +192,7 @@ fun main() = application {
                                 },
                                 onOpenImportPlaylist = { showPlaylistImportDialog = true },
                                 onOpenSoundCapsule = { showSoundCapsuleDialog = true },
+                                onOpenSync = { showSyncDialog = true },
                                 onOpenSettings = { showSettingsDialog = true }
                             )
 
@@ -222,6 +229,7 @@ fun main() = application {
                                 },
                                 onTabSelected = { selectedTab = it },
                                 onOpenAuth = { showAuthDialog = true },
+                                onOpenSync = { showSyncDialog = true },
                                 onShareSong = { shareSong(it) },
                                 modifier = Modifier.weight(1f)
                             )
@@ -340,6 +348,17 @@ fun main() = application {
                         )
                     }
 
+                    // Sync Hub Dialog
+                    if (showSyncDialog) {
+                        DesktopSyncDialog(
+                            libraryManager = libraryManager,
+                            userManager = userManager,
+                            themeAccent = themeAccent,
+                            onOpenAuth = { showAuthDialog = true },
+                            onDismiss = { showSyncDialog = false }
+                        )
+                    }
+
                     // Settings Dialog
                     if (showSettingsDialog) {
                         DesktopSettingsDialog(
@@ -350,6 +369,7 @@ fun main() = application {
                             onOpenDeviceSelector = { showDeviceSelectorDialog = true },
                             onOpenSoundCapsule = { showSoundCapsuleDialog = true },
                             onOpenAuth = { showAuthDialog = true },
+                            onOpenSync = { showSyncDialog = true },
                             onDismiss = { showSettingsDialog = false }
                         )
                     }

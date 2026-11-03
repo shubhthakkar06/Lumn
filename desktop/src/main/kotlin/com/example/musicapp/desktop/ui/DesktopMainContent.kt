@@ -64,6 +64,7 @@ fun DesktopMainContent(
     onAddToQueue: (DesktopSong) -> Unit,
     onTabSelected: (String) -> Unit,
     onOpenAuth: () -> Unit,
+    onOpenSync: () -> Unit = {},
     onShareSong: (DesktopSong) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -184,36 +185,64 @@ fun DesktopMainContent(
                     }
                 )
 
-                // User Profile Pill (Clickable -> Opens Auth & Account Dialog)
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Color(0xFF1E1E1E))
-                        .clickable(onClick = onOpenAuth)
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Sync Pill (Clickable -> Opens Sync Dialog)
+                    Row(
                         modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(themeAccent),
-                        contentAlignment = Alignment.Center
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color(0xFF1E1E1E))
+                            .clickable(onClick = onOpenSync)
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = "Sync Devices",
+                            tint = themeAccent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = currentUser?.avatarLetter ?: "S",
-                            color = Color.Black,
-                            fontWeight = FontWeight.Bold,
+                            text = "Sync",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    // User Profile Pill (Clickable -> Opens Auth & Account Dialog)
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color(0xFF1E1E1E))
+                            .clickable(onClick = onOpenAuth)
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(themeAccent),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = currentUser?.avatarLetter ?: "S",
+                                color = Color.Black,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = currentUser?.name ?: "Sign In",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
                             fontSize = 14.sp
                         )
                     }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = currentUser?.name ?: "Sign In",
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
-                    )
                 }
             }
 
