@@ -208,12 +208,15 @@ class PlaylistManager private constructor(private val context: Context) {
             return null
         }
         val resolvedCreator = creator.ifBlank { currentProfile.name.ifBlank { "You" } }
+        val resolvedCoverUrl = coverUrl.ifBlank {
+            songs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
+        }
         val id = "pl_" + System.currentTimeMillis()
         val newPlaylist = UserPlaylist(
             id = id,
             name = name.trim(),
             creator = resolvedCreator,
-            coverUrl = coverUrl,
+            coverUrl = resolvedCoverUrl,
             songs = songs,
             sourceUrl = sourceUrl,
             userId = activeUserId

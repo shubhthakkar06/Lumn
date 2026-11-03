@@ -92,12 +92,6 @@ fun PlaylistScreen(
     val userPlaylists by playlistManager.playlists.collectAsStateWithLifecycle()
     val downloadStates by downloadManager.downloadStates.collectAsStateWithLifecycle()
 
-    val dynamicColors = rememberDynamicGradient(coverUrl)
-    val isLikedSongsPlaylist = playlistId == "liked" || title.equals("Liked Songs", ignoreCase = true)
-
-    var playlistSearchQuery by remember { mutableStateOf("") }
-    var isPlaylistSearchOpen by remember { mutableStateOf(false) }
-
     val playlistSongs: List<SongInfo> = remember(playlistId, title, likedSongs, userPlaylists) {
         when {
             playlistId == "liked" || title.contains("Liked Songs", ignoreCase = true) -> likedSongs
@@ -108,6 +102,15 @@ fun PlaylistScreen(
             }
         }
     }
+
+    val effectiveCover = remember(coverUrl, playlistSongs) {
+        coverUrl.ifBlank { playlistSongs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty() }
+    }
+    val dynamicColors = rememberDynamicGradient(effectiveCover)
+    val isLikedSongsPlaylist = playlistId == "liked" || title.equals("Liked Songs", ignoreCase = true)
+
+    var playlistSearchQuery by remember { mutableStateOf("") }
+    var isPlaylistSearchOpen by remember { mutableStateOf(false) }
 
     val filteredSongs: List<SongInfo> = remember(playlistSongs, playlistSearchQuery) {
         if (playlistSearchQuery.isBlank()) {
@@ -372,9 +375,9 @@ fun PlaylistScreen(
                     ) {
                         Icon(Icons.Default.Favorite, contentDescription = "Liked Songs", tint = Color.White, modifier = Modifier.size(76.dp))
                     }
-                } else if (coverUrl.isNotBlank()) {
+                } else if (effectiveCover.isNotBlank()) {
                     AsyncImage(
-                        model = coverUrl,
+                        model = effectiveCover,
                         contentDescription = "Playlist Cover",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.size(220.dp).clip(RoundedCornerShape(8.dp))
@@ -647,7 +650,7 @@ fun PlaylistScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 AsyncImage(
-                    model = song.albumArtUrl,
+                    model = song.albumArtUrl.ifBlank { effectiveCover },
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.size(48.dp).clip(RoundedCornerShape(4.dp))

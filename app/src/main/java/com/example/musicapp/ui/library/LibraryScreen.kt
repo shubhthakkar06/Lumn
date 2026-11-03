@@ -146,12 +146,13 @@ fun LibraryScreen(
 
             // User Playlists
             userPlaylists.forEach { pl ->
+                val plCover = pl.coverUrl.ifBlank { pl.songs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty() }
                 list.add(
                     LibraryItem(
                         id = pl.id,
                         title = pl.name,
                         subtitle = "Playlist • ${pl.songs.size} songs • ${pl.creator}",
-                        imageUrl = pl.coverUrl,
+                        imageUrl = plCover,
                         isDownloaded = pl.songs.any { downloadManager.isDownloaded(it.videoId) },
                         timestampMs = pl.createdAtMs
                     )
@@ -651,14 +652,18 @@ fun LibraryScreen(
                                     val imported = SpotifyPlaylistImporter.import(context, spotifyPlaylistUrl) { completed, total ->
                                         spotifyImportProgress = completed to total
                                     }
+                                    val finalCoverUrl = imported.coverUrl.ifBlank {
+                                        imported.tracks.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
+                                    }
                                     val songs = imported.tracks.map { track ->
                                         val match = track.resolvedSong
                                         val stableId = track.id.replace(Regex("[^A-Za-z0-9_-]"), "_")
+                                        val trackArt = track.albumArtUrl.ifBlank { match?.albumArtUrl.orEmpty().ifBlank { finalCoverUrl } }
                                         SongInfo(
                                             videoId = if (track.id.length == 11 && !track.id.contains("_")) track.id else "spotify_$stableId",
                                             title = match?.title ?: track.title,
                                             artist = match?.artist ?: track.artists,
-                                            albumArtUrl = track.albumArtUrl.ifBlank { match?.albumArtUrl.orEmpty().ifBlank { imported.coverUrl } },
+                                            albumArtUrl = trackArt,
                                             audioStreamUrl = match?.audioStreamUrl,
                                             albumName = match?.albumName?.ifBlank { track.albumName } ?: track.albumName,
                                             durationSeconds = match?.durationSeconds?.takeIf { it > 0L } ?: track.durationSeconds,
@@ -668,7 +673,7 @@ fun LibraryScreen(
                                     val playlist = playlistManager.createPlaylist(
                                         name = imported.name,
                                         creator = currentUser.name,
-                                        coverUrl = imported.coverUrl,
+                                        coverUrl = finalCoverUrl,
                                         songs = songs,
                                         sourceUrl = imported.spotifyUrl
                                     )

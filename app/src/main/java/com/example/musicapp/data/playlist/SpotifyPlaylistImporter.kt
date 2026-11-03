@@ -17,6 +17,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 
 data class SpotifyImportedTrack(
@@ -41,15 +43,17 @@ data class SpotifyImportedPlaylist(
  * Universal Playlist Importer for Rivara Mobile.
  *
  * Imports Spotify playlists/albums, YouTube playlists, and multi-line song lists
- * with zero browser popups, zero Spotify Developer OAuth hurdles, and crash-proof
- * on-demand track resolution.
+ * with zero browser popups, zero Spotify Developer OAuth hurdles, full multi-page
+ * pagination for large playlists (>100 tracks), and crisp album art thumbnails.
  */
 object SpotifyPlaylistImporter {
+    private const val PATHFINDER_FETCH_PLAYLIST_HASH = "7982b11e21535cd2594badc40030b745671b61a1fa66766e569d45e6364f3422"
+
     private val json = Json { ignoreUnknownKeys = true }
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
-        .callTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(25, TimeUnit.SECONDS)
         .followRedirects(true)
         .build()
 
@@ -61,12 +65,12 @@ object SpotifyPlaylistImporter {
         val trimmed = playlistUrl.trim()
         require(trimmed.isNotBlank()) { "Please paste a playlist link or song list." }
 
-        val playlist = extractSpotify(trimmed)
+        val playlist = extractSpotify(trimmed, onProgress)
             ?: extractYouTube(trimmed)
             ?: extractTextList(trimmed)
             ?: throw IllegalArgumentException("Could not read that playlist. Please enter a valid Spotify or YouTube link, or paste song titles.")
 
-        onProgress(1, playlist.tracks.size)
+        onProgress(playlist.tracks.size, playlist.tracks.size)
 
         // Pre-match top 3 tracks with a fast timeout so initial playback is instantaneous
         val router = ProviderRouter()
@@ -93,7 +97,10 @@ object SpotifyPlaylistImporter {
         playlist.copy(tracks = enrichedTracks)
     }
 
-    private fun extractSpotify(input: String): SpotifyImportedPlaylist? {
+    private fun extractSpotify(
+        input: String,
+        onProgress: (completed: Int, total: Int) -> Unit
+    ): SpotifyImportedPlaylist? {
         var targetUrl = input.trim()
         if (targetUrl.contains("spotify.link")) {
             try {
@@ -132,6 +139,30 @@ object SpotifyPlaylistImporter {
 
         val pageProps = (root["props"] as? JsonObject)?.get("pageProps") as? JsonObject
         val state = pageProps?.get("state") as? JsonObject
+        val settings = state?.get("settings") as? JsonObject
+        val session = settings?.get("session") as? JsonObject
+        val accessToken = (session?.get("accessToken") as? JsonPrimitive)?.content.orEmpty()
+
+        // 1. If this is a playlist and we have an accessToken, use Spotify Pathfinder GraphQL
+        // to paginate beyond the 100-track embed cap and extract per-track album thumbnails.
+        if (kind == "playlist" && accessToken.isNotBlank()) {
+            val pathfinderResult = fetchPathfinderPlaylist(entityId, accessToken, onProgress)
+            if (pathfinderResult != null && pathfinderResult.tracks.isNotEmpty()) {
+                var pl = pathfinderResult
+                if (pl.coverUrl.isBlank()) {
+                    val oembedCover = fetchCoverFromOEmbed(kind, entityId)
+                    if (oembedCover.isNotBlank()) {
+                        pl = pl.copy(
+                            coverUrl = oembedCover,
+                            tracks = pl.tracks.map { if (it.albumArtUrl.isBlank()) it.copy(albumArtUrl = oembedCover) else it }
+                        )
+                    }
+                }
+                return pl
+            }
+        }
+
+        // 2. Fallback or Album extraction via __NEXT_DATA__
         val data = state?.get("data") as? JsonObject
         val entity = data?.get("entity") as? JsonObject
             ?: throw IllegalStateException("Spotify playlist not found or set to private.")
@@ -143,13 +174,23 @@ object SpotifyPlaylistImporter {
         var coverUrl = ""
         val vis = entity["visualIdentity"] as? JsonObject
         val images = vis?.get("image") as? JsonArray
-        val lastImg = images?.lastOrNull() as? JsonObject
-        coverUrl = (lastImg?.get("url") as? JsonPrimitive)?.content.orEmpty()
+        val maxImg = images?.maxByOrNull { imgEl ->
+            val img = imgEl as? JsonObject
+            val h = (img?.get("maxHeight") as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
+            val w = (img?.get("maxWidth") as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
+            h * w
+        } as? JsonObject
+        coverUrl = (maxImg?.get("url") as? JsonPrimitive)?.content.orEmpty()
+
         if (coverUrl.isBlank()) {
             val coverArt = entity["coverArt"] as? JsonObject
             val sources = coverArt?.get("sources") as? JsonArray
             val firstSource = sources?.firstOrNull() as? JsonObject
             coverUrl = (firstSource?.get("url") as? JsonPrimitive)?.content.orEmpty()
+        }
+
+        if (coverUrl.isBlank()) {
+            coverUrl = fetchCoverFromOEmbed(kind, entityId)
         }
 
         val trackList = entity["trackList"] as? JsonArray ?: JsonArray(emptyList())
@@ -179,6 +220,10 @@ object SpotifyPlaylistImporter {
             throw IllegalStateException("No playable tracks were found in that Spotify playlist.")
         }
 
+        if (coverUrl.isBlank()) {
+            coverUrl = tracks.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
+        }
+
         return SpotifyImportedPlaylist(
             id = entityId,
             name = name,
@@ -186,6 +231,153 @@ object SpotifyPlaylistImporter {
             tracks = tracks,
             coverUrl = coverUrl
         )
+    }
+
+    private fun fetchPathfinderPlaylist(
+        playlistId: String,
+        accessToken: String,
+        onProgress: (completed: Int, total: Int) -> Unit
+    ): SpotifyImportedPlaylist? {
+        return try {
+            val tracks = mutableListOf<SpotifyImportedTrack>()
+            var playlistName = ""
+            var playlistCoverUrl = ""
+            var offset = 0
+            val limit = 100
+            var totalCount: Int? = null
+            val maxFetch = 600
+
+            while (offset < (totalCount ?: Int.MAX_VALUE) && tracks.size < maxFetch) {
+                val variables = """{"uri":"spotify:playlist:$playlistId","offset":$offset,"limit":$limit,"enableWatchFeedEntrypoint":false}"""
+                val extensions = """{"persistedQuery":{"version":1,"sha256Hash":"$PATHFINDER_FETCH_PLAYLIST_HASH"}}"""
+
+                val encodedVariables = URLEncoder.encode(variables, StandardCharsets.UTF_8.toString())
+                val encodedExtensions = URLEncoder.encode(extensions, StandardCharsets.UTF_8.toString())
+                val queryUrl = "https://api-partner.spotify.com/pathfinder/v1/query?operationName=fetchPlaylist&variables=$encodedVariables&extensions=$encodedExtensions"
+
+                val req = Request.Builder()
+                    .url(queryUrl)
+                    .header("Authorization", "Bearer $accessToken")
+                    .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .build()
+
+                val resp = http.newCall(req).execute()
+                if (!resp.isSuccessful) break
+                val bodyStr = resp.body?.string().orEmpty()
+                val root = json.parseToJsonElement(bodyStr) as? JsonObject ?: break
+
+                val plData = (root["data"] as? JsonObject)?.get("playlistV2") as? JsonObject ?: break
+
+                if (playlistName.isBlank()) {
+                    playlistName = (plData["name"] as? JsonPrimitive)?.content.orEmpty()
+                }
+
+                if (playlistCoverUrl.isBlank()) {
+                    val imagesObj = plData["images"] as? JsonObject
+                    val imageItems = imagesObj?.get("items") as? JsonArray
+                    val firstImg = imageItems?.firstOrNull() as? JsonObject
+                    val sources = firstImg?.get("sources") as? JsonArray
+                    playlistCoverUrl = (sources?.firstOrNull() as? JsonObject)?.get("url")?.let { (it as? JsonPrimitive)?.content }.orEmpty()
+                }
+
+                val content = plData["content"] as? JsonObject ?: break
+                if (totalCount == null) {
+                    totalCount = (content["totalCount"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
+                }
+
+                val items = content["items"] as? JsonArray ?: break
+                if (items.isEmpty()) break
+
+                for (itemEl in items) {
+                    val itemObj = itemEl as? JsonObject ?: continue
+                    val itemV2 = itemObj["itemV2"] as? JsonObject ?: continue
+                    val trData = itemV2["data"] as? JsonObject ?: continue
+                    val uri = (trData["uri"] as? JsonPrimitive)?.content.orEmpty()
+                    val title = (trData["name"] as? JsonPrimitive)?.content?.trim().orEmpty()
+                    if (title.isBlank()) continue
+
+                    val artistsObj = trData["artists"] as? JsonObject
+                    val artistsItems = artistsObj?.get("items") as? JsonArray
+                    val artistsList = mutableListOf<String>()
+                    artistsItems?.forEach { aEl ->
+                        val profile = (aEl as? JsonObject)?.get("profile") as? JsonObject
+                        val aName = (profile?.get("name") as? JsonPrimitive)?.content?.trim()
+                        if (!aName.isNullOrBlank()) artistsList.add(aName)
+                    }
+                    val artists = if (artistsList.isNotEmpty()) artistsList.joinToString(", ") else "Unknown Artist"
+
+                    val albumObj = trData["albumOfTrack"] as? JsonObject
+                    val albumName = (albumObj?.get("name") as? JsonPrimitive)?.content.orEmpty()
+                    val artSources = (albumObj?.get("coverArt") as? JsonObject)?.get("sources") as? JsonArray
+                    var trackCoverUrl = ""
+                    if (artSources != null && artSources.isNotEmpty()) {
+                        val preferred = artSources.firstOrNull { src ->
+                            (src as? JsonObject)?.get("width")?.let { (it as? JsonPrimitive)?.content?.toIntOrNull() == 300 } == true
+                        } ?: artSources.firstOrNull()
+                        trackCoverUrl = (preferred as? JsonObject)?.get("url")?.let { (it as? JsonPrimitive)?.content }.orEmpty()
+                    }
+
+                    val durationMs = (trData["trackDuration"] as? JsonObject)?.get("totalMilliseconds")?.let {
+                        (it as? JsonPrimitive)?.content?.toLongOrNull()
+                    } ?: 0L
+
+                    val trackId = uri.substringAfterLast(':').ifBlank { "${title}_${artists}" }
+
+                    tracks += SpotifyImportedTrack(
+                        id = trackId,
+                        title = title,
+                        artists = artists,
+                        albumName = albumName.ifBlank { playlistName },
+                        albumArtUrl = trackCoverUrl,
+                        durationSeconds = (durationMs / 1000L).coerceAtLeast(0L)
+                    )
+                }
+
+                offset += items.size
+                onProgress(tracks.size, totalCount)
+
+                if (offset >= totalCount) break
+            }
+
+            if (tracks.isEmpty()) return null
+
+            if (playlistCoverUrl.isBlank()) {
+                playlistCoverUrl = tracks.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
+            }
+
+            val filledTracks = tracks.map { tr ->
+                if (tr.albumArtUrl.isBlank()) tr.copy(albumArtUrl = playlistCoverUrl) else tr
+            }
+
+            SpotifyImportedPlaylist(
+                id = playlistId,
+                name = playlistName.ifBlank { "Spotify Playlist" },
+                spotifyUrl = "https://open.spotify.com/playlist/$playlistId",
+                tracks = filledTracks,
+                coverUrl = playlistCoverUrl
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun fetchCoverFromOEmbed(kind: String, entityId: String): String {
+        return try {
+            val oembedUrl = "https://open.spotify.com/oembed?url=https://open.spotify.com/$kind/$entityId"
+            val req = Request.Builder()
+                .url(oembedUrl)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36")
+                .build()
+            http.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val body = resp.body?.string().orEmpty()
+                    val obj = json.parseToJsonElement(body) as? JsonObject
+                    (obj?.get("thumbnail_url") as? JsonPrimitive)?.content.orEmpty()
+                } else ""
+            }
+        } catch (_: Exception) {
+            ""
+        }
     }
 
     private fun extractYouTube(input: String): SpotifyImportedPlaylist? {
