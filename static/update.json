@@ -1,7 +1,7 @@
 {
-  "versionName": "2.8.1",
-  "versionCode": 38,
-  "minimumVersionCode": 38,
+  "versionName": "2.8.3",
+  "versionCode": 40,
+  "minimumVersionCode": 40,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
-  "releaseNotes": "Rivara 2.7.7: Authentic BAPS Gujarati Satsang discourses with Spotify layout, older phone audio crash resolved, large Spotify playlist import fix, multi-device account sync, and Galaxy Watch standalone Wear OS APK."
+  "releaseNotes": "Rivara 2.8.3: Seamless Google sign-in fallback sheet for devices with no saved credentials, multi-account isolation, and automatic playlist recovery."
 }
