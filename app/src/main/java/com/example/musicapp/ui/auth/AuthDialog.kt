@@ -214,6 +214,15 @@ fun AuthDialog(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    GoogleSignInButton(
+                        onSignInSuccess = {
+                            Toast.makeText(context, "Signed in with Google", Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
                     // Button to create new account
                     Button(
                         onClick = { isCreatingNew = true },
