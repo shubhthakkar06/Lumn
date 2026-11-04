@@ -264,9 +264,9 @@ fun LibraryScreen(
                                 val result = DeviceSyncManager.syncWithMac(context)
                                 isSyncingWithMac = false
                                 result.onSuccess { count ->
-                                    Toast.makeText(context, "✓ Synced $count playlists with Mac!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "✓ Synced $count playlists with Cloud & Mac!", Toast.LENGTH_SHORT).show()
                                 }.onFailure { err ->
-                                    Toast.makeText(context, "Could not reach Mac on Wi-Fi: ${err.message}", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, "Sync failed: ${err.message}", Toast.LENGTH_LONG).show()
                                 }
                             }
                         },

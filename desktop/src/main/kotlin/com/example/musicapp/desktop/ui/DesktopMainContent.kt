@@ -869,6 +869,49 @@ private fun LikedSongsView(
     onAddToQueue: (DesktopSong) -> Unit,
     onAddToPlaylist: (String, DesktopSong) -> Unit
 ) {
+    val downloadedSongs by downloadManager.downloadedSongs.collectAsState()
+    val downloadingIds by downloadManager.downloadingIds.collectAsState()
+    val downloadedIds = remember(downloadedSongs) { downloadedSongs.map { it.id }.toSet() }
+
+    val downloadedCount = remember(likedSongs, downloadedIds) {
+        likedSongs.count { downloadedIds.contains(it.id) }
+    }
+    val isAllDownloaded = remember(likedSongs, downloadedCount) {
+        likedSongs.isNotEmpty() && downloadedCount == likedSongs.size
+    }
+    val isAnyDownloading = remember(likedSongs, downloadingIds) {
+        likedSongs.any { downloadingIds.contains(it.id) }
+    }
+
+    var showRemoveLikedConfirmDialog by remember { mutableStateOf(false) }
+
+    if (showRemoveLikedConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showRemoveLikedConfirmDialog = false },
+            title = { Text("Remove Liked Downloads?", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                Text("Remove all $downloadedCount offline downloaded tracks for Liked Songs?", color = Color.LightGray)
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        downloadManager.removePlaylistDownloads(likedSongs)
+                        showRemoveLikedConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
+                ) {
+                    Text("Remove", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRemoveLikedConfirmDialog = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            },
+            containerColor = Color(0xFF242424)
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -893,7 +936,12 @@ private fun LikedSongsView(
             Column(modifier = Modifier.weight(1f)) {
                 Text("PLAYLIST", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
                 Text("Liked Songs", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
-                Text("${likedSongs.size} tracks saved", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.9f))
+                val subtitle = buildString {
+                    append("${likedSongs.size} tracks saved")
+                    if (downloadedCount > 0) append(" • $downloadedCount downloaded")
+                    if (isAnyDownloading) append(" • Downloading...")
+                }
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.9f))
             }
 
             if (likedSongs.isNotEmpty()) {
@@ -905,6 +953,28 @@ private fun LikedSongsView(
                     contentPadding = PaddingValues(0.dp)
                 ) {
                     Icon(Icons.Default.PlayArrow, contentDescription = "Play All", tint = Color.Black, modifier = Modifier.size(30.dp))
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                IconButton(
+                    onClick = {
+                        if (isAllDownloaded) {
+                            showRemoveLikedConfirmDialog = true
+                        } else if (!isAnyDownloading) {
+                            downloadManager.downloadPlaylist(likedSongs)
+                        }
+                    },
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(if (isAllDownloaded) themeAccent.copy(alpha = 0.3f) else Color(0x33000000))
+                ) {
+                    if (isAnyDownloading) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                    } else if (isAllDownloaded) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = "Downloaded Offline (Click to remove)", tint = Color.White, modifier = Modifier.size(24.dp))
+                    } else {
+                        Icon(Icons.Default.ArrowCircleDown, contentDescription = "Download All Liked Songs Offline", tint = Color.White, modifier = Modifier.size(24.dp))
+                    }
                 }
             }
         }
@@ -921,8 +991,8 @@ private fun LikedSongsView(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 itemsIndexed(likedSongs, key = { index, s -> "${s.id}_$index" }) { index, song ->
-                    val isDownloaded = downloadManager.isDownloaded(song.id)
-                    val isDownloading = downloadManager.isDownloading(song.id)
+                    val isDownloaded = downloadedIds.contains(song.id)
+                    val isDownloading = downloadingIds.contains(song.id)
                     DesktopSongRow(
                         index = index,
                         song = song,
@@ -973,6 +1043,15 @@ private fun PlaylistDetailView(
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameText by remember(playlist?.id) { mutableStateOf(playlist?.name.orEmpty()) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showRemoveDownloadConfirmDialog by remember { mutableStateOf(false) }
+
+    val downloadedSongs by downloadManager.downloadedSongs.collectAsState()
+    val downloadingIds by downloadManager.downloadingIds.collectAsState()
+    val downloadedIds = remember(downloadedSongs) { downloadedSongs.map { it.id }.toSet() }
+
+    val downloadedCount = remember(songs, downloadedIds) { songs.count { downloadedIds.contains(it.id) } }
+    val isAllDownloaded = remember(songs, downloadedCount) { songs.isNotEmpty() && downloadedCount == songs.size }
+    val isAnyDownloading = remember(songs, downloadingIds) { songs.any { downloadingIds.contains(it.id) } }
 
     if (showRenameDialog && playlist != null) {
         AlertDialog(
@@ -1040,6 +1119,33 @@ private fun PlaylistDetailView(
         )
     }
 
+    if (showRemoveDownloadConfirmDialog && playlist != null) {
+        AlertDialog(
+            onDismissRequest = { showRemoveDownloadConfirmDialog = false },
+            title = { Text("Remove Playlist Downloads?", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                Text("Remove all $downloadedCount offline downloaded tracks for \"${playlist.name}\"?", color = Color.LightGray)
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        downloadManager.removePlaylistDownloads(songs)
+                        showRemoveDownloadConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
+                ) {
+                    Text("Remove", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRemoveDownloadConfirmDialog = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            },
+            containerColor = Color(0xFF242424)
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -1087,8 +1193,13 @@ private fun PlaylistDetailView(
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )
+                val subtitleText = buildString {
+                    append("Created by ${playlist?.creator ?: "User"} • ${songs.size} tracks")
+                    if (downloadedCount > 0) append(" • $downloadedCount downloaded")
+                    if (isAnyDownloading) append(" • Downloading...")
+                }
                 Text(
-                    text = "Created by ${playlist?.creator ?: "User"} • ${songs.size} tracks",
+                    text = subtitleText,
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.Gray
                 )
@@ -1114,6 +1225,28 @@ private fun PlaylistDetailView(
                             .background(Color(0xFF333333))
                     ) {
                         Icon(Icons.Default.Shuffle, contentDescription = "Shuffle Play", tint = themeAccent, modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    IconButton(
+                        onClick = {
+                            if (isAllDownloaded) {
+                                showRemoveDownloadConfirmDialog = true
+                            } else if (!isAnyDownloading) {
+                                downloadManager.downloadPlaylist(songs)
+                            }
+                        },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(if (isAllDownloaded) themeAccent.copy(alpha = 0.25f) else Color(0xFF333333))
+                    ) {
+                        if (isAnyDownloading) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = themeAccent, strokeWidth = 2.dp)
+                        } else if (isAllDownloaded) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = "Downloaded Offline (Click to remove)", tint = themeAccent, modifier = Modifier.size(22.dp))
+                        } else {
+                            Icon(Icons.Default.ArrowCircleDown, contentDescription = "Download Playlist Offline", tint = Color.White, modifier = Modifier.size(22.dp))
+                        }
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                 }
@@ -1158,8 +1291,8 @@ private fun PlaylistDetailView(
             ) {
                 itemsIndexed(songs, key = { index, s -> "${s.id}_$index" }) { index, song ->
                     val isLiked = likedSongs.any { it.id == song.id }
-                    val isDownloaded = downloadManager.isDownloaded(song.id)
-                    val isDownloading = downloadManager.isDownloading(song.id)
+                    val isDownloaded = downloadedIds.contains(song.id)
+                    val isDownloading = downloadingIds.contains(song.id)
                     DesktopSongRow(
                         index = index,
                         song = song,

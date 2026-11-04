@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
@@ -34,6 +36,8 @@ class DesktopDownloadManager(
     private val _isOfflineOnly = MutableStateFlow(false)
     val isOfflineOnly: StateFlow<Boolean> = _isOfflineOnly.asStateFlow()
 
+    private val downloadSemaphore = Semaphore(3)
+
     init {
         loadMetadata()
     }
@@ -50,6 +54,43 @@ class DesktopDownloadManager(
         return _downloadingIds.value.contains(songId)
     }
 
+    fun downloadPlaylist(songs: List<DesktopSong>) {
+        songs.forEach { song ->
+            if (!isDownloaded(song.id) && !isDownloading(song.id)) {
+                downloadSong(song)
+            }
+        }
+    }
+
+    fun removePlaylistDownloads(songs: List<DesktopSong>) {
+        val songIds = songs.map { it.id }.toSet()
+        val toRemove = _downloadedSongs.value.filter { it.id in songIds }
+        toRemove.forEach { song ->
+            val safeId = song.id.replace(Regex("[^a-zA-Z0-9_]"), "_")
+            File(downloadDir, "$safeId.mp3").delete()
+            File(downloadDir, "$safeId.m4a").delete()
+            if (!song.audioUrl.isNullOrBlank()) {
+                val f = File(song.audioUrl)
+                if (f.exists()) f.delete()
+            }
+        }
+        _downloadedSongs.value = _downloadedSongs.value.filter { it.id !in songIds }
+        saveMetadata()
+    }
+
+    fun isPlaylistDownloaded(songs: List<DesktopSong>): Boolean {
+        if (songs.isEmpty()) return false
+        return songs.all { isDownloaded(it.id) }
+    }
+
+    fun isPlaylistDownloading(songs: List<DesktopSong>): Boolean {
+        return songs.any { isDownloading(it.id) }
+    }
+
+    fun getDownloadedCount(songs: List<DesktopSong>): Int {
+        return songs.count { isDownloaded(it.id) }
+    }
+
     fun downloadSong(song: DesktopSong, onComplete: ((Boolean) -> Unit)? = null) {
         if (isDownloaded(song.id) || isDownloading(song.id)) return
 
@@ -57,46 +98,48 @@ class DesktopDownloadManager(
 
         scope.launch {
             try {
-                var streamUrl = song.audioUrl
-                if (streamUrl.isNullOrBlank()) {
-                    streamUrl = musicRepository.resolveAudioUrl(song)
-                }
-
-                if (streamUrl.isNullOrBlank()) {
-                    _downloadingIds.value = _downloadingIds.value - song.id
-                    onComplete?.invoke(false)
-                    return@launch
-                }
-
-                val safeId = song.id.replace(Regex("[^a-zA-Z0-9_]"), "_")
-                val isMp3 = streamUrl.contains(".mp3", ignoreCase = true)
-                val ext = if (isMp3) "mp3" else "m4a"
-                val targetFile = File(downloadDir, "$safeId.$ext")
-
-                val req = Request.Builder()
-                    .url(streamUrl)
-                    .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
-                    .build()
-
-                val res = httpClient.newCall(req).execute()
-                if (res.isSuccessful) {
-                    res.body?.byteStream()?.use { input ->
-                        FileOutputStream(targetFile).use { output ->
-                            input.copyTo(output)
-                        }
+                downloadSemaphore.withPermit {
+                    var streamUrl = song.audioUrl
+                    if (streamUrl.isNullOrBlank()) {
+                        streamUrl = musicRepository.resolveAudioUrl(song)
                     }
 
-                    val offlineSong = song.copy(
-                        audioUrl = targetFile.absolutePath
-                    )
-                    val updated = _downloadedSongs.value.filter { it.id != song.id } + offlineSong
-                    _downloadedSongs.value = updated
-                    saveMetadata()
-                    _downloadingIds.value = _downloadingIds.value - song.id
-                    onComplete?.invoke(true)
-                } else {
-                    _downloadingIds.value = _downloadingIds.value - song.id
-                    onComplete?.invoke(false)
+                    if (streamUrl.isNullOrBlank()) {
+                        _downloadingIds.value = _downloadingIds.value - song.id
+                        onComplete?.invoke(false)
+                        return@withPermit
+                    }
+
+                    val safeId = song.id.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                    val isMp3 = streamUrl.contains(".mp3", ignoreCase = true)
+                    val ext = if (isMp3) "mp3" else "m4a"
+                    val targetFile = File(downloadDir, "$safeId.$ext")
+
+                    val req = Request.Builder()
+                        .url(streamUrl)
+                        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
+                        .build()
+
+                    val res = httpClient.newCall(req).execute()
+                    if (res.isSuccessful) {
+                        res.body?.byteStream()?.use { input ->
+                            FileOutputStream(targetFile).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+
+                        val offlineSong = song.copy(
+                            audioUrl = targetFile.absolutePath
+                        )
+                        val updated = _downloadedSongs.value.filter { it.id != song.id } + offlineSong
+                        _downloadedSongs.value = updated
+                        saveMetadata()
+                        _downloadingIds.value = _downloadingIds.value - song.id
+                        onComplete?.invoke(true)
+                    } else {
+                        _downloadingIds.value = _downloadingIds.value - song.id
+                        onComplete?.invoke(false)
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

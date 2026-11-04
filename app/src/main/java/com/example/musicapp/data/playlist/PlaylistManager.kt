@@ -138,6 +138,9 @@ class PlaylistManager private constructor(private val context: Context) {
             }
 
             _playlists.value = loadedPlaylists
+            if (loadedPlaylists.isEmpty() && !userId.startsWith("guest_")) {
+                com.example.musicapp.data.sync.DeviceSyncManager.triggerSilentSync(context)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             _playlists.value = emptyList()

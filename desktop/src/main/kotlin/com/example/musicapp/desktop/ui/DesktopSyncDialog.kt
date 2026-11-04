@@ -278,10 +278,10 @@ fun DesktopSyncDialog(
                         .padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("1. Open Rivara on your Android phone (on same Wi-Fi).", color = Color.White, fontSize = 12.sp)
-                    Text("2. Go to 'Your Library' tab on your phone.", color = Color.White, fontSize = 12.sp)
-                    Text("3. Tap the Sync button (top-right next to library title).", color = Color.White, fontSize = 12.sp)
-                    Text("4. Your playlists and liked songs will merge seamlessly!", color = Color(0xFF1ED760), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("1. Wi-Fi Independent: Seamless cloud sync works across any Wi-Fi, cellular, or hotspot.", color = Color.White, fontSize = 12.sp)
+                    Text("2. Playlists and liked songs auto-sync seamlessly in the background every 15s.", color = Color.White, fontSize = 12.sp)
+                    Text("3. On phone, tap the Sync icon in Your Library to manually sync anytime.", color = Color.White, fontSize = 12.sp)
+                    Text("4. Local Wi-Fi and USB cable links are active as automatic instant fallbacks.", color = Color(0xFF1ED760), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
 
                 if (adbStatus != null) {
@@ -296,7 +296,7 @@ fun DesktopSyncDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Actions: ADB Reverse & Self-test
+                // Actions: ADB Reverse & Cloud Sync Now
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -321,7 +321,7 @@ fun DesktopSyncDialog(
                                             }
                                         } else {
                                             withContext(Dispatchers.Main) {
-                                                adbStatus = "ADB not found. Wi-Fi sync is already active."
+                                                adbStatus = "ADB not found. Cloud & Wi-Fi sync are active."
                                             }
                                         }
                                     } catch (e: Exception) {
@@ -346,23 +346,12 @@ fun DesktopSyncDialog(
                         onClick = {
                             isCheckingPing = true
                             coroutineScope.launch {
-                                withContext(Dispatchers.IO) {
-                                    try {
-                                        val u = java.net.URL("http://127.0.0.1:$port/api/sync/ping")
-                                        val conn = u.openConnection() as java.net.HttpURLConnection
-                                        conn.connectTimeout = 2000
-                                        conn.readTimeout = 2000
-                                        val code = conn.responseCode
-                                        withContext(Dispatchers.Main) {
-                                            isCheckingPing = false
-                                            pingStatus = if (code == 200) "✓ Sync Server Healthy on $localIp:$port" else "Server returned $code"
-                                        }
-                                    } catch (e: Exception) {
-                                        withContext(Dispatchers.Main) {
-                                            isCheckingPing = false
-                                            pingStatus = "Connection error: ${e.message}"
-                                        }
-                                    }
+                                val res = DesktopSyncService.syncCloud()
+                                isCheckingPing = false
+                                pingStatus = if (res.isSuccess) {
+                                    "✓ Cloud Sync Complete! (${res.getOrNull()} playlists synchronized)"
+                                } else {
+                                    "Cloud sync error: ${res.exceptionOrNull()?.message}"
                                 }
                             }
                         },
@@ -373,7 +362,11 @@ fun DesktopSyncDialog(
                         if (isCheckingPing) {
                             CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.Black, strokeWidth = 2.dp)
                         } else {
-                            Text("Test Server", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Sync Now (Cloud)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
                         }
                     }
                 }

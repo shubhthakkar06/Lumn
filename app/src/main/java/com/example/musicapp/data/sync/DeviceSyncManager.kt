@@ -50,15 +50,16 @@ data class RivaraSyncPayload(
 )
 
 object DeviceSyncManager {
-    private const val DEFAULT_MAC_IP = "10.50.42.24"
+    private const val CLOUD_SYNC_URL = "https://extendsclass.com/api/json-storage/bin/daafabd"
+    private const val DEFAULT_MAC_IP = "10.50.42.238"
     private const val PREFS_NAME = "rivara_sync_prefs"
     private const val KEY_LAST_MAC_IP = "last_mac_ip"
 
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
     private val http = OkHttpClient.Builder()
-        .connectTimeout(3, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
-        .callTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(6, TimeUnit.SECONDS)
+        .readTimeout(12, TimeUnit.SECONDS)
+        .callTimeout(15, TimeUnit.SECONDS)
         .build()
 
     private val syncScope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
@@ -69,7 +70,19 @@ object DeviceSyncManager {
         if (autoSyncJob?.isActive == true) return
         val appContext = context.applicationContext
         autoSyncJob = syncScope.launch {
+            // Initial sync on startup
+            try {
+                if (!isSyncInProgress) {
+                    isSyncInProgress = true
+                    syncWithMac(appContext)
+                }
+            } catch (_: Exception) {
+            } finally {
+                isSyncInProgress = false
+            }
+
             while (isActive) {
+                kotlinx.coroutines.delay(15_000L) // Silent auto-sync every 15 seconds
                 try {
                     if (!isSyncInProgress) {
                         isSyncInProgress = true
@@ -79,7 +92,6 @@ object DeviceSyncManager {
                 } finally {
                     isSyncInProgress = false
                 }
-                kotlinx.coroutines.delay(15_000L) // Silent auto-sync every 15 seconds
             }
         }
     }
@@ -110,7 +122,86 @@ object DeviceSyncManager {
 
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val savedIp = prefs.getString(KEY_LAST_MAC_IP, null)
+        val mediaType = "application/json; charset=utf-8".toMediaType()
 
+        // 1. Primary: Cloud HTTPS Sync (Wi-Fi independent, cellular / multi-network supported)
+        try {
+            val getReq = Request.Builder()
+                .url(CLOUD_SYNC_URL)
+                .header("Cache-Control", "no-cache")
+                .get()
+                .build()
+
+            http.newCall(getReq).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val body = resp.body?.string().orEmpty()
+                    if (body.isNotBlank() && body.contains("playlists")) {
+                        val cloudPayload = json.decodeFromString<RivaraSyncPayload>(body)
+                        mergeIntoPlaylistManager(playlistManager, currentUser.id, cloudPayload)
+                    }
+                }
+            }
+
+            // Export latest merged state to Cloud
+            val outgoingPlaylists = playlistManager.playlists.value.map { pl ->
+                SyncPlaylist(
+                    id = pl.id,
+                    name = pl.name,
+                    creator = pl.creator,
+                    coverUrl = pl.coverUrl.ifBlank { pl.songs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty() },
+                    songs = pl.songs.map { s ->
+                        SyncSong(
+                            id = s.videoId,
+                            title = s.title,
+                            artist = s.artist,
+                            album = s.albumName,
+                            durationSeconds = s.durationSeconds,
+                            albumArtUrl = s.albumArtUrl,
+                            audioUrl = s.audioStreamUrl
+                        )
+                    },
+                    createdAtMs = pl.createdAtMs
+                )
+            }
+
+            val outgoingLiked = playlistManager.likedSongs.value.map { s ->
+                SyncSong(
+                    id = s.videoId,
+                    title = s.title,
+                    artist = s.artist,
+                    album = s.albumName,
+                    durationSeconds = s.durationSeconds,
+                    albumArtUrl = s.albumArtUrl,
+                    audioUrl = s.audioStreamUrl
+                )
+            }
+
+            val payload = RivaraSyncPayload(
+                userEmail = userEmail,
+                userId = currentUser.id,
+                playlists = outgoingPlaylists,
+                likedSongs = outgoingLiked
+            )
+
+            val putReq = Request.Builder()
+                .url(CLOUD_SYNC_URL)
+                .put(json.encodeToString(payload).toRequestBody(mediaType))
+                .build()
+
+            http.newCall(putReq).execute().use { putResp ->
+                if (putResp.isSuccessful) {
+                    val candidateHosts = listOfNotNull(explicitIp, savedIp, DEFAULT_MAC_IP, "127.0.0.1", "10.0.2.2").distinct()
+                    syncScope.launch {
+                        pingLocalMacIfAvailable(candidateHosts, payload, mediaType)
+                    }
+                    return@withContext Result.success(outgoingPlaylists.size)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // 2. Secondary fallback: Local LAN IP (when offline or cloud unreachable)
         val candidateHosts = listOfNotNull(
             explicitIp?.trim()?.takeIf { it.isNotBlank() },
             savedIp,
@@ -160,8 +251,6 @@ object DeviceSyncManager {
         )
 
         val payloadJson = json.encodeToString(payload)
-        val mediaType = "application/json; charset=utf-8".toMediaType()
-
         var lastError: Exception? = null
 
         for (host in candidateHosts) {
@@ -193,7 +282,25 @@ object DeviceSyncManager {
             }
         }
 
-        Result.failure(lastError ?: IllegalStateException("Could not connect to Rivara on Mac ($DEFAULT_MAC_IP:8765)"))
+        Result.failure(lastError ?: IllegalStateException("Could not reach Cloud or Mac ($DEFAULT_MAC_IP:8765)"))
+    }
+
+    private fun pingLocalMacIfAvailable(
+        candidateHosts: List<String>,
+        payload: RivaraSyncPayload,
+        mediaType: okhttp3.MediaType
+    ) {
+        val payloadJson = json.encodeToString(payload)
+        for (host in candidateHosts) {
+            try {
+                val req = Request.Builder()
+                    .url("http://$host:8765/api/sync/library")
+                    .post(payloadJson.toRequestBody(mediaType))
+                    .build()
+                http.newCall(req).execute().close()
+                break
+            } catch (_: Exception) {}
+        }
     }
 
     private fun mergeIntoPlaylistManager(
@@ -222,9 +329,12 @@ object DeviceSyncManager {
 
             if (existingIdx >= 0) {
                 val existing = currentPlaylists[existingIdx]
-                val mergedSongs = (existing.songs + syncSongs).distinctBy {
-                    it.videoId.ifBlank { "${it.title}_${it.artist}".lowercase() }
+                val syncSongIds = syncSongs.map { it.videoId.ifBlank { "${it.title}_${it.artist}".lowercase() } }.toSet()
+                val localOnly = existing.songs.filter { s ->
+                    val key = s.videoId.ifBlank { "${s.title}_${s.artist}".lowercase() }
+                    key !in syncSongIds
                 }
+                val mergedSongs = syncSongs + localOnly
                 val cover = existing.coverUrl.ifBlank { syncPl.coverUrl }.ifBlank {
                     mergedSongs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
                 }

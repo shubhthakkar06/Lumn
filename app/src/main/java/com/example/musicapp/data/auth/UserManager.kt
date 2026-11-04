@@ -157,6 +157,7 @@ class UserManager private constructor(private val context: Context) {
         try {
             com.example.musicapp.data.playlist.PlaylistManager.getInstance(context).switchUser(user.id)
             com.example.musicapp.data.artist.ArtistFollowManager.getInstance(context).switchUser(user.id)
+            com.example.musicapp.data.sync.DeviceSyncManager.triggerSilentSync(context)
         } catch (e: Exception) {
             e.printStackTrace()
         }

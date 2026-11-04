@@ -6,16 +6,25 @@ import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.TimeUnit
 
 @Serializable
 data class SyncSong(
@@ -53,9 +62,18 @@ data class RivaraSyncPayload(
 
 object DesktopSyncService {
     const val SYNC_PORT = 8765
+    const val CLOUD_SYNC_URL = "https://extendsclass.com/api/json-storage/bin/daafabd"
 
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(6, TimeUnit.SECONDS)
+        .readTimeout(12, TimeUnit.SECONDS)
+        .callTimeout(15, TimeUnit.SECONDS)
+        .build()
+
+    @Volatile private var isSyncing = false
+    private var cloudSyncJob: Job? = null
 
     private var server: HttpServer? = null
     private var libraryManager: DesktopLibraryManager? = null
@@ -72,6 +90,12 @@ object DesktopSyncService {
     fun start(libManager: DesktopLibraryManager, user: DesktopUser?) {
         libraryManager = libManager
         activeUser = user
+
+        libManager.onDataChanged = {
+            triggerCloudSync()
+        }
+
+        startCloudAutoSyncLoop()
 
         if (server != null) return
 
@@ -103,6 +127,98 @@ object DesktopSyncService {
             configureAdbReverse()
         } catch (e: Exception) {
             System.err.println("Failed to start DesktopSyncService: ${e.message}")
+        }
+    }
+
+    fun triggerCloudSync() {
+        if (isSyncing) return
+        scope.launch {
+            try {
+                syncCloud()
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun startCloudAutoSyncLoop() {
+        if (cloudSyncJob?.isActive == true) return
+        cloudSyncJob = scope.launch {
+            // Initial cloud pull & push
+            try {
+                syncCloud()
+            } catch (_: Exception) {}
+
+            while (isActive) {
+                delay(15_000L) // Silent cloud auto-sync every 15 seconds
+                try {
+                    syncCloud()
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    suspend fun syncCloud(): Result<Int> = withContext(Dispatchers.IO) {
+        val lib = libraryManager ?: return@withContext Result.failure(IllegalStateException("Library manager not ready"))
+        if (isSyncing) return@withContext Result.success(lib.playlists.value.size)
+
+        isSyncing = true
+        try {
+            val mediaType = "application/json; charset=utf-8".toMediaType()
+
+            // 1. Pull latest cloud data
+            var hasNewData = false
+            try {
+                val getReq = Request.Builder()
+                    .url(CLOUD_SYNC_URL)
+                    .header("Cache-Control", "no-cache")
+                    .get()
+                    .build()
+
+                httpClient.newCall(getReq).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        val body = resp.body?.string().orEmpty()
+                        if (body.isNotBlank() && body.contains("playlists")) {
+                            val cloudPayload = json.decodeFromString<RivaraSyncPayload>(body)
+                            val prevCount = lib.playlists.value.sumOf { it.songCount } + lib.likedSongs.value.size
+                            lib.mergeFromSync(cloudPayload)
+                            val newCount = lib.playlists.value.sumOf { it.songCount } + lib.likedSongs.value.size
+                            if (newCount != prevCount) {
+                                hasNewData = true
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore cloud GET error, still try to upload if possible
+            }
+
+            // 2. Push merged state to cloud
+            val currentPayload = lib.getSyncPayload(activeUser)
+            val putBody = json.encodeToString(currentPayload)
+
+            val putReq = Request.Builder()
+                .url(CLOUD_SYNC_URL)
+                .put(putBody.toRequestBody(mediaType))
+                .build()
+
+            httpClient.newCall(putReq).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    lastSyncTimestampMs = System.currentTimeMillis()
+                    lastSyncDeviceName = "Cloud Storage"
+
+                    if (hasNewData) {
+                        scope.launch(Dispatchers.Main) {
+                            onSyncCompleted?.invoke(currentPayload)
+                        }
+                    }
+                    return@withContext Result.success(currentPayload.playlists.size)
+                } else {
+                    return@withContext Result.failure(IllegalStateException("Cloud PUT returned HTTP ${resp.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            return@withContext Result.failure(e)
+        } finally {
+            isSyncing = false
         }
     }
 
@@ -179,6 +295,9 @@ object DesktopSyncService {
                 val mergedPayload = lib.getSyncPayload(activeUser)
                 val respStr = json.encodeToString(mergedPayload)
                 sendResponse(exchange, 200, respStr, "application/json")
+
+                // Keep cloud storage in sync with local merge
+                triggerCloudSync()
             } catch (e: Exception) {
                 e.printStackTrace()
                 sendResponse(exchange, 400, """{"error":"${e.message}"}""", "application/json")

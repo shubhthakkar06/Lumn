@@ -18,6 +18,7 @@ class DesktopLibraryManager {
     private val dataDir = File(System.getProperty("user.home"), ".rivara").apply { mkdirs() }
 
     private var activeUserId: String = "guest_default"
+    var onDataChanged: (() -> Unit)? = null
 
     private val _playlists = MutableStateFlow<List<DesktopPlaylist>>(emptyList())
     val playlists: StateFlow<List<DesktopPlaylist>> = _playlists.asStateFlow()
@@ -435,6 +436,7 @@ class DesktopLibraryManager {
     private fun savePlaylists(userId: String) {
         try {
             getPlaylistsFile(userId).writeText(json.encodeToString(_playlists.value))
+            onDataChanged?.invoke()
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -443,6 +445,7 @@ class DesktopLibraryManager {
     private fun saveLikedSongs(userId: String) {
         try {
             getLikedSongsFile(userId).writeText(json.encodeToString(_likedSongs.value))
+            onDataChanged?.invoke()
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -451,6 +454,7 @@ class DesktopLibraryManager {
     private fun savePlaylistSongs(userId: String) {
         try {
             getPlaylistSongsFile(userId).writeText(json.encodeToString(_playlistSongs.value))
+            onDataChanged?.invoke()
         } catch (e: Exception) {
             e.printStackTrace()
         }
