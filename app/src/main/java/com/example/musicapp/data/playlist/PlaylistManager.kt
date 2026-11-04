@@ -240,6 +240,7 @@ class PlaylistManager private constructor(private val context: Context) {
             if (current.isNotEmpty()) {
                 File(context.filesDir, "user_playlists_${sanitizeUserId(activeUserId)}_backup.json").writeText(content)
             }
+            com.example.musicapp.data.sync.DeviceSyncManager.triggerSilentSync(context)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -254,6 +255,7 @@ class PlaylistManager private constructor(private val context: Context) {
             if (current.isNotEmpty()) {
                 File(context.filesDir, "liked_songs_${sanitizeUserId(activeUserId)}_backup.json").writeText(content)
             }
+            com.example.musicapp.data.sync.DeviceSyncManager.triggerSilentSync(context)
         } catch (e: Exception) {
             e.printStackTrace()
         }

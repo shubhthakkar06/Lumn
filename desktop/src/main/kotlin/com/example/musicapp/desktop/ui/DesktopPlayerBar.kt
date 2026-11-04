@@ -65,8 +65,17 @@ fun DesktopPlayerBar(
     onOpenDeviceSelector: () -> Unit = {},
     onShareSong: () -> Unit,
     onOpenFullscreen: () -> Unit,
+    playbackSpeed: Float = 1.0f,
+    onSpeedChange: (Float) -> Unit = {},
+    sleepTimerRemainingSeconds: Long? = null,
+    sleepTimerLabel: String? = null,
+    onSetSleepTimerMinutes: (Int, String) -> Unit = { _, _ -> },
+    onSetSleepTimerEndOfTrack: () -> Unit = {},
+    onCancelSleepTimer: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    var showSpeedMenu by remember { mutableStateOf(false) }
+    var showSleepTimerMenu by remember { mutableStateOf(false) }
     val durationSeconds = currentSong?.durationSeconds ?: 180L
     val totalMs = durationSeconds * 1000L
     val progressFraction = if (totalMs > 0) (progressMs.toFloat() / totalMs.toFloat()).coerceIn(0f, 1f) else 0f
@@ -267,12 +276,110 @@ fun DesktopPlayerBar(
                 }
             }
 
-            // Right Section: Share, Lyrics, Queue, Equalizer, Volume Slider, and Fullscreen Expand
+            // Right Section: Speed, Sleep Timer, Share, Lyrics, Queue, Equalizer, Volume Slider, and Fullscreen Expand
             Row(
-                modifier = Modifier.width(360.dp),
+                modifier = Modifier.width(440.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.End
             ) {
+                // Playback Speed Selector Pill
+                Box {
+                    TextButton(
+                        onClick = { showSpeedMenu = true },
+                        modifier = Modifier.height(30.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                    ) {
+                        Text(
+                            text = if (playbackSpeed == 1.0f) "1x" else "${playbackSpeed}x",
+                            color = if (playbackSpeed != 1.0f) themeAccent else Color.Gray,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showSpeedMenu,
+                        onDismissRequest = { showSpeedMenu = false },
+                        modifier = Modifier.background(Color(0xFF242424))
+                    ) {
+                        listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f).forEach { spd ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = if (spd == 1.0f) "1.0x (Normal)" else "${spd}x",
+                                        color = if (playbackSpeed == spd) themeAccent else Color.White,
+                                        fontWeight = if (playbackSpeed == spd) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                onClick = {
+                                    showSpeedMenu = false
+                                    onSpeedChange(spd)
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Sleep Timer Button
+                Box {
+                    IconButton(onClick = { showSleepTimerMenu = true }, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Bedtime,
+                            contentDescription = "Sleep Timer",
+                            tint = if (sleepTimerLabel != null) themeAccent else Color.Gray,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showSleepTimerMenu,
+                        onDismissRequest = { showSleepTimerMenu = false },
+                        modifier = Modifier.background(Color(0xFF242424))
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("SLEEP TIMER", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            onClick = {},
+                            enabled = false
+                        )
+                        val timerOpts = listOf(
+                            5 to "5 minutes",
+                            15 to "15 minutes",
+                            30 to "30 minutes",
+                            45 to "45 minutes",
+                            60 to "1 hour"
+                        )
+                        timerOpts.forEach { (mins, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label, color = Color.White) },
+                                onClick = {
+                                    showSleepTimerMenu = false
+                                    onSetSleepTimerMinutes(mins, label)
+                                }
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text("End of track", color = Color.White) },
+                            onClick = {
+                                showSleepTimerMenu = false
+                                onSetSleepTimerEndOfTrack()
+                            }
+                        )
+                        if (sleepTimerLabel != null) {
+                            HorizontalDivider(color = Color(0xFF383838))
+                            DropdownMenuItem(
+                                text = {
+                                    val rem = sleepTimerRemainingSeconds?.let {
+                                        " (${it / 60}:${"%02d".format(it % 60)})"
+                                    }.orEmpty()
+                                    Text("Turn Off Timer$rem", color = Color(0xFFFF5252))
+                                },
+                                onClick = {
+                                    showSleepTimerMenu = false
+                                    onCancelSleepTimer()
+                                }
+                            )
+                        }
+                    }
+                }
+
                 IconButton(onClick = onShareSong, modifier = Modifier.size(32.dp)) {
                     Icon(
                         imageVector = Icons.Default.Share,

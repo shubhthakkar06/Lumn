@@ -87,6 +87,7 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     acceptSharedSongIntent(intent)
+    com.example.musicapp.data.sync.DeviceSyncManager.startAutoSyncLoop(this)
 
     enableEdgeToEdge()
     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
@@ -174,6 +175,7 @@ class MainActivity : ComponentActivity() {
 
   override fun onResume() {
     super.onResume()
+    com.example.musicapp.data.sync.DeviceSyncManager.triggerSilentSync(this)
     openingUpdateLink = false
     // Recheck after returning from a browser or APK installer, but only show one prompt
     // during this app launch. Dismissing the prompt never blocks the music app.

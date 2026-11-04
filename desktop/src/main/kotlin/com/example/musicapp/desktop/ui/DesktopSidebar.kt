@@ -34,10 +34,15 @@ fun DesktopSidebar(
     onOpenSoundCapsule: () -> Unit,
     onOpenSync: () -> Unit,
     onOpenSettings: () -> Unit,
+    onDialogStateChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
+
+    LaunchedEffect(showCreateDialog) {
+        onDialogStateChanged(showCreateDialog)
+    }
 
     if (showCreateDialog) {
         AlertDialog(

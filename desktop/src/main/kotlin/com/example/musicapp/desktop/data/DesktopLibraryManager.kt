@@ -270,14 +270,15 @@ class DesktopLibraryManager {
             if (existingIdx >= 0) {
                 val existing = currentPls[existingIdx]
                 val existingSongs = currentSongsMap[existing.id].orEmpty()
-                val mergedSongs = (existingSongs + incSongs).distinctBy {
-                    it.id.ifBlank { "${it.title}_${it.artist}".lowercase() }
-                }
+                val incSongIds = incSongs.map { it.id }.toSet()
+                val localOnly = existingSongs.filter { it.id !in incSongIds }
+                val mergedSongs = incSongs + localOnly
                 currentSongsMap[existing.id] = mergedSongs
-                val updatedCover = existing.coverUrl.ifBlank { inc.coverUrl }.ifBlank {
+                val updatedCover = inc.coverUrl.ifBlank { existing.coverUrl }.ifBlank {
                     mergedSongs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
                 }
                 currentPls[existingIdx] = existing.copy(
+                    name = inc.name.ifBlank { existing.name },
                     songCount = mergedSongs.size,
                     coverUrl = updatedCover
                 )
@@ -323,6 +324,81 @@ class DesktopLibraryManager {
         _likedSongs.value = currentLiked
 
         saveDataForUser(activeUserId)
+    }
+
+    fun renamePlaylist(playlistId: String, newName: String) {
+        val clean = newName.trim()
+        if (clean.isBlank()) return
+        _playlists.value = _playlists.value.map {
+            if (it.id == playlistId) it.copy(name = clean) else it
+        }
+        savePlaylists(activeUserId)
+    }
+
+    fun deletePlaylist(playlistId: String) {
+        _playlists.value = _playlists.value.filter { it.id != playlistId }
+        val map = _playlistSongs.value.toMutableMap()
+        map.remove(playlistId)
+        _playlistSongs.value = map
+        savePlaylists(activeUserId)
+        savePlaylistSongs(activeUserId)
+    }
+
+    fun reorderSongs(playlistId: String, songs: List<DesktopSong>) {
+        val map = _playlistSongs.value.toMutableMap()
+        map[playlistId] = songs
+        _playlistSongs.value = map
+        _playlists.value = _playlists.value.map {
+            if (it.id == playlistId) it.copy(songCount = songs.size) else it
+        }
+        savePlaylistSongs(activeUserId)
+    }
+
+    fun moveSongUp(playlistId: String, songId: String) {
+        val list = _playlistSongs.value[playlistId]?.toMutableList() ?: return
+        val idx = list.indexOfFirst { it.id == songId }
+        if (idx > 0) {
+            val item = list.removeAt(idx)
+            list.add(idx - 1, item)
+            reorderSongs(playlistId, list)
+        }
+    }
+
+    fun moveSongDown(playlistId: String, songId: String) {
+        val list = _playlistSongs.value[playlistId]?.toMutableList() ?: return
+        val idx = list.indexOfFirst { it.id == songId }
+        if (idx >= 0 && idx < list.size - 1) {
+            val item = list.removeAt(idx)
+            list.add(idx + 1, item)
+            reorderSongs(playlistId, list)
+        }
+    }
+
+    fun updateSongAudioUrl(songId: String, audioUrl: String) {
+        if (audioUrl.isBlank()) return
+        var changed = false
+        val map = _playlistSongs.value.toMutableMap()
+        for ((plId, songs) in map) {
+            val idx = songs.indexOfFirst { it.id == songId }
+            if (idx >= 0) {
+                val updatedList = songs.toMutableList()
+                updatedList[idx] = updatedList[idx].copy(audioUrl = audioUrl)
+                map[plId] = updatedList
+                changed = true
+            }
+        }
+        if (changed) {
+            _playlistSongs.value = map
+            savePlaylistSongs(activeUserId)
+        }
+
+        val liked = _likedSongs.value.toMutableList()
+        val likedIdx = liked.indexOfFirst { it.id == songId }
+        if (likedIdx >= 0) {
+            liked[likedIdx] = liked[likedIdx].copy(audioUrl = audioUrl)
+            _likedSongs.value = liked
+            saveLikedSongs(activeUserId)
+        }
     }
 
     fun addSongToPlaylist(playlistId: String, song: DesktopSong) {

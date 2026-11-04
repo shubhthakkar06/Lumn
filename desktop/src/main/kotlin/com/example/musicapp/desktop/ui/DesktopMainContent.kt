@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
@@ -66,6 +67,8 @@ fun DesktopMainContent(
     onOpenAuth: () -> Unit,
     onOpenSync: () -> Unit = {},
     onShareSong: (DesktopSong) -> Unit,
+    onSearchFocusChanged: (Boolean) -> Unit = {},
+    onShufflePlay: (List<DesktopSong>) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -153,7 +156,11 @@ fun DesktopMainContent(
                         fontWeight = FontWeight.Medium
                     ),
                     cursorBrush = SolidColor(themeAccent),
-                    modifier = Modifier.width(480.dp),
+                    modifier = Modifier
+                        .width(480.dp)
+                        .onFocusChanged { focusState ->
+                            onSearchFocusChanged(focusState.isFocused)
+                        },
                     decorationBox = { innerTextField ->
                         Row(
                             modifier = Modifier
@@ -314,6 +321,15 @@ fun DesktopMainContent(
                             onPlaySongWithQueue(s, playlistSongs.drop(idx) + playlistSongs.take(idx))
                         },
                         onPlayAll = { onPlayAll(playlistSongs) },
+                        onShufflePlay = { onShufflePlay(playlistSongs) },
+                        onRenamePlaylist = { id, newName -> libraryManager.renamePlaylist(id, newName) },
+                        onDeletePlaylist = { id ->
+                            libraryManager.deletePlaylist(id)
+                            onTabSelected("Home")
+                        },
+                        onMoveUp = { id, songId -> libraryManager.moveSongUp(id, songId) },
+                        onMoveDown = { id, songId -> libraryManager.moveSongDown(id, songId) },
+                        onRemoveFromPlaylist = { id, songId -> libraryManager.removeSongFromPlaylist(id, songId) },
                         onToggleLike = { libraryManager.toggleLike(it) },
                         onToggleDownload = { s ->
                             if (downloadManager.isDownloaded(s.id)) downloadManager.removeDownload(s.id)
@@ -941,6 +957,12 @@ private fun PlaylistDetailView(
     downloadManager: DesktopDownloadManager,
     onPlaySong: (DesktopSong) -> Unit,
     onPlayAll: () -> Unit,
+    onShufflePlay: () -> Unit,
+    onRenamePlaylist: (String, String) -> Unit,
+    onDeletePlaylist: (String) -> Unit,
+    onMoveUp: (String, String) -> Unit,
+    onMoveDown: (String, String) -> Unit,
+    onRemoveFromPlaylist: (String, String) -> Unit,
     onToggleLike: (DesktopSong) -> Unit,
     onToggleDownload: (DesktopSong) -> Unit,
     onShareSong: (DesktopSong) -> Unit,
@@ -948,6 +970,76 @@ private fun PlaylistDetailView(
     onAddToQueue: (DesktopSong) -> Unit,
     onAddToPlaylist: (String, DesktopSong) -> Unit
 ) {
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameText by remember(playlist?.id) { mutableStateOf(playlist?.name.orEmpty()) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+
+    if (showRenameDialog && playlist != null) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("Rename Playlist", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = themeAccent,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (renameText.isNotBlank()) {
+                            onRenamePlaylist(playlist.id, renameText.trim())
+                        }
+                        showRenameDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = themeAccent)
+                ) {
+                    Text("Save", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            },
+            containerColor = Color(0xFF242424)
+        )
+    }
+
+    if (showDeleteConfirmDialog && playlist != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = { Text("Delete Playlist?", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                Text("This will permanently delete \"${playlist.name}\" and its ${songs.size} tracks.", color = Color.LightGray)
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeletePlaylist(playlist.id)
+                        showDeleteConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
+                ) {
+                    Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            },
+            containerColor = Color(0xFF242424)
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -1002,15 +1094,53 @@ private fun PlaylistDetailView(
                 )
             }
 
-            if (songs.isNotEmpty()) {
-                Button(
-                    onClick = onPlayAll,
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
-                    modifier = Modifier.size(48.dp),
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = "Play All", tint = Color.Black, modifier = Modifier.size(28.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (songs.isNotEmpty()) {
+                    Button(
+                        onClick = onPlayAll,
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                        modifier = Modifier.size(48.dp),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = "Play All", tint = Color.Black, modifier = Modifier.size(28.dp))
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    IconButton(
+                        onClick = onShufflePlay,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF333333))
+                    ) {
+                        Icon(Icons.Default.Shuffle, contentDescription = "Shuffle Play", tint = themeAccent, modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                }
+
+                if (playlist != null) {
+                    IconButton(
+                        onClick = {
+                            renameText = playlist.name
+                            showRenameDialog = true
+                        },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF333333))
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = "Rename Playlist", tint = Color.White, modifier = Modifier.size(18.dp))
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    IconButton(
+                        onClick = { showDeleteConfirmDialog = true },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF333333))
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete Playlist", tint = Color(0xFFFF5252), modifier = Modifier.size(18.dp))
+                    }
                 }
             }
         }
@@ -1045,7 +1175,10 @@ private fun PlaylistDetailView(
                         onShareSong = { onShareSong(song) },
                         onPlayNext = { onPlayNext(song) },
                         onAddToQueue = { onAddToQueue(song) },
-                        onAddToPlaylist = { plId -> onAddToPlaylist(plId, song) }
+                        onAddToPlaylist = { plId -> onAddToPlaylist(plId, song) },
+                        onMoveUp = if (playlist != null && index > 0) { { onMoveUp(playlist.id, song.id) } } else null,
+                        onMoveDown = if (playlist != null && index < songs.size - 1) { { onMoveDown(playlist.id, song.id) } } else null,
+                        onRemoveFromPlaylist = if (playlist != null) { { onRemoveFromPlaylist(playlist.id, song.id) } } else null
                     )
                 }
             }

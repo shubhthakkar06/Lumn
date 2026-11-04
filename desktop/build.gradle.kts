@@ -21,6 +21,7 @@ dependencies {
     // Coil 3 for Compose Desktop image loading
     implementation("io.coil-kt.coil3:coil-compose:3.1.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.1.0")
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
 }
 
 compose.desktop {

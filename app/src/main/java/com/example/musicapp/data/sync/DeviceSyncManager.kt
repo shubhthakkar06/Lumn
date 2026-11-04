@@ -5,8 +5,7 @@ import com.example.musicapp.data.auth.UserManager
 import com.example.musicapp.data.network.SongInfo
 import com.example.musicapp.data.playlist.PlaylistManager
 import com.example.musicapp.data.playlist.UserPlaylist
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -61,6 +60,44 @@ object DeviceSyncManager {
         .readTimeout(8, TimeUnit.SECONDS)
         .callTimeout(10, TimeUnit.SECONDS)
         .build()
+
+    private val syncScope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
+    private var autoSyncJob: kotlinx.coroutines.Job? = null
+    @Volatile private var isSyncInProgress = false
+
+    fun startAutoSyncLoop(context: Context) {
+        if (autoSyncJob?.isActive == true) return
+        val appContext = context.applicationContext
+        autoSyncJob = syncScope.launch {
+            while (isActive) {
+                try {
+                    if (!isSyncInProgress) {
+                        isSyncInProgress = true
+                        syncWithMac(appContext)
+                    }
+                } catch (_: Exception) {
+                } finally {
+                    isSyncInProgress = false
+                }
+                kotlinx.coroutines.delay(15_000L) // Silent auto-sync every 15 seconds
+            }
+        }
+    }
+
+    fun triggerSilentSync(context: Context) {
+        val appContext = context.applicationContext
+        syncScope.launch {
+            try {
+                if (!isSyncInProgress) {
+                    isSyncInProgress = true
+                    syncWithMac(appContext)
+                }
+            } catch (_: Exception) {
+            } finally {
+                isSyncInProgress = false
+            }
+        }
+    }
 
     suspend fun syncWithMac(
         context: Context,

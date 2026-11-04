@@ -6,6 +6,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.schabi.newpipe.extractor.NewPipe
+import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
+import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.net.URLEncoder
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
@@ -24,6 +28,14 @@ class DesktopMusicRepository {
 
     private val json = Json { ignoreUnknownKeys = true }
     private val streamCache = ConcurrentHashMap<String, String>()
+
+    private fun ensureNewPipeInit() {
+        try {
+            if (NewPipe.getDownloader() == null) {
+                NewPipe.init(DesktopOkHttpDownloader())
+            }
+        } catch (_: Exception) {}
+    }
 
     fun decryptSaavnUrl(encryptedMediaUrl: String): String {
         return try {
@@ -44,14 +56,14 @@ class DesktopMusicRepository {
     }
 
     suspend fun resolveAudioUrl(song: DesktopSong): String? = withContext(Dispatchers.IO) {
-        if (!song.audioUrl.isNullOrBlank()) {
+        if (!song.audioUrl.isNullOrBlank() && !song.audioUrl.contains("p.scdn.co/mp3-preview")) {
             return@withContext song.audioUrl
         }
         streamCache[song.id]?.let { return@withContext it }
 
-        // If numeric/saavn id, query song.getDetails
+        // 1. If numeric/saavn id, query song.getDetails directly
         val cleanId = song.id.removePrefix("saavn_")
-        if (cleanId.isNotBlank() && cleanId.all { it.isLetterOrDigit() }) {
+        if (cleanId.isNotBlank() && cleanId.all { it.isDigit() }) {
             try {
                 val detailsUrl = "https://www.jiosaavn.com/api.php?__call=song.getDetails&pids=$cleanId&_format=json&_marker=0&ctx=android"
                 val req = Request.Builder().url(detailsUrl).header("User-Agent", "Mozilla/5.0").build()
@@ -72,17 +84,69 @@ class DesktopMusicRepository {
             } catch (_: Exception) {}
         }
 
-        // Search by title and artist
+        // 2. Strict JioSaavn Search matching via DesktopTrackMatcher
+        val cleanTitle = DesktopTrackMatcher.cleanTitleForSearch(song.title)
+        val cleanArtist = DesktopTrackMatcher.cleanArtistForSearch(song.artist)
+
         try {
-            val hits = searchSongs("${song.title} ${song.artist}".trim())
-            val hit = hits.firstOrNull { !it.audioUrl.isNullOrBlank() }
-            if (hit != null && !hit.audioUrl.isNullOrBlank()) {
-                streamCache[song.id] = hit.audioUrl
-                return@withContext hit.audioUrl
+            val hits = searchSongs("$cleanTitle $cleanArtist".trim())
+            val matched = DesktopTrackMatcher.bestMatch(song, hits)
+            if (matched != null && !matched.audioUrl.isNullOrBlank()) {
+                streamCache[song.id] = matched.audioUrl
+                return@withContext matched.audioUrl
             }
         } catch (_: Exception) {}
 
+        // 3. Second-chance JioSaavn search by clean title only
+        if (cleanTitle.isNotBlank()) {
+            try {
+                val titleHits = searchSongs(cleanTitle)
+                val matched = DesktopTrackMatcher.bestMatch(song, titleHits)
+                if (matched != null && !matched.audioUrl.isNullOrBlank()) {
+                    streamCache[song.id] = matched.audioUrl
+                    return@withContext matched.audioUrl
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 4. Fallback to YouTube Music via NewPipeExtractor
+        val ytStream = resolveFromYoutube(song)
+        if (!ytStream.isNullOrBlank()) {
+            streamCache[song.id] = ytStream
+            return@withContext ytStream
+        }
+
         null
+    }
+
+    private fun resolveFromYoutube(song: DesktopSong): String? {
+        ensureNewPipeInit()
+        return try {
+            val cleanTitle = DesktopTrackMatcher.cleanTitleForSearch(song.title)
+            val cleanArtist = DesktopTrackMatcher.cleanArtistForSearch(song.artist)
+            val query = "$cleanTitle $cleanArtist".trim()
+
+            val searchExtractor = ServiceList.YouTube.getSearchExtractor(
+                query,
+                listOf(YoutubeSearchQueryHandlerFactory.MUSIC_SONGS),
+                null
+            )
+            searchExtractor.fetchPage()
+            val streamItems = searchExtractor.initialPage.items.filterIsInstance<StreamInfoItem>()
+            val candidate = streamItems.firstOrNull() ?: return null
+
+            val vid = candidate.url.substringAfter("v=", "").substringBefore("&")
+            if (vid.isBlank()) return null
+
+            val streamExtractor = ServiceList.YouTube.getStreamExtractor("https://www.youtube.com/watch?v=$vid")
+            streamExtractor.fetchPage()
+            val audioStreams = streamExtractor.audioStreams
+            audioStreams.maxByOrNull { it.bitrate }?.content
+                ?: streamExtractor.videoStreams.firstOrNull()?.content
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 
     suspend fun searchSongs(query: String): List<DesktopSong> = withContext(Dispatchers.IO) {

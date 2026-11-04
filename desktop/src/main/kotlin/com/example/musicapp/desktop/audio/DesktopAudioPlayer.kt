@@ -1,5 +1,6 @@
 package com.example.musicapp.desktop.audio
 
+import com.example.musicapp.desktop.data.DesktopLibraryManager
 import com.example.musicapp.desktop.data.DesktopMusicRepository
 import com.example.musicapp.desktop.model.DesktopSong
 import kotlinx.coroutines.*
@@ -18,13 +19,13 @@ import javax.sound.sampled.*
  * Uses FFmpeg to decode any audio stream/codec (AAC, MP4, MP3, FLAC, M4A) directly
  * into 48kHz 16-bit stereo PCM, and plays it via Java Sound's DirectAudioDevice (CoreAudio HAL).
  *
- * This completely avoids the macOS high-level AudioQueue freeze (error -66681) that crashes
- * afplay and SDL/ffplay on macOS, ensuring instant, stutter-free playback with accurate
- * millisecond scrubber progress and wavy animations.
+ * Supports variable playback speed (0.5x to 2.0x), sleep timers, and automatic stream recovery.
  */
 class DesktopAudioPlayer(
     private val musicRepository: DesktopMusicRepository = DesktopMusicRepository()
 ) {
+    var libraryManager: DesktopLibraryManager? = null
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val httpClient = OkHttpClient()
     private val cacheDir = File(System.getProperty("user.home"), ".rivara/cache").apply { mkdirs() }
@@ -49,6 +50,70 @@ class DesktopAudioPlayer(
     private var isIntentionallyStopped = false
     @Volatile private var isPaused = false
     private var playJob: Job? = null
+
+    // Playback Speed
+    private val _playbackSpeed = MutableStateFlow(1.0f)
+    val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
+
+    fun setPlaybackSpeed(speed: Float) {
+        val clamped = speed.coerceIn(0.5f, 2.0f)
+        if (_playbackSpeed.value == clamped) return
+        _playbackSpeed.value = clamped
+        val song = _currentSong.value
+        val pos = _progressMs.value
+        if (song != null && _isPlaying.value) {
+            play(song, pos)
+        }
+    }
+
+    // Sleep Timer
+    private var sleepTimerJob: Job? = null
+    private val _sleepTimerRemainingSeconds = MutableStateFlow<Long?>(null)
+    val sleepTimerRemainingSeconds: StateFlow<Long?> = _sleepTimerRemainingSeconds.asStateFlow()
+
+    private val _sleepTimerLabel = MutableStateFlow<String?>(null)
+    val sleepTimerLabel: StateFlow<String?> = _sleepTimerLabel.asStateFlow()
+
+    var isSleepTimerEndOfTrack: Boolean = false
+        private set
+
+    fun setSleepTimerMinutes(minutes: Int, label: String = "$minutes min") {
+        sleepTimerJob?.cancel()
+        isSleepTimerEndOfTrack = false
+        _sleepTimerLabel.value = label
+        val totalSecs = minutes * 60L
+        _sleepTimerRemainingSeconds.value = totalSecs
+
+        sleepTimerJob = scope.launch {
+            var remaining = totalSecs
+            while (isActive && remaining > 0) {
+                delay(1000L)
+                remaining--
+                _sleepTimerRemainingSeconds.value = remaining
+            }
+            if (isActive) {
+                withContext(Dispatchers.Main) {
+                    pause()
+                    cancelSleepTimer()
+                }
+            }
+        }
+    }
+
+    fun setSleepTimerEndOfTrack() {
+        sleepTimerJob?.cancel()
+        isSleepTimerEndOfTrack = true
+        _sleepTimerLabel.value = "End of track"
+        _sleepTimerRemainingSeconds.value = null
+    }
+
+    fun cancelSleepTimer() {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        isSleepTimerEndOfTrack = false
+        _sleepTimerRemainingSeconds.value = null
+        _sleepTimerLabel.value = null
+    }
 
     fun setOutputDevice(name: String) {
         targetDeviceName = name
@@ -129,8 +194,11 @@ class DesktopAudioPlayer(
         playJob?.cancel()
         playJob = scope.launch {
             var streamUrl = song.audioUrl
-            if (streamUrl.isNullOrBlank()) {
+            if (streamUrl.isNullOrBlank() || streamUrl.contains("p.scdn.co/mp3-preview")) {
                 streamUrl = musicRepository.resolveAudioUrl(song)
+                if (!streamUrl.isNullOrBlank()) {
+                    libraryManager?.updateSongAudioUrl(song.id, streamUrl)
+                }
             }
 
             if (streamUrl.isNullOrBlank()) {
@@ -233,6 +301,11 @@ class DesktopAudioPlayer(
                 cmd.add(String.format(Locale.US, "%.3f", startPositionMs / 1000.0))
             }
 
+            val speed = _playbackSpeed.value
+            if (speed != 1.0f) {
+                cmd.addAll(listOf("-filter:a", "atempo=${String.format(Locale.US, "%.2f", speed)}"))
+            }
+
             cmd.addAll(listOf(
                 "-i", audioSource,
                 "-vn",
@@ -283,14 +356,14 @@ class DesktopAudioPlayer(
                 val now = System.currentTimeMillis()
                 if (now - lastUpdateMs >= 80) {
                     lastUpdateMs = now
-                    val currentPos = startPositionMs + (bytesWritten / bytesPerMs)
+                    val currentPos = startPositionMs + ((bytesWritten / bytesPerMs) * speed).toLong()
                     val clamped = if (totalDurationMs > 0) currentPos.coerceAtMost(totalDurationMs) else currentPos
                     _progressMs.value = clamped
                 }
             }
 
             if (!isIntentionallyStopped && isActive) {
-                val playedMs = startPositionMs + (bytesWritten / bytesPerMs)
+                val playedMs = startPositionMs + ((bytesWritten / bytesPerMs) * speed).toLong()
                 val reachedEnd = totalDurationMs > 0 && playedMs >= (totalDurationMs - 4000L).coerceAtLeast(1000L)
 
                 if (bytesWritten == 0L) {
@@ -303,7 +376,10 @@ class DesktopAudioPlayer(
                 } else if (reachedEnd) {
                     line.drain()
                     withContext(Dispatchers.Main) {
-                        if (_isRepeat.value) {
+                        if (isSleepTimerEndOfTrack) {
+                            cancelSleepTimer()
+                            pause()
+                        } else if (_isRepeat.value) {
                             _currentSong.value?.let { play(it, 0L) }
                         } else {
                             skipNext()

@@ -42,6 +42,9 @@ fun DesktopSongRow(
     onPlayNext: () -> Unit,
     onAddToQueue: () -> Unit,
     onAddToPlaylist: (String) -> Unit,
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null,
+    onRemoveFromPlaylist: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -261,6 +264,46 @@ fun DesktopSongRow(
                                 showMenu = false
                                 showPlaylistSubmenu = false
                                 onAddToPlaylist(pl.id)
+                            }
+                        )
+                    }
+                }
+
+                if (onMoveUp != null || onMoveDown != null || onRemoveFromPlaylist != null) {
+                    HorizontalDivider(color = Color(0xFF383838))
+                    if (onMoveUp != null) {
+                        DropdownMenuItem(
+                            text = { Text("Move Up", color = Color.White) },
+                            leadingIcon = {
+                                Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = Color.White)
+                            },
+                            onClick = {
+                                showMenu = false
+                                onMoveUp()
+                            }
+                        )
+                    }
+                    if (onMoveDown != null) {
+                        DropdownMenuItem(
+                            text = { Text("Move Down", color = Color.White) },
+                            leadingIcon = {
+                                Icon(Icons.Default.ArrowDownward, contentDescription = null, tint = Color.White)
+                            },
+                            onClick = {
+                                showMenu = false
+                                onMoveDown()
+                            }
+                        )
+                    }
+                    if (onRemoveFromPlaylist != null) {
+                        DropdownMenuItem(
+                            text = { Text("Remove from Playlist", color = Color(0xFFFF5252)) },
+                            leadingIcon = {
+                                Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFFF5252))
+                            },
+                            onClick = {
+                                showMenu = false
+                                onRemoveFromPlaylist()
                             }
                         )
                     }

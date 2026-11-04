@@ -59,12 +59,17 @@ fun main() = application {
     val queue by audioPlayer.queue.collectAsState()
     val isShuffle by audioPlayer.isShuffle.collectAsState()
     val isRepeat by audioPlayer.isRepeat.collectAsState()
+    val playbackSpeed by audioPlayer.playbackSpeed.collectAsState()
+    val sleepTimerRemainingSeconds by audioPlayer.sleepTimerRemainingSeconds.collectAsState()
+    val sleepTimerLabel by audioPlayer.sleepTimerLabel.collectAsState()
     val playlists by libraryManager.playlists.collectAsState()
     val likedSongs by libraryManager.likedSongs.collectAsState()
 
     var selectedTab by remember { mutableStateOf("Home") }
     var isLyricsOpen by remember { mutableStateOf(false) }
     var isQueueOpen by remember { mutableStateOf(false) }
+    var isSearchFocused by remember { mutableStateOf(false) }
+    var isSidebarDialogActive by remember { mutableStateOf(false) }
     var showAuthDialog by remember { mutableStateOf(false) }
     var showSyncDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
@@ -81,9 +86,10 @@ fun main() = application {
 
     // Start sync service, intro splash and check if user needs to sign in on first launch
     LaunchedEffect(Unit) {
+        audioPlayer.libraryManager = libraryManager
         DesktopSyncService.start(libraryManager, currentUser)
         DesktopSyncService.onSyncCompleted = { payload ->
-            toastMessage = "✓ Synced with ${payload.deviceName} (${payload.playlists.size} playlists)!"
+            toastMessage = "✓ Auto-synced with ${payload.deviceName} (${payload.playlists.size} playlists)!"
         }
         DesktopSyncService.onAuthCallbackReceived = { email, name ->
             userManager.signIn(name = name, email = email, isGuest = false)
@@ -161,8 +167,13 @@ fun main() = application {
             title = "Rivara",
             state = windowState,
             onKeyEvent = { keyEvent ->
-                // Spacebar toggles play / pause
-                if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.Spacebar) {
+                val isTextInputActive = isSearchFocused || isSidebarDialogActive ||
+                    showAuthDialog || showSyncDialog || showSettingsDialog ||
+                    showSoundCapsuleDialog || showEqualizerDialog ||
+                    showDeviceSelectorDialog || showPlaylistImportDialog
+
+                // Spacebar toggles play / pause only when NOT typing in a search bar or dialog!
+                if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.Spacebar && !isTextInputActive) {
                     audioPlayer.togglePlayPause()
                     true
                 } else if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.Escape && isFullscreenPlayerOpen) {
@@ -193,7 +204,8 @@ fun main() = application {
                                 onOpenImportPlaylist = { showPlaylistImportDialog = true },
                                 onOpenSoundCapsule = { showSoundCapsuleDialog = true },
                                 onOpenSync = { showSyncDialog = true },
-                                onOpenSettings = { showSettingsDialog = true }
+                                onOpenSettings = { showSettingsDialog = true },
+                                onDialogStateChanged = { isSidebarDialogActive = it }
                             )
 
                             DesktopMainContent(
@@ -221,6 +233,13 @@ fun main() = application {
                                         audioPlayer.play(songs.first())
                                     }
                                 },
+                                onShufflePlay = { songs ->
+                                    if (songs.isNotEmpty()) {
+                                        if (!isShuffle) audioPlayer.toggleShuffle()
+                                        audioPlayer.setQueue(songs)
+                                        audioPlayer.play(songs.random())
+                                    }
+                                },
                                 onPlayNext = { song ->
                                     audioPlayer.playNextInQueue(song)
                                 },
@@ -231,6 +250,7 @@ fun main() = application {
                                 onOpenAuth = { showAuthDialog = true },
                                 onOpenSync = { showSyncDialog = true },
                                 onShareSong = { shareSong(it) },
+                                onSearchFocusChanged = { isSearchFocused = it },
                                 modifier = Modifier.weight(1f)
                             )
 
@@ -268,6 +288,13 @@ fun main() = application {
                             isDownloaded = currentSong?.let { downloadManager.isDownloaded(it.id) } ?: false,
                             isDownloading = currentSong?.let { downloadManager.isDownloading(it.id) } ?: false,
                             themeAccent = themeAccent,
+                            playbackSpeed = playbackSpeed,
+                            onSpeedChange = { audioPlayer.setPlaybackSpeed(it) },
+                            sleepTimerRemainingSeconds = sleepTimerRemainingSeconds,
+                            sleepTimerLabel = sleepTimerLabel,
+                            onSetSleepTimerMinutes = { mins, label -> audioPlayer.setSleepTimerMinutes(mins, label) },
+                            onSetSleepTimerEndOfTrack = { audioPlayer.setSleepTimerEndOfTrack() },
+                            onCancelSleepTimer = { audioPlayer.cancelSleepTimer() },
                             onTogglePlayPause = { audioPlayer.togglePlayPause() },
                             onSkipNext = { audioPlayer.skipNext() },
                             onSkipPrev = { audioPlayer.skipPrev() },
@@ -315,6 +342,13 @@ fun main() = application {
                             lyrics = currentLyrics,
                             queue = queue,
                             downloadManager = downloadManager,
+                            playbackSpeed = playbackSpeed,
+                            onSpeedChange = { audioPlayer.setPlaybackSpeed(it) },
+                            sleepTimerRemainingSeconds = sleepTimerRemainingSeconds,
+                            sleepTimerLabel = sleepTimerLabel,
+                            onSetSleepTimerMinutes = { mins, label -> audioPlayer.setSleepTimerMinutes(mins, label) },
+                            onSetSleepTimerEndOfTrack = { audioPlayer.setSleepTimerEndOfTrack() },
+                            onCancelSleepTimer = { audioPlayer.cancelSleepTimer() },
                             onTogglePlayPause = { audioPlayer.togglePlayPause() },
                             onSkipNext = { audioPlayer.skipNext() },
                             onSkipPrev = { audioPlayer.skipPrev() },
