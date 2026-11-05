@@ -74,6 +74,18 @@ class DesktopUserManager {
         save()
     }
 
+    fun updateProfileName(newName: String) {
+        val current = _currentUser.value ?: return
+        val trimmed = newName.trim()
+        if (trimmed.isBlank()) return
+        val updated = current.copy(name = trimmed)
+        _currentUser.value = updated
+        _savedAccounts.value = _savedAccounts.value.map {
+            if (it.id == updated.id || (it.email.isNotBlank() && it.email.equals(updated.email, ignoreCase = true))) updated else it
+        }
+        save()
+    }
+
     fun switchAccount(user: DesktopUser) {
         _currentUser.value = user
         save()

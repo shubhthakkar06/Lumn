@@ -145,7 +145,7 @@ fun DesktopSettingsDialog(
                                 },
                                 contentPadding = PaddingValues(0.dp)
                             ) {
-                                Text("Accounts", color = Color.Gray, fontSize = 11.sp)
+                                Text("Edit Profile Name", color = themeAccent, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }

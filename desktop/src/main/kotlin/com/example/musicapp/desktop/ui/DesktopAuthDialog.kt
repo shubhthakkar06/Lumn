@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -40,12 +41,16 @@ fun DesktopAuthDialog(
     var isAuthenticating by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
 
+    var isEditingName by remember { mutableStateOf(false) }
+    var editedName by remember(currentUser?.name) { mutableStateOf(currentUser?.name ?: "") }
+    var nameUpdateSuccess by remember { mutableStateOf(false) }
+
     // Known Google accounts available on this machine
     val defaultGoogleAccounts = remember {
         listOf(
             DesktopUser(
                 id = "usr_navya_shubh2006_gmail_com",
-                name = "Navya Shubh",
+                name = "Shubh Thakkar",
                 email = "navya.shubh2006@gmail.com",
                 avatarColorHex = "#4285F4"
             ),
@@ -136,7 +141,184 @@ fun DesktopAuthDialog(
                     color = Color(0xFFA0AAB8)
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Active Profile & Display Name Editor Card
+                if (currentUser != null) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF131A26)),
+                        shape = RoundedCornerShape(14.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x33FFFFFF)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                Brush.linearGradient(
+                                                    listOf(Color(0xFF4285F4), Color(0xFF1ED760))
+                                                )
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = currentUser?.avatarLetter ?: "U",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 18.sp
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "CURRENT PROFILE",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                letterSpacing = 1.2.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 9.5.sp
+                                            ),
+                                            color = Color(0xFF8E9BB0)
+                                        )
+                                        if (!isEditingName) {
+                                            Text(
+                                                text = currentUser?.name ?: "Guest",
+                                                style = MaterialTheme.typography.titleMedium.copy(
+                                                    fontWeight = FontWeight.Bold
+                                                ),
+                                                color = Color.White
+                                            )
+                                        }
+                                        if (currentUser?.email?.isNotBlank() == true) {
+                                            Text(
+                                                text = currentUser!!.email,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color(0xFFA0AAB8)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (!isEditingName) {
+                                    Button(
+                                        onClick = {
+                                            editedName = currentUser?.name ?: ""
+                                            isEditingName = true
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF202A3B)),
+                                        shape = RoundedCornerShape(16.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit Name", tint = Color(0xFF64B5F6), modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text("Edit Name", color = Color(0xFF64B5F6), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
+
+                            if (isEditingName) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF0D121B))
+                                        .border(1.dp, Color(0xFF4285F4), RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    BasicTextField(
+                                        value = editedName,
+                                        onValueChange = { editedName = it },
+                                        singleLine = true,
+                                        textStyle = TextStyle(
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        ),
+                                        cursorBrush = SolidColor(Color(0xFF4285F4)),
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    Button(
+                                        onClick = {
+                                            if (editedName.isNotBlank()) {
+                                                userManager.updateProfileName(editedName)
+                                                isEditingName = false
+                                                nameUpdateSuccess = true
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1ED760)),
+                                        shape = RoundedCornerShape(12.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = Color.Black, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Save", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    }
+
+                                    Spacer(modifier = Modifier.width(4.dp))
+
+                                    TextButton(
+                                        onClick = {
+                                            editedName = currentUser?.name ?: ""
+                                            isEditingName = false
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("Cancel", color = Color.Gray, fontSize = 12.sp)
+                                    }
+                                }
+
+                                if (!editedName.equals("Shubh Thakkar", ignoreCase = true)) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    TextButton(
+                                        onClick = {
+                                            editedName = "Shubh Thakkar"
+                                            userManager.updateProfileName("Shubh Thakkar")
+                                            isEditingName = false
+                                            nameUpdateSuccess = true
+                                        },
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) {
+                                        Text(
+                                            "💡 Quick set name to \"Shubh Thakkar\"",
+                                            color = Color(0xFF64B5F6),
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (nameUpdateSuccess) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "✓ Profile name updated to \"${currentUser?.name}\"!",
+                                    color = Color(0xFF1ED760),
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                }
 
                 // Primary "Sign in with Google in Browser" Button (Always Available)
                 Button(
