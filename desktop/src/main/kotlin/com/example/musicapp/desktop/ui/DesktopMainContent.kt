@@ -79,6 +79,7 @@ fun DesktopMainContent(
     val likedSongs by libraryManager.likedSongs.collectAsState()
     val downloadedSongs by downloadManager.downloadedSongs.collectAsState()
     val downloadingIds by downloadManager.downloadingIds.collectAsState()
+    val isOfflineOnly by downloadManager.isOfflineOnly.collectAsState()
 
     // Filter categories matching Spotify reference (Image 1)
     val categories = listOf("All", "Podcasts & Shows", "Artists", "Songs", "Playlists", "Albums", "Genres & Moods")
@@ -196,6 +197,37 @@ fun DesktopMainContent(
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Offline Mode Quick Toggle Pill
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (isOfflineOnly) Color(0x33FFB300) else Color(0xFF131925))
+                            .border(
+                                0.75.dp,
+                                if (isOfflineOnly) Color(0xFFFFB300) else Color(0x22FFFFFF),
+                                RoundedCornerShape(20.dp)
+                            )
+                            .clickable { downloadManager.toggleOfflineOnly() }
+                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (isOfflineOnly) Icons.Default.CloudOff else Icons.Default.CloudDone,
+                            contentDescription = "Toggle Offline Mode",
+                            tint = if (isOfflineOnly) Color(0xFFFFB300) else Color(0xFF8E9BB0),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isOfflineOnly) "Offline Mode" else "Online",
+                            color = if (isOfflineOnly) Color(0xFFFFB300) else Color(0xFF8E9BB0),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
                     // Sync Pill (Clickable -> Opens Sync Dialog)
                     Row(
                         modifier = Modifier
@@ -296,17 +328,24 @@ fun DesktopMainContent(
 
                 // Liked Songs View
                 selectedTab == "Liked" -> {
+                    val resolvedLikedSongs = likedSongs.map { song ->
+                        val dlPath = downloadManager.getDownloadedFilePath(song.id)
+                        if (dlPath != null) song.copy(audioUrl = dlPath) else song
+                    }
                     LikedSongsView(
-                        likedSongs = likedSongs,
+                        likedSongs = resolvedLikedSongs,
                         currentSong = currentSong,
                         playlists = playlists,
                         themeAccent = themeAccent,
                         downloadManager = downloadManager,
                         onPlaySong = { s ->
-                            val idx = likedSongs.indexOfFirst { it.id == s.id }.coerceAtLeast(0)
-                            onPlaySongWithQueue(s, likedSongs.drop(idx) + likedSongs.take(idx))
+                            val idx = resolvedLikedSongs.indexOfFirst { it.id == s.id }.coerceAtLeast(0)
+                            onPlaySongWithQueue(s, resolvedLikedSongs.drop(idx) + resolvedLikedSongs.take(idx))
                         },
-                        onPlayAll = { onPlayAll(likedSongs) },
+                        onPlayAll = {
+                            val toPlay = if (isOfflineOnly) resolvedLikedSongs.filter { downloadManager.isDownloaded(it.id) } else resolvedLikedSongs
+                            if (toPlay.isNotEmpty()) onPlayAll(toPlay)
+                        },
                         onToggleLike = { libraryManager.toggleLike(it) },
                         onToggleDownload = { s ->
                             if (downloadManager.isDownloaded(s.id)) downloadManager.removeDownload(s.id)
@@ -324,20 +363,30 @@ fun DesktopMainContent(
                     val playlistId = selectedTab.removePrefix("Playlist_")
                     val playlist = playlists.firstOrNull { it.id == playlistId }
                     val playlistSongs = libraryManager.getSongsForPlaylist(playlistId)
+                    val resolvedPlaylistSongs = playlistSongs.map { song ->
+                        val dlPath = downloadManager.getDownloadedFilePath(song.id)
+                        if (dlPath != null) song.copy(audioUrl = dlPath) else song
+                    }
                     PlaylistDetailView(
                         playlist = playlist,
-                        songs = playlistSongs,
+                        songs = resolvedPlaylistSongs,
                         likedSongs = likedSongs,
                         currentSong = currentSong,
                         playlists = playlists,
                         themeAccent = themeAccent,
                         downloadManager = downloadManager,
                         onPlaySong = { s ->
-                            val idx = playlistSongs.indexOfFirst { it.id == s.id }.coerceAtLeast(0)
-                            onPlaySongWithQueue(s, playlistSongs.drop(idx) + playlistSongs.take(idx))
+                            val idx = resolvedPlaylistSongs.indexOfFirst { it.id == s.id }.coerceAtLeast(0)
+                            onPlaySongWithQueue(s, resolvedPlaylistSongs.drop(idx) + resolvedPlaylistSongs.take(idx))
                         },
-                        onPlayAll = { onPlayAll(playlistSongs) },
-                        onShufflePlay = { onShufflePlay(playlistSongs) },
+                        onPlayAll = {
+                            val toPlay = if (isOfflineOnly) resolvedPlaylistSongs.filter { downloadManager.isDownloaded(it.id) } else resolvedPlaylistSongs
+                            if (toPlay.isNotEmpty()) onPlayAll(toPlay)
+                        },
+                        onShufflePlay = {
+                            val toPlay = if (isOfflineOnly) resolvedPlaylistSongs.filter { downloadManager.isDownloaded(it.id) } else resolvedPlaylistSongs
+                            if (toPlay.isNotEmpty()) onShufflePlay(toPlay)
+                        },
                         onRenamePlaylist = { id, newName -> libraryManager.renamePlaylist(id, newName) },
                         onDeletePlaylist = { id ->
                             libraryManager.deletePlaylist(id)
@@ -935,6 +984,7 @@ private fun LikedSongsView(
 ) {
     val downloadedSongs by downloadManager.downloadedSongs.collectAsState()
     val downloadingIds by downloadManager.downloadingIds.collectAsState()
+    val isOfflineOnly by downloadManager.isOfflineOnly.collectAsState()
     val downloadedIds = remember(downloadedSongs) { downloadedSongs.map { it.id }.toSet() }
 
     val downloadedCount = remember(likedSongs, downloadedIds) {
@@ -1111,6 +1161,7 @@ private fun PlaylistDetailView(
 
     val downloadedSongs by downloadManager.downloadedSongs.collectAsState()
     val downloadingIds by downloadManager.downloadingIds.collectAsState()
+    val isOfflineOnly by downloadManager.isOfflineOnly.collectAsState()
     val downloadedIds = remember(downloadedSongs) { downloadedSongs.map { it.id }.toSet() }
 
     val downloadedCount = remember(songs, downloadedIds) { songs.count { downloadedIds.contains(it.id) } }

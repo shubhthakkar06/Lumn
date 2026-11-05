@@ -108,6 +108,7 @@ fun main() {
     // Start sync service, intro splash and check if user needs to sign in on first launch
     LaunchedEffect(Unit) {
         audioPlayer.libraryManager = libraryManager
+        audioPlayer.downloadManager = downloadManager
         DesktopSyncService.start(libraryManager, currentUser)
         DesktopSyncService.onSyncCompleted = { payload ->
             toastMessage = "✓ Auto-synced with ${payload.deviceName} (${payload.playlists.size} playlists)!"

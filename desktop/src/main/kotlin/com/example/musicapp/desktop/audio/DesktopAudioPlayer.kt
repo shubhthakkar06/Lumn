@@ -1,5 +1,6 @@
 package com.example.musicapp.desktop.audio
 
+import com.example.musicapp.desktop.data.DesktopDownloadManager
 import com.example.musicapp.desktop.data.DesktopLibraryManager
 import com.example.musicapp.desktop.data.DesktopMusicRepository
 import com.example.musicapp.desktop.model.DesktopSong
@@ -25,6 +26,7 @@ class DesktopAudioPlayer(
     private val musicRepository: DesktopMusicRepository = DesktopMusicRepository()
 ) {
     var libraryManager: DesktopLibraryManager? = null
+    var downloadManager: DesktopDownloadManager? = null
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val httpClient = OkHttpClient()
@@ -181,74 +183,113 @@ class DesktopAudioPlayer(
         stopCurrentPlayback()
         isIntentionallyStopped = false
         isPaused = false
-        _currentSong.value = song
+
+        val safeId = song.id.replace(Regex("[^a-zA-Z0-9_]"), "_")
+
+        // 1. Resolve local downloaded file first if available (supports offline and offline-mode)!
+        val localDownloadPath = downloadManager?.getDownloadedFilePath(song.id)
+            ?: listOf(
+                File(downloadManager?.downloadDir ?: File(System.getProperty("user.home"), ".rivara/downloads"), "$safeId.m4a"),
+                File(downloadManager?.downloadDir ?: File(System.getProperty("user.home"), ".rivara/downloads"), "$safeId.mp3")
+            ).firstOrNull { it.exists() && it.length() > 50_000 }?.absolutePath
+            ?: song.audioUrl?.takeIf { it.startsWith("/") && File(it).exists() && File(it).length() > 50_000 }
+
+        val isOfflineOnly = downloadManager?.isOfflineOnly?.value == true
+
+        if (localDownloadPath == null && isOfflineOnly) {
+            // Offline Mode is active but this track is not downloaded: try finding next downloaded track in queue!
+            val effectiveQueue = queueContext ?: _queue.value
+            val nextDownloaded = effectiveQueue.dropWhile { it.id != song.id }.drop(1)
+                .firstOrNull { downloadManager?.isDownloaded(it.id) == true }
+                ?: effectiveQueue.firstOrNull { downloadManager?.isDownloaded(it.id) == true }
+
+            if (nextDownloaded != null && nextDownloaded.id != song.id) {
+                play(nextDownloaded, 0L, queueContext)
+                return
+            } else {
+                _currentSong.value = song
+                _isPlaying.value = false
+                return
+            }
+        }
+
+        val effectiveSong = if (localDownloadPath != null) song.copy(audioUrl = localDownloadPath) else song
+        _currentSong.value = effectiveSong
         _progressMs.value = startPositionMs
         _isPlaying.value = true
 
         if (queueContext != null && queueContext.isNotEmpty()) {
             _queue.value = queueContext
-        } else if (_queue.value.none { it.id == song.id }) {
-            _queue.value = listOf(song) + _queue.value
+        } else if (_queue.value.none { it.id == effectiveSong.id }) {
+            _queue.value = listOf(effectiveSong) + _queue.value
         }
 
         playJob?.cancel()
         playJob = scope.launch {
-            var streamUrl = song.audioUrl
-            if (streamUrl.isNullOrBlank() || streamUrl.contains("p.scdn.co/mp3-preview")) {
-                streamUrl = musicRepository.resolveAudioUrl(song)
-                if (!streamUrl.isNullOrBlank()) {
-                    libraryManager?.updateSongAudioUrl(song.id, streamUrl)
-                }
-            }
+            val audioSource: String
+            val remoteStreamUrl: String
 
-            if (streamUrl.isNullOrBlank()) {
-                // If stream resolution completely fails, fallback to virtual progress
-                simulateProgress(song.durationSeconds * 1000L, startPositionMs)
-                return@launch
-            }
-
-            val safeId = song.id.replace(Regex("[^a-zA-Z0-9_]"), "_")
-            val isMp3 = streamUrl.contains(".mp3", ignoreCase = true)
-            val ext = if (isMp3) "mp3" else "m4a"
-            val targetFile = File(cacheDir, "$safeId.$ext")
-            val tmpFile = File(cacheDir, "$safeId.tmp")
-
-            val isCachedValid = targetFile.exists() && targetFile.length() > 500_000
-            val audioSource = if (isCachedValid) {
-                targetFile.absolutePath
+            if (localDownloadPath != null) {
+                // Play directly from pristine downloaded audio file! Zero network, full offline capability.
+                audioSource = localDownloadPath
+                remoteStreamUrl = localDownloadPath
             } else {
-                if (targetFile.exists()) targetFile.delete()
-                streamUrl
-            }
+                var streamUrl = song.audioUrl
+                if (streamUrl.isNullOrBlank() || streamUrl.contains("p.scdn.co/mp3-preview") || streamUrl.contains("spotify.com")) {
+                    streamUrl = musicRepository.resolveAudioUrl(song)
+                    if (!streamUrl.isNullOrBlank()) {
+                        libraryManager?.updateSongAudioUrl(song.id, streamUrl)
+                    }
+                }
 
-            // Cache in background for offline / replay using atomic .tmp rename
-            if (!isCachedValid && !tmpFile.exists()) {
-                scope.launch(Dispatchers.IO) {
-                    try {
-                        val req = Request.Builder()
-                            .url(streamUrl)
-                            .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
-                            .build()
-                        val res = httpClient.newCall(req).execute()
-                        if (res.isSuccessful) {
-                            res.body?.byteStream()?.use { input ->
-                                FileOutputStream(tmpFile).use { output ->
-                                    input.copyTo(output)
+                if (streamUrl.isNullOrBlank()) {
+                    simulateProgress(song.durationSeconds * 1000L, startPositionMs)
+                    return@launch
+                }
+
+                remoteStreamUrl = streamUrl
+                val isMp3 = streamUrl.contains(".mp3", ignoreCase = true)
+                val ext = if (isMp3) "mp3" else "m4a"
+                val targetFile = File(cacheDir, "$safeId.$ext")
+                val tmpFile = File(cacheDir, "$safeId.tmp")
+
+                val isCachedValid = targetFile.exists() && targetFile.length() > 500_000
+                audioSource = if (isCachedValid) {
+                    targetFile.absolutePath
+                } else {
+                    if (targetFile.exists()) targetFile.delete()
+                    streamUrl
+                }
+
+                // Cache in background for offline / replay using atomic .tmp rename
+                if (!isCachedValid && !tmpFile.exists() && !isOfflineOnly) {
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            val req = Request.Builder()
+                                .url(streamUrl)
+                                .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
+                                .build()
+                            val res = httpClient.newCall(req).execute()
+                            if (res.isSuccessful) {
+                                res.body?.byteStream()?.use { input ->
+                                    FileOutputStream(tmpFile).use { output ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                                if (tmpFile.length() > 500_000) {
+                                    tmpFile.renameTo(targetFile)
+                                } else {
+                                    tmpFile.delete()
                                 }
                             }
-                            if (tmpFile.length() > 500_000) {
-                                tmpFile.renameTo(targetFile)
-                            } else {
-                                tmpFile.delete()
-                            }
+                        } catch (_: Exception) {
+                            try { tmpFile.delete() } catch (_: Exception) {}
                         }
-                    } catch (_: Exception) {
-                        try { tmpFile.delete() } catch (_: Exception) {}
                     }
                 }
             }
 
-            startDirectPcmEngine(audioSource, streamUrl, startPositionMs, song.durationSeconds * 1000L)
+            startDirectPcmEngine(audioSource, remoteStreamUrl, startPositionMs, song.durationSeconds * 1000L)
         }
     }
 
@@ -369,10 +410,12 @@ class DesktopAudioPlayer(
                 if (bytesWritten == 0L) {
                     simulateProgress(totalDurationMs, startPositionMs)
                 } else if (!reachedEnd && audioSource != remoteStreamUrl && audioSource.startsWith("/")) {
-                    // Local cached file truncated/corrupt! Delete it and seamlessly retry from remote URL
-                    println("Local cached audio ended prematurely at $playedMs ms / $totalDurationMs ms. Retrying directly from remote stream.")
-                    try { File(audioSource).delete() } catch (_: Exception) {}
-                    startDirectPcmEngine(remoteStreamUrl, remoteStreamUrl, playedMs, totalDurationMs)
+                    val isDownloadFile = audioSource.contains("/.rivara/downloads/")
+                    if (!isDownloadFile) {
+                        println("Local cached audio ended prematurely at $playedMs ms / $totalDurationMs ms. Retrying directly from remote stream.")
+                        try { File(audioSource).delete() } catch (_: Exception) {}
+                        startDirectPcmEngine(remoteStreamUrl, remoteStreamUrl, playedMs, totalDurationMs)
+                    }
                 } else if (reachedEnd) {
                     line.drain()
                     withContext(Dispatchers.Main) {
@@ -486,24 +529,36 @@ class DesktopAudioPlayer(
     fun skipNext() {
         val q = _queue.value
         if (q.isEmpty()) return
+        val isOfflineOnly = downloadManager?.isOfflineOnly?.value == true
+        val candidateQueue = if (isOfflineOnly) {
+            val dl = q.filter { downloadManager?.isDownloaded(it.id) == true }
+            if (dl.isNotEmpty()) dl else q
+        } else q
+
         if (_isShuffle.value) {
-            val unplayed = q.filter { it.id != _currentSong.value?.id }
+            val unplayed = candidateQueue.filter { it.id != _currentSong.value?.id }
             if (unplayed.isNotEmpty()) {
                 play(unplayed.random())
                 return
             }
         }
-        val currentIndex = q.indexOfFirst { it.id == _currentSong.value?.id }
-        val nextIndex = (currentIndex + 1).takeIf { it in q.indices } ?: 0
-        play(q[nextIndex])
+        val currentIndex = candidateQueue.indexOfFirst { it.id == _currentSong.value?.id }
+        val nextIndex = (currentIndex + 1).takeIf { it in candidateQueue.indices } ?: 0
+        play(candidateQueue[nextIndex])
     }
 
     fun skipPrev() {
         val q = _queue.value
         if (q.isEmpty()) return
-        val currentIndex = q.indexOfFirst { it.id == _currentSong.value?.id }
-        val prevIndex = (currentIndex - 1).takeIf { it in q.indices } ?: (q.size - 1)
-        play(q[prevIndex])
+        val isOfflineOnly = downloadManager?.isOfflineOnly?.value == true
+        val candidateQueue = if (isOfflineOnly) {
+            val dl = q.filter { downloadManager?.isDownloaded(it.id) == true }
+            if (dl.isNotEmpty()) dl else q
+        } else q
+
+        val currentIndex = candidateQueue.indexOfFirst { it.id == _currentSong.value?.id }
+        val prevIndex = (currentIndex - 1).takeIf { it in candidateQueue.indices } ?: (candidateQueue.size - 1)
+        play(candidateQueue[prevIndex])
     }
 
     private fun stopCurrentPlayback() {

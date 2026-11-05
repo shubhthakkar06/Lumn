@@ -26,6 +26,7 @@ class DesktopDownloadManager(
 
     val downloadDir = File(System.getProperty("user.home"), ".rivara/downloads").apply { mkdirs() }
     private val metadataFile = File(downloadDir, "downloaded_songs.json")
+    private val settingsFile = File(downloadDir, "offline_settings.json")
 
     private val _downloadedSongs = MutableStateFlow<List<DesktopSong>>(emptyList())
     val downloadedSongs: StateFlow<List<DesktopSong>> = _downloadedSongs.asStateFlow()
@@ -40,14 +41,39 @@ class DesktopDownloadManager(
 
     init {
         loadMetadata()
+        loadSettings()
     }
 
     fun toggleOfflineOnly() {
         _isOfflineOnly.value = !_isOfflineOnly.value
+        saveSettings()
+    }
+
+    fun setOfflineOnly(enabled: Boolean) {
+        _isOfflineOnly.value = enabled
+        saveSettings()
+    }
+
+    fun getDownloadedSong(songId: String): DesktopSong? {
+        return _downloadedSongs.value.firstOrNull { it.id == songId }
+    }
+
+    fun getDownloadedFilePath(songId: String): String? {
+        val downloaded = _downloadedSongs.value.firstOrNull { it.id == songId }
+        val path = downloaded?.audioUrl
+        if (path != null && File(path).exists() && File(path).length() > 50_000) {
+            return path
+        }
+        val safeId = songId.replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val m4a = File(downloadDir, "$safeId.m4a")
+        if (m4a.exists() && m4a.length() > 50_000) return m4a.absolutePath
+        val mp3 = File(downloadDir, "$safeId.mp3")
+        if (mp3.exists() && mp3.length() > 50_000) return mp3.absolutePath
+        return null
     }
 
     fun isDownloaded(songId: String): Boolean {
-        return _downloadedSongs.value.any { it.id == songId }
+        return getDownloadedFilePath(songId) != null
     }
 
     fun isDownloading(songId: String): Boolean {
@@ -182,6 +208,21 @@ class DesktopDownloadManager(
     private fun saveMetadata() {
         try {
             metadataFile.writeText(json.encodeToString(_downloadedSongs.value))
+        } catch (_: Exception) {}
+    }
+
+    private fun loadSettings() {
+        try {
+            if (settingsFile.exists()) {
+                val text = settingsFile.readText().trim()
+                _isOfflineOnly.value = text.toBooleanStrictOrNull() ?: false
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun saveSettings() {
+        try {
+            settingsFile.writeText(_isOfflineOnly.value.toString())
         } catch (_: Exception) {}
     }
 }
