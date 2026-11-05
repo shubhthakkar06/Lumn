@@ -19,7 +19,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -83,108 +85,134 @@ fun DesktopPlayerBar(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(92.dp),
-        color = Color(0xFF181818),
-        shadowElevation = 8.dp
+            .height(94.dp)
+            .drawBehind {
+                drawLine(
+                    brush = Brush.horizontalGradient(
+                        listOf(Color(0x18FFFFFF), themeAccent.copy(alpha = 0.45f), Color(0x18FFFFFF))
+                    ),
+                    start = Offset(0f, 0f),
+                    end = Offset(size.width, 0f),
+                    strokeWidth = 1f
+                )
+            },
+        color = Color(0xFF0C1018)
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF131926), Color(0xFF090D14))
+                    )
+                )
         ) {
-            // Left Section: Album Art & Track Info (Clickable -> Opens Fullscreen Player)
             Row(
                 modifier = Modifier
-                    .width(300.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(onClick = onOpenFullscreen),
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Box(
+                // Left Section: Album Art & Track Info (Clickable -> Opens Fullscreen Player)
+                Row(
                     modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF282828)),
-                    contentAlignment = Alignment.Center
+                        .width(300.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onOpenFullscreen)
+                        .padding(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val localAsset = when {
-                        currentSong?.id == "baps_ep_aksharatitdas" || currentSong?.title?.contains("અક્ષરાતીતદાસ") == true -> "assets/aksharatitdas_episode.png"
-                        currentSong?.id == "baps_ep_uttamcharan" || currentSong?.title?.contains("ઉત્તમયોગીદાસ") == true -> "assets/uttamyogidas_episode.png"
-                        currentSong?.id == "baps_ep_atmatruptdas" || currentSong?.title?.contains("આત્મતૃપ્તદાસ") == true || currentSong?.title?.contains("Atmatruptdas") == true -> "assets/atmatruptdas_episode.png"
-                        currentSong?.id == "baps_ep_1" || currentSong?.title?.contains("Somprakashdas") == true || currentSong?.title?.contains("સોમપ્રકાશદાસ") == true -> "assets/somprakashdas_episode.png"
-                        currentSong?.albumArtUrl?.startsWith("assets/") == true -> currentSong.albumArtUrl
-                        else -> null
-                    }
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF1B2230)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val localAsset = when {
+                            currentSong?.id == "baps_ep_aksharatitdas" || currentSong?.title?.contains("અક્ષરાતીતદાસ") == true -> "assets/aksharatitdas_episode.png"
+                            currentSong?.id == "baps_ep_uttamcharan" || currentSong?.title?.contains("ઉત્તમયોગીદાસ") == true -> "assets/uttamyogidas_episode.png"
+                            currentSong?.id == "baps_ep_atmatruptdas" || currentSong?.title?.contains("આત્મતૃપ્તદાસ") == true || currentSong?.title?.contains("Atmatruptdas") == true -> "assets/atmatruptdas_episode.png"
+                            currentSong?.id == "baps_ep_1" || currentSong?.title?.contains("Somprakashdas") == true || currentSong?.title?.contains("સોમપ્રકાશદાસ") == true -> "assets/somprakashdas_episode.png"
+                            currentSong?.albumArtUrl?.startsWith("assets/") == true -> currentSong.albumArtUrl
+                            else -> null
+                        }
 
-                    if (localAsset != null) {
-                        Image(
-                            painter = painterResource(localAsset),
-                            contentDescription = currentSong?.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else if (currentSong != null && currentSong.albumArtUrl.isNotBlank()) {
-                        AsyncImage(
-                            model = currentSong.albumArtUrl,
-                            contentDescription = currentSong.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.MusicNote,
-                            contentDescription = null,
-                            tint = Color.Gray,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(14.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = currentSong?.title ?: "Select a track to play",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = currentSong?.artist ?: "Rivara Desktop",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFAAAAAA),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                if (currentSong != null) {
-                    IconButton(onClick = onToggleLike, modifier = Modifier.size(32.dp)) {
-                        Icon(
-                            imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "Like",
-                            tint = if (isLiked) themeAccent else Color.Gray,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    IconButton(onClick = onToggleDownload, modifier = Modifier.size(32.dp)) {
-                        if (isDownloading) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = themeAccent, strokeWidth = 2.dp)
+                        if (localAsset != null) {
+                            Image(
+                                painter = painterResource(localAsset),
+                                contentDescription = currentSong?.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else if (currentSong != null && currentSong.albumArtUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = currentSong.albumArtUrl,
+                                contentDescription = currentSong.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
                         } else {
                             Icon(
-                                imageVector = if (isDownloaded) Icons.Default.CheckCircle else Icons.Default.ArrowCircleDown,
-                                contentDescription = if (isDownloaded) "Downloaded" else "Download",
-                                tint = if (isDownloaded) themeAccent else Color.Gray,
-                                modifier = Modifier.size(20.dp)
+                                imageVector = Icons.Default.MusicNote,
+                                contentDescription = null,
+                                tint = Color(0xFF6B788A),
+                                modifier = Modifier.size(28.dp)
                             )
                         }
                     }
+
+                    Spacer(modifier = Modifier.width(14.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = currentSong?.title ?: "Select a track to play",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            if (isPlaying && currentSong != null) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                DesktopEqualizerBars(color = themeAccent)
+                            }
+                        }
+                        Text(
+                            text = currentSong?.artist ?: "Rivara Studio",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF8E9BB0),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    if (currentSong != null) {
+                        IconButton(onClick = onToggleLike, modifier = Modifier.size(32.dp)) {
+                            Icon(
+                                imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = "Like",
+                                tint = if (isLiked) themeAccent else Color(0xFF7E8D9F),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        IconButton(onClick = onToggleDownload, modifier = Modifier.size(32.dp)) {
+                            if (isDownloading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = themeAccent, strokeWidth = 2.dp)
+                            } else {
+                                Icon(
+                                    imageVector = if (isDownloaded) Icons.Default.CheckCircle else Icons.Default.ArrowCircleDown,
+                                    contentDescription = if (isDownloaded) "Downloaded" else "Download",
+                                    tint = if (isDownloaded) themeAccent else Color(0xFF7E8D9F),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
                 }
-            }
 
             // Center Section: Transport Controls & Animated Wavy Slider
             Column(
@@ -211,10 +239,10 @@ fun DesktopPlayerBar(
                     // Play/Pause circular button
                     Button(
                         onClick = onTogglePlayPause,
-                        modifier = Modifier.size(42.dp),
+                        modifier = Modifier.size(46.dp),
                         shape = CircleShape,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.White,
+                            containerColor = themeAccent,
                             contentColor = Color.Black
                         ),
                         contentPadding = PaddingValues(0.dp)
@@ -451,6 +479,8 @@ fun DesktopPlayerBar(
             }
         }
     }
+}
+
 }
 
 @Composable

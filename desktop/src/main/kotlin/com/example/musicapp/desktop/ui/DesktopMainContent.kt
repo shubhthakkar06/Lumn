@@ -85,12 +85,15 @@ fun DesktopMainContent(
 
     val popularArtists = remember {
         listOf(
-            DesktopArtistHighlight("Coldplay", "https://c.saavncdn.com/artists/Coldplay_002_20240909072937_500x500.jpg", 0xFF00E5FF),
-            DesktopArtistHighlight("Arijit Singh", "https://c.saavncdn.com/artists/Arijit_Singh_002_20230323062147_500x500.jpg", 0xFFE040FB),
-            DesktopArtistHighlight("The Weeknd", "https://c.saavncdn.com/artists/The_Weeknd_002_20230323065330_500x500.jpg", 0xFFFFD700),
-            DesktopArtistHighlight("Dua Lipa", "https://c.saavncdn.com/artists/Dua_Lipa_004_20230323063517_500x500.jpg", 0xFFFF4081),
+            DesktopArtistHighlight("Coldplay", "https://c.saavncdn.com/artists/Coldplay_002_20241003070447_500x500.jpg", 0xFF00E5FF),
+            DesktopArtistHighlight("Arijit Singh", "https://c.saavncdn.com/artists/Arijit_Singh_004_20241118063717_500x500.jpg", 0xFFE040FB),
+            DesktopArtistHighlight("The Weeknd", "https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg", 0xFFFFD700),
+            DesktopArtistHighlight("Dua Lipa", "https://i.ytimg.com/vi/k2qgadSvNyU/hqdefault.jpg", 0xFFFF4081),
             DesktopArtistHighlight("Atif Aslam", "https://c.saavncdn.com/artists/Atif_Aslam_500x500.jpg", 0xFF69F0AE),
-            DesktopArtistHighlight("Pritam", "https://c.saavncdn.com/artists/Pritam_500x500.jpg", 0xFFFFAB40),
+            DesktopArtistHighlight("Pritam", "https://c.saavncdn.com/artists/Pritam_Chakraborty-20170711073326_500x500.jpg", 0xFFFFAB40),
+            DesktopArtistHighlight("Taylor Swift", "https://c.saavncdn.com/artists/Taylor_Swift_003_20200226074119_500x500.jpg", 0xFFBA68C8),
+            DesktopArtistHighlight("Ed Sheeran", "https://i.ytimg.com/vi/lp-EO5I60KA/hqdefault.jpg", 0xFFFF7043),
+            DesktopArtistHighlight("Shreya Ghoshal", "https://i.ytimg.com/vi/inEu2qQuGZ8/hqdefault.jpg", 0xFF26C6DA),
             DesktopArtistHighlight("Sadhus of BAPS", "assets/sadhus_of_baps.png", 0xFFFF9100)
         )
     }
@@ -131,7 +134,7 @@ fun DesktopMainContent(
 
     Surface(
         modifier = modifier.fillMaxSize(),
-        color = Color(0xFF121212)
+        color = Color.Transparent
     ) {
         Column(
             modifier = Modifier
@@ -166,20 +169,20 @@ fun DesktopMainContent(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(50.dp)
-                                .background(Color(0xFF1E1E1E), shape = RoundedCornerShape(25.dp))
+                                .background(Color(0xFF111722), shape = RoundedCornerShape(25.dp))
                                 .border(
                                     1.dp,
-                                    if (searchQuery.isNotBlank()) themeAccent else Color(0xFF2E2E2E),
+                                    if (searchQuery.isNotBlank()) themeAccent else Color(0x24FFFFFF),
                                     RoundedCornerShape(25.dp)
                                 )
                                 .padding(horizontal = 16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF7E8C9F), modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(10.dp))
                             Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
                                 if (searchQuery.isEmpty()) {
-                                    Text("What do you want to play? (Songs, Artists, Podcasts)", color = Color.Gray, fontSize = 13.5.sp)
+                                    Text("What do you want to play? (Songs, Artists, Podcasts)", color = Color(0xFF7E8C9F), fontSize = 13.5.sp)
                                 }
                                 innerTextField()
                             }
@@ -197,23 +200,31 @@ fun DesktopMainContent(
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
-                            .background(Color(0xFF1E1E1E))
+                            .background(Color(0xFF131925))
+                            .border(0.75.dp, Color(0x22FFFFFF), RoundedCornerShape(20.dp))
                             .clickable(onClick = onOpenSync)
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF1ED760))
+                        )
+                        Spacer(modifier = Modifier.width(7.dp))
                         Icon(
                             imageVector = Icons.Default.Sync,
                             contentDescription = "Sync Devices",
                             tint = themeAccent,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(15.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Sync",
+                            text = "Cloud Sync",
                             color = Color.White,
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp
+                            fontSize = 12.5.sp
                         )
                     }
 
@@ -223,31 +234,36 @@ fun DesktopMainContent(
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
-                            .background(Color(0xFF1E1E1E))
+                            .background(Color(0xFF131925))
+                            .border(0.75.dp, Color(0x22FFFFFF), RoundedCornerShape(20.dp))
                             .clickable(onClick = onOpenAuth)
-                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                            .padding(horizontal = 13.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
                                 .size(28.dp)
                                 .clip(CircleShape)
-                                .background(themeAccent),
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(themeAccent, Color(0xFF4285F4))
+                                    )
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = currentUser?.avatarLetter ?: "S",
-                                color = Color.Black,
+                                text = currentUser?.avatarLetter ?: "G",
+                                color = Color.White,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
+                                fontSize = 13.5.sp
                             )
                         }
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(9.dp))
                         Text(
                             text = currentUser?.name ?: "Sign In",
                             color = Color.White,
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp
+                            fontSize = 13.sp
                         )
                     }
                 }
@@ -357,7 +373,7 @@ fun DesktopMainContent(
 
                 // Home or Search View
                 else -> {
-                    // Category Filter Pills matching Image 1
+                    // Category Filter Pills
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
@@ -366,16 +382,29 @@ fun DesktopMainContent(
                             val isSelected = category == selectedCategory
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(if (isSelected) themeAccent else Color(0xFF282828))
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(
+                                        if (isSelected) {
+                                            Brush.horizontalGradient(
+                                                listOf(themeAccent, themeAccent.copy(alpha = 0.85f))
+                                            )
+                                        } else {
+                                            SolidColor(Color(0xFF131925))
+                                        }
+                                    )
+                                    .border(
+                                        0.75.dp,
+                                        if (isSelected) themeAccent else Color(0x22FFFFFF),
+                                        RoundedCornerShape(18.dp)
+                                    )
                                     .clickable {
                                         selectedCategory = category
                                     }
-                                    .padding(horizontal = 14.dp, vertical = 7.dp)
+                                    .padding(horizontal = 16.dp, vertical = 7.5.dp)
                             ) {
                                 Text(
                                     text = category,
-                                    color = if (isSelected) Color.Black else Color.White,
+                                    color = if (isSelected) Color.Black else Color(0xFFC0CAD6),
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     fontSize = 12.5.sp
                                 )
@@ -390,6 +419,26 @@ fun DesktopMainContent(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         contentPadding = PaddingValues(bottom = 120.dp)
                     ) {
+                        // Aesthetic Hero Banner on Home
+                        if (searchQuery.isBlank() && selectedCategory == "All") {
+                            item {
+                                DesktopAestheticHeroBanner(
+                                    themeAccent = themeAccent,
+                                    onPlayMix = {
+                                        if (displayedSongs.isNotEmpty()) {
+                                            onPlaySongWithQueue(displayedSongs.first(), displayedSongs)
+                                        }
+                                    },
+                                    onShuffleMix = {
+                                        if (displayedSongs.isNotEmpty()) {
+                                            onShufflePlay(displayedSongs)
+                                        }
+                                    }
+                                )
+                                Spacer(modifier = Modifier.height(14.dp))
+                            }
+                        }
+
                         // If searching BAPS / Satsang: Render Spotify-style Top Result Show Card + Artist Card (Image 1)
                         if (isBapsQuery && (selectedCategory == "All" || selectedCategory == "Podcasts & Shows")) {
                             item {
@@ -583,9 +632,24 @@ fun DesktopMainContent(
                                                         .size(76.dp)
                                                         .clip(CircleShape)
                                                         .border(2.dp, Color(artist.borderColorHex), CircleShape)
-                                                        .background(Color(0xFF282828)),
+                                                        .background(
+                                                            Brush.radialGradient(
+                                                                listOf(
+                                                                    Color(artist.borderColorHex).copy(alpha = 0.35f),
+                                                                    Color(0xFF161B26)
+                                                                )
+                                                            )
+                                                        ),
                                                     contentAlignment = Alignment.Center
                                                 ) {
+                                                    // Stylized glowing initial fallback behind image
+                                                    Text(
+                                                        text = artist.name.take(1),
+                                                        color = Color(artist.borderColorHex),
+                                                        fontSize = 26.sp,
+                                                        fontWeight = FontWeight.Black
+                                                    )
+
                                                     if (artist.imageUrl.startsWith("assets/")) {
                                                         Image(
                                                             painter = painterResource(artist.imageUrl),
@@ -1411,6 +1475,159 @@ private fun LibraryOverviewView(
                         }
                         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DesktopAestheticHeroBanner(
+    themeAccent: Color,
+    onPlayMix: () -> Unit,
+    onShuffleMix: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(212.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFF0F1728),
+                            Color(0xFF151D33),
+                            themeAccent.copy(alpha = 0.32f),
+                            Color(0xFF1E1338)
+                        )
+                    )
+                )
+                .border(
+                    width = 1.dp,
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0x33FFFFFF),
+                            themeAccent.copy(alpha = 0.45f),
+                            Color(0x1AFFFFFF)
+                        )
+                    ),
+                    shape = RoundedCornerShape(20.dp)
+                )
+                .padding(22.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1.3f),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    // Badge
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color(0x28FFFFFF))
+                            .border(0.5.dp, Color(0x3AFFFFFF), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 10.dp, vertical = 3.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(themeAccent)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "RIVARA STUDIO • DAILY FLOW",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.2.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = "Vibe, Stream & Transcend",
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = (-0.5).sp
+                        ),
+                        color = Color.White
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "Lossless audio streaming • Seamless cloud sync with your phone • 170+ tracks ready offline",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFBDC7D5),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(
+                            onClick = onPlayMix,
+                            shape = RoundedCornerShape(24.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = themeAccent,
+                                contentColor = Color.White
+                            ),
+                            contentPadding = PaddingValues(horizontal = 22.dp, vertical = 10.dp)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Play Daily Mix", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                        }
+
+                        OutlinedButton(
+                            onClick = onShuffleMix,
+                            shape = RoundedCornerShape(24.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66FFFFFF)),
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
+                        ) {
+                            Icon(Icons.Default.Shuffle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Shuffle", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Color.White)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Right Phone App Logo Spotlight Card
+                Box(
+                    modifier = Modifier
+                        .size(124.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(themeAccent.copy(alpha = 0.22f), Color(0x334285F4))
+                            )
+                        )
+                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(18.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource("assets/rivara_launcher_icon.png"),
+                        contentDescription = "Rivara",
+                        modifier = Modifier
+                            .size(96.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                    )
                 }
             }
         }

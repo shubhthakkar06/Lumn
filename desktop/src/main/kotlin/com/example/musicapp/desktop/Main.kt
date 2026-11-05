@@ -15,8 +15,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,10 +34,29 @@ import com.example.musicapp.desktop.theme.DesktopThemeManager
 import com.example.musicapp.desktop.ui.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.awt.Taskbar
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import javax.imageio.ImageIO
 
-fun main() = application {
+fun main() {
+    try {
+        if (Taskbar.isTaskbarSupported()) {
+            val taskbar = Taskbar.getTaskbar()
+            if (taskbar.isSupported(Taskbar.Feature.ICON_IMAGE)) {
+                val iconStream = Thread.currentThread().contextClassLoader.getResourceAsStream("assets/rivara_launcher_icon.png")
+                    ?: object {}.javaClass.getResourceAsStream("/assets/rivara_launcher_icon.png")
+                if (iconStream != null) {
+                    val iconImage = ImageIO.read(iconStream)
+                    if (iconImage != null) {
+                        taskbar.iconImage = iconImage
+                    }
+                }
+            }
+        }
+    } catch (_: Throwable) {}
+
+    application {
     val windowState = rememberWindowState(width = 1260.dp, height = 860.dp)
     var isWindowVisible by remember { mutableStateOf(true) }
 
@@ -165,6 +186,7 @@ fun main() = application {
         Window(
             onCloseRequest = { isWindowVisible = false }, // Close to macOS menu bar tray
             title = "Rivara",
+            icon = painterResource("assets/rivara_launcher_icon.png"),
             state = windowState,
             onKeyEvent = { keyEvent ->
                 val isTextInputActive = isSearchFocused || isSidebarDialogActive ||
@@ -190,7 +212,19 @@ fun main() = application {
                 )
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    Column(modifier = Modifier.fillMaxSize().background(Color(0xFF121212))) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        Color(0xFF090D14),
+                                        Color(0xFF0D121B),
+                                        Color(0xFF0B0E16)
+                                    )
+                                )
+                            )
+                    ) {
                         // Top Area: Sidebar + Main Content + Lyrics/Queue Side Panel
                         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                             DesktopSidebar(
@@ -198,6 +232,8 @@ fun main() = application {
                                 onTabSelected = { selectedTab = it },
                                 playlists = playlists,
                                 themeAccent = themeAccent,
+                                currentUser = currentUser,
+                                onOpenAuth = { showAuthDialog = true },
                                 onCreatePlaylist = { name ->
                                     libraryManager.createPlaylist(name)
                                 },
@@ -472,3 +508,6 @@ fun main() = application {
         }
     }
 }
+}
+
+

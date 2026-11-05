@@ -41,6 +41,7 @@ compose.desktop {
             macOS {
                 bundleID = "com.example.musicapp.desktop"
                 dockName = "Rivara"
+                iconFile.set(project.file("src/main/resources/assets/Rivara.icns"))
             }
         }
     }

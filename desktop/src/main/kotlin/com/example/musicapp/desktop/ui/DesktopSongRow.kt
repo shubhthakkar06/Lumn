@@ -1,7 +1,9 @@
 package com.example.musicapp.desktop.ui
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -24,6 +27,42 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.example.musicapp.desktop.model.DesktopPlaylist
 import com.example.musicapp.desktop.model.DesktopSong
+
+@Composable
+fun DesktopEqualizerBars(
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    val transition = rememberInfiniteTransition(label = "eqBars")
+    val h1 by transition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(tween(420, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "h1"
+    )
+    val h2 by transition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 0.2f,
+        animationSpec = infiniteRepeatable(tween(330, easing = LinearOutSlowInEasing), RepeatMode.Reverse),
+        label = "h2"
+    )
+    val h3 by transition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(510, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "h3"
+    )
+
+    Row(
+        modifier = modifier.height(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.5.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Box(Modifier.width(3.dp).fillMaxHeight(h1).clip(RoundedCornerShape(1.5.dp)).background(color))
+        Box(Modifier.width(3.dp).fillMaxHeight(h2).clip(RoundedCornerShape(1.5.dp)).background(color))
+        Box(Modifier.width(3.dp).fillMaxHeight(h3).clip(RoundedCornerShape(1.5.dp)).background(color))
+    }
+}
 
 @Composable
 fun DesktopSongRow(
@@ -50,30 +89,38 @@ fun DesktopSongRow(
     var showMenu by remember { mutableStateOf(false) }
     var showPlaylistSubmenu by remember { mutableStateOf(false) }
 
+    val rowModifier = if (isCurrent) {
+        Modifier
+            .background(
+                Brush.horizontalGradient(
+                    listOf(themeAccent.copy(alpha = 0.16f), themeAccent.copy(alpha = 0.03f))
+                )
+            )
+            .border(0.75.dp, themeAccent.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+    } else {
+        Modifier.background(Color.Transparent)
+    }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (isCurrent) themeAccent.copy(alpha = 0.15f) else Color.Transparent)
+            .clip(RoundedCornerShape(10.dp))
+            .then(rowModifier)
             .clickable(onClick = onPlay)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Track number or playing equalizer indicator
-        if (isCurrent) {
-            Icon(
-                imageVector = Icons.Default.Equalizer,
-                contentDescription = "Playing",
-                tint = themeAccent,
-                modifier = Modifier.width(32.dp).size(18.dp)
-            )
-        } else {
-            Text(
-                text = "${index + 1}",
-                color = Color.Gray,
-                modifier = Modifier.width(32.dp),
-                style = MaterialTheme.typography.bodyMedium
-            )
+        // Track number or playing animated equalizer
+        Box(modifier = Modifier.width(32.dp), contentAlignment = Alignment.CenterStart) {
+            if (isCurrent) {
+                DesktopEqualizerBars(color = themeAccent)
+            } else {
+                Text(
+                    text = "${index + 1}",
+                    color = Color(0xFF78859B),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                )
+            }
         }
 
         // Thumbnail Album Art
