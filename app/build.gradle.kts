@@ -14,8 +14,8 @@ android {
         applicationId = "com.example.musicapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 41
-        versionName = "2.9.0"
+        versionCode = 42
+        versionName = "3.0.0"
     }
 
     signingConfigs {
@@ -32,7 +32,9 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 shrinking/optimisation: smaller APK and faster code. Rules in proguard-rules.pro.
+            isMinifyEnabled = true
+            isShrinkResources = true
             val releaseConfig = signingConfigs.getByName("release")
             signingConfig = if (releaseConfig.storeFile != null && releaseConfig.storeFile!!.exists()) {
                 releaseConfig
@@ -84,6 +86,8 @@ kotlin {
 }
 
 dependencies {
+  implementation(project(":core"))
+
   val composeBom = platform(libs.androidx.compose.bom)
   implementation(composeBom)
   androidTestImplementation(composeBom)
@@ -134,6 +138,9 @@ dependencies {
   implementation("androidx.media3:media3-datasource:1.6.0")
   implementation("androidx.media3:media3-datasource-okhttp:1.6.0")
   implementation("androidx.media3:media3-database:1.6.0")
+
+  // Installs the startup profiles shipped with Compose and other libraries on first launch.
+  implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 
   // Background downloads that survive the app closing
   implementation("androidx.work:work-runtime-ktx:2.10.1")

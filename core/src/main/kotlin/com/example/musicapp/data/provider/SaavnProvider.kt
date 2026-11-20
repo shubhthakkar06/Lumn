@@ -46,12 +46,9 @@ class SaavnProvider(
             val spec = SecretKeySpec(key, "DES")
             val cipher = Cipher.getInstance("DES/ECB/PKCS5Padding")
             cipher.init(Cipher.DECRYPT_MODE, spec)
-            val decoded = try {
-                Base64.getDecoder().decode(encryptedMediaUrl.trim())
-            } catch (e: Exception) {
-                // Fallback for Android legacy base64 if needed
-                android.util.Base64.decode(encryptedMediaUrl.trim(), android.util.Base64.DEFAULT)
-            }
+            // okio's decoder works on every Android version and on the desktop JVM.
+            val decoded = okio.ByteString.Companion.run { encryptedMediaUrl.trim().decodeBase64() }?.toByteArray()
+                ?: return ""
             val decrypted = cipher.doFinal(decoded)
             val rawUrl = String(decrypted, Charsets.UTF_8)
             rawUrl.replace("_96.mp4", "_320.mp4")
@@ -87,7 +84,7 @@ class SaavnProvider(
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.w("SaavnProvider", "Search failed", e)
+            System.err.println("SaavnProvider search failed: ${e.message}")
         }
         results
     }

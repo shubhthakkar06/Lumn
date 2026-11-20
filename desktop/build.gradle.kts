@@ -10,6 +10,7 @@ kotlin {
 }
 
 dependencies {
+    implementation(project(":core"))
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation(compose.materialIconsExtended)
@@ -34,7 +35,7 @@ compose.desktop {
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Pkg
             )
             packageName = "Rivara"
-            packageVersion = "2.9.0"
+            packageVersion = "3.0.0"
             description = "Rivara Music for macOS"
             copyright = "© 2026 Rivara. All rights reserved."
             vendor = "Rivara Music"

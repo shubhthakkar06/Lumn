@@ -141,11 +141,15 @@ fun MainScreen(
             )
         }
     ) {
-        Box(modifier = modifier.fillMaxSize().background(Color(0xFF121212))) {
+        BoxWithConstraints(modifier = modifier.fillMaxSize().background(Color(0xFF121212))) {
+            // Tablets, foldables and landscape get a side navigation rail instead of the bottom bar.
+            val wideLayout = maxWidth >= 600.dp
+            val railWidth = if (wideLayout) 88.dp else 0.dp
             // Main Content Area
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .padding(start = railWidth)
                     .background(
                         brush = Brush.verticalGradient(
                             colors = themeGradientColors,
@@ -224,7 +228,7 @@ fun MainScreen(
                 // Use one blue-tinted translucent surface behind both the tabs
                 // and the system gesture inset, with no separate edge strip.
                 val navigationBarColor = Color(0xE80A1018)
-                Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+                Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = railWidth)) {
                     // Floating MiniPlayer
                     if (currentSong != null) {
                         FloatingCapsulePlayer(
@@ -239,7 +243,7 @@ fun MainScreen(
 
                     // Draw the same surface behind the system inset so the panel
                     // reaches the physical bottom edge without a color break.
-                    Column(
+                    if (!wideLayout) Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(navigationBarColor)
@@ -283,6 +287,36 @@ fun MainScreen(
                                 selected = isLibrary,
                                 onClick = { switchTab(Screen.Library) },
                                 colors = navItemColors
+                            )
+                        }
+                    } else Spacer(Modifier.navigationBarsPadding().height(8.dp))
+                }
+
+                if (wideLayout) {
+                    NavigationRail(
+                        modifier = Modifier.align(Alignment.CenterStart).fillMaxHeight().width(railWidth),
+                        containerColor = navigationBarColor,
+                        contentColor = Color.White
+                    ) {
+                        Spacer(Modifier.statusBarsPadding().height(24.dp))
+                        val railColors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = themeAccent,
+                            unselectedIconColor = Color(0xFF94A3B8),
+                            selectedTextColor = themeAccent,
+                            unselectedTextColor = Color(0xFF94A3B8),
+                            indicatorColor = Color.Transparent
+                        )
+                        listOf(
+                            Triple(Screen.Home, Icons.Default.Home, "Home"),
+                            Triple(Screen.Search, Icons.Default.Search, "Search"),
+                            Triple(Screen.Library, Icons.Default.LibraryMusic, "Your Library")
+                        ).forEachIndexed { index, (screen, icon, label) ->
+                            NavigationRailItem(
+                                selected = nav.activeTab == index,
+                                onClick = { switchTab(screen) },
+                                icon = { Icon(icon, contentDescription = label) },
+                                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                colors = railColors
                             )
                         }
                     }

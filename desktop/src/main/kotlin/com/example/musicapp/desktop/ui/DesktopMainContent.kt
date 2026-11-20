@@ -110,16 +110,16 @@ fun DesktopMainContent(
         isLoading = true
         try {
             if (searchQuery.isNotBlank()) {
-                val results = musicRepository.searchSongs(searchQuery)
+                val results = if (selectedCategory == "Podcasts & Shows") emptyList() else musicRepository.searchSongs(searchQuery)
                 displayedSongs = when (selectedCategory) {
-                    "Podcasts & Shows" -> results.filter { it.isEpisode }
+                    "Podcasts & Shows" -> musicRepository.getPodcastEpisodes(searchQuery)
                     "Songs" -> results.filter { !it.isEpisode }
                     else -> results
                 }
             } else {
                 val trending = musicRepository.getTrendingSongs()
                 displayedSongs = when (selectedCategory) {
-                    "Podcasts & Shows" -> musicRepository.getBapsSatsangEpisodes()
+                    "Podcasts & Shows" -> musicRepository.getPodcastEpisodes("")
                     "Songs" -> trending.filter { !it.isEpisode }
                     else -> trending
                 }

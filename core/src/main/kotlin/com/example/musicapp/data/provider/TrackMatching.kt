@@ -7,7 +7,7 @@ import com.example.musicapp.data.network.SongInfo
  * place of the requested song. Every fallback must pass it, so a missing song fails visibly
  * instead of quietly playing something unrelated.
  */
-internal object TrackMatching {
+object TrackMatching {
     /** Minimum [confidence] for a search hit to stand in for the requested track. */
     const val MIN_CONFIDENCE = 0.76
 

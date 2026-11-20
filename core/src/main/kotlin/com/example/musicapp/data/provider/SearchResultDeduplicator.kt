@@ -7,7 +7,7 @@ import java.text.Normalizer
  * Merges provider copies only when metadata strongly indicates the same recording.
  * Duration is a hard gate so unknown-length songs and alternate edits are preserved.
  */
-internal object SearchResultDeduplicator {
+object SearchResultDeduplicator {
     private val artistNoise = setOf("topic", "official", "vevo", "records", "music")
 
     // These words identify a materially different performance/arrangement and must match
@@ -39,7 +39,7 @@ internal object SearchResultDeduplicator {
         return kept
     }
 
-    internal fun sameRecording(first: SongInfo, second: SongInfo): Boolean {
+    fun sameRecording(first: SongInfo, second: SongInfo): Boolean {
         // Do not guess when a provider omitted length, and allow only small provider rounding.
         if (first.durationSeconds <= 0L || second.durationSeconds <= 0L) return false
         if (kotlin.math.abs(first.durationSeconds - second.durationSeconds) > 2L) return false

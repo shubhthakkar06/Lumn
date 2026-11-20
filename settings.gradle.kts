@@ -32,6 +32,7 @@ plugins {
 }
 
 rootProject.name = "MusicApp"
+include(":core")
 include(":app")
 include(":wear")
 include(":desktop")

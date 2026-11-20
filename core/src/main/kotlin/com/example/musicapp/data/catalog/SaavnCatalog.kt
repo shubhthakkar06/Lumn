@@ -125,7 +125,8 @@ object SaavnCatalog {
     fun decryptMediaUrl(encrypted: String): String = runCatching {
         val cipher = javax.crypto.Cipher.getInstance("DES/ECB/PKCS5Padding")
         cipher.init(javax.crypto.Cipher.DECRYPT_MODE, javax.crypto.spec.SecretKeySpec("38346591".toByteArray(), "DES"))
-        val raw = String(cipher.doFinal(android.util.Base64.decode(encrypted.trim(), android.util.Base64.DEFAULT)), Charsets.UTF_8)
+        val bytes = okio.ByteString.Companion.run { encrypted.trim().decodeBase64() }?.toByteArray() ?: return ""
+        val raw = String(cipher.doFinal(bytes), Charsets.UTF_8)
         raw.replace(Regex("_(48|96|160)\\.mp4"), "_320.mp4")
     }.getOrDefault("")
 

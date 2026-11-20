@@ -1,6 +1,5 @@
 package com.example.musicapp.data.catalog
 
-import android.util.Xml
 import com.example.musicapp.data.network.SongInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,7 +11,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.xmlpull.v1.XmlPullParser
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
@@ -58,61 +56,38 @@ object Podcasts {
         episodes
     }
 
-    internal fun parseFeed(xml: String, show: PodcastShow): List<SongInfo> {
-        val parser = Xml.newPullParser().apply {
-            setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-            setInput(xml.reader())
+    /** Parses an RSS feed with the standard DOM parser (available on Android and the desktop JVM). */
+    fun parseFeed(xml: String, show: PodcastShow): List<SongInfo> {
+        val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply {
+            isNamespaceAware = false
+            runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
         }
+        val doc = runCatching { factory.newDocumentBuilder().parse(org.xml.sax.InputSource(java.io.StringReader(xml))) }.getOrNull()
+            ?: return emptyList()
+        val items = doc.getElementsByTagName("item")
         val out = mutableListOf<SongInfo>()
-        var inItem = false
-        var title = ""; var audio = ""; var guid = ""; var description = ""; var date = ""; var duration = 0L; var image = ""
-        var tag: String? = null
-        while (parser.eventType != XmlPullParser.END_DOCUMENT) {
-            when (parser.eventType) {
-                XmlPullParser.START_TAG -> {
-                    tag = parser.name
-                    if (tag == "item") {
-                        inItem = true
-                        title = ""; audio = ""; guid = ""; description = ""; date = ""; duration = 0L; image = ""
-                    } else if (inItem && tag == "enclosure") {
-                        audio = parser.getAttributeValue(null, "url").orEmpty()
-                    } else if (inItem && tag == "itunes:image") {
-                        image = parser.getAttributeValue(null, "href").orEmpty()
-                    }
-                }
-                XmlPullParser.TEXT -> if (inItem) {
-                    val text = parser.text.orEmpty()
-                    when (tag) {
-                        "title" -> title += text
-                        "guid" -> guid += text
-                        "description", "itunes:summary" -> if (description.isBlank()) description = text.replace(Regex("<[^>]+>"), "").trim()
-                        "pubDate" -> date += text
-                        "itunes:duration" -> duration = parseDuration(text)
-                    }
-                }
-                XmlPullParser.END_TAG -> {
-                    if (parser.name == "item" && inItem) {
-                        inItem = false
-                        if (audio.isNotBlank() && title.isNotBlank()) {
-                            val id = "pod_" + (guid.ifBlank { audio }).hashCode().toUInt().toString(16)
-                            out += SongInfo(
-                                videoId = id,
-                                title = title.trim(),
-                                artist = show.title,
-                                albumArtUrl = image.ifBlank { show.artworkUrl },
-                                audioStreamUrl = audio,
-                                albumName = "Episode • ${show.title}",
-                                durationSeconds = duration,
-                                isEpisode = true,
-                                description = description.take(600),
-                                releaseDate = date.trim().split(" ").take(4).joinToString(" ")
-                            )
-                        }
-                    }
-                    tag = null
-                }
-            }
-            parser.next()
+        for (i in 0 until items.length) {
+            val item = items.item(i) as? org.w3c.dom.Element ?: continue
+            fun text(tag: String) = item.getElementsByTagName(tag).item(0)?.textContent?.trim().orEmpty()
+            val enclosure = item.getElementsByTagName("enclosure").item(0) as? org.w3c.dom.Element
+            val audio = enclosure?.getAttribute("url").orEmpty()
+            val title = text("title")
+            if (audio.isBlank() || title.isBlank()) continue
+            val guid = text("guid").ifBlank { audio }
+            val image = (item.getElementsByTagName("itunes:image").item(0) as? org.w3c.dom.Element)?.getAttribute("href").orEmpty()
+            val description = text("description").ifBlank { text("itunes:summary") }.replace(Regex("<[^>]+>"), "").trim()
+            out += SongInfo(
+                videoId = "pod_" + guid.hashCode().toUInt().toString(16),
+                title = title,
+                artist = show.title,
+                albumArtUrl = image.ifBlank { show.artworkUrl },
+                audioStreamUrl = audio,
+                albumName = "Episode • ${show.title}",
+                durationSeconds = parseDuration(text("itunes:duration")),
+                isEpisode = true,
+                description = description.take(600),
+                releaseDate = text("pubDate").split(" ").take(4).joinToString(" ")
+            )
         }
         return out
     }

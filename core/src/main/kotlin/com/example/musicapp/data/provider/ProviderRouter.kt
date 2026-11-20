@@ -102,13 +102,17 @@ class ProviderRouter(
         return 1.0 - previous[b.length].toDouble() / maxOf(a.length, b.length)
     }
 
-    private fun relevance(query: String, song: SongInfo): Int {
+    internal fun relevance(query: String, song: SongInfo): Int {
         val q = normalize(query)
         val title = normalize(song.title)
         val artist = normalize(song.artist)
         if (q.isBlank()) return 0
+        // "song artist" and "artist song" queries count as exact matches too.
+        val combined = "$title $artist"
+        val reversed = "$artist $title"
         var score = when {
-            title == q -> 100
+            title == q || combined == q || reversed == q -> 100
+            combined.startsWith(q) || reversed.startsWith(q) -> 85
             title.startsWith(q) -> 85
             title.contains(q) -> 75
             artist == q -> 68
@@ -130,6 +134,16 @@ class ProviderRouter(
                 titleTokens.maxOfOrNull { candidate -> editSimilarity(token, candidate) } ?: 0.0
             } ?: 0.0
             score += (bestTitleToken * 12).toInt()
+
+            // Prefer the artist the user named: query words not in the title should be the artist.
+            val leftover = queryTokens.filter { token -> titleTokens.none { it == token || it.startsWith(token) } }
+            if (leftover.isNotEmpty() && leftover.all { token -> artistTokens.any { it == token || it.startsWith(token) } }) score += 25
+        }
+        // Covers, karaoke, remixes and other versions only rank high when asked for.
+        val versionWords = listOf("cover", "karaoke", "remix", "instrumental", "lofi", "lo fi", "slowed", "reverb", "sped up", "8d", "piano", "pianoforte", "acoustic", "live", "mashup")
+        versionWords.forEach { word ->
+            val pattern = Regex("\\b${Regex.escape(word)}\\b")
+            if (pattern.containsMatchIn(title) && !pattern.containsMatchIn(q)) score -= 40
         }
         return score
     }

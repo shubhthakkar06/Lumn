@@ -39,11 +39,11 @@ class PlaybackAppFlowInstrumentedTest {
         val lookups = AtomicInteger(0)
         val localOnlyRepository = object : DataRepository {
             override suspend fun searchSongs(query: String) = emptyList<SongInfo>()
-            override suspend fun getStreamUrl(videoId: String, songTitle: String?, artist: String?): String? {
+            override suspend fun getStreamUrl(videoId: String, songTitle: String?, artist: String?, durationSeconds: Long): String? {
                 lookups.incrementAndGet()
                 return localTrack.toURI().toString()
             }
-            override suspend fun getFallbackStreamUrl(videoId: String, songTitle: String?, artist: String?): String? = null
+            override suspend fun getFallbackStreamUrl(videoId: String, songTitle: String?, artist: String?, durationSeconds: Long): String? = null
             override fun prefetchStreamUrls(songs: List<SongInfo>) = Unit
         }
         val store = ViewModelStore()
