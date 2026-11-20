@@ -71,9 +71,10 @@ class MusicApiService {
                 .url(url)
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile)")
                 .build()
-            val response = httpClient.newCall(request).execute()
-            if (response.isSuccessful && response.body != null) {
-                val jsonStr = response.body!!.string()
+            val jsonStr = httpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) response.body?.string() else null
+            }
+            if (jsonStr != null) {
                 val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
                 val root = json.parseToJsonElement(jsonStr).let { it as? kotlinx.serialization.json.JsonObject }
                 val array = root?.get("results") as? kotlinx.serialization.json.JsonArray
@@ -170,9 +171,10 @@ class MusicApiService {
                 .url(url)
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile)")
                 .build()
-            val response = httpClient.newCall(request).execute()
-            if (response.isSuccessful && response.body != null) {
-                val jsonStr = response.body!!.string()
+            val jsonStr = httpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) response.body?.string() else null
+            }
+            if (jsonStr != null) {
                 val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
                 val root = json.parseToJsonElement(jsonStr) as? kotlinx.serialization.json.JsonObject ?: return@withContext null
                 val songObj = root[id] as? kotlinx.serialization.json.JsonObject
@@ -224,7 +226,8 @@ class MusicApiService {
         for (q in queries) {
             try {
                 val saavnResults = searchSaavnSongs(q)
-                val direct = saavnResults.firstOrNull { it.audioStreamUrl != null }?.audioStreamUrl
+                val direct = com.example.musicapp.data.provider.TrackMatching
+                    .bestPlayable(songTitle, artistName, 0L, saavnResults)?.audioStreamUrl
                 if (direct != null) {
                     memoryStreamMap[videoId] = direct
                     songTitle?.let { memoryStreamMap[it.lowercase().trim()] = direct }
@@ -271,14 +274,14 @@ class MusicApiService {
         try {
             val encoded = java.net.URLEncoder.encode(artistName, "UTF-8")
             val url = "https://itunes.apple.com/search?term=$encoded&entity=album&limit=8"
-            val client = okhttp3.OkHttpClient()
             val request = okhttp3.Request.Builder()
                 .url(url)
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
                 .build()
-            val response = client.newCall(request).execute()
-            if (response.isSuccessful && response.body != null) {
-                val jsonStr = response.body!!.string()
+            val jsonStr = httpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) response.body?.string() else null
+            }
+            if (jsonStr != null) {
                 val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
                 val root = json.parseToJsonElement(jsonStr).let { it as kotlinx.serialization.json.JsonObject }
                 val results = root["results"] as? kotlinx.serialization.json.JsonArray

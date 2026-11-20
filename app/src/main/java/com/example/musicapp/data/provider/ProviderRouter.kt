@@ -43,6 +43,11 @@ class ProviderRouter(
     )
     private val streamCache = ConcurrentHashMap<String, CachedStream>()
 
+    companion object {
+        /** One router per process, so stream caches and provider health are shared. */
+        val shared: ProviderRouter by lazy { ProviderRouter() }
+    }
+
     init {
         allProviders.forEach { p ->
             providerHistory[p.name] = ConcurrentLinkedQueue()
@@ -139,15 +144,20 @@ class ProviderRouter(
             getPrioritizedProviders().map { provider ->
                 async {
                     val timeoutMs = if (provider.name == "YouTube") 5_000L else 3_000L
-                    val results = queryVariants.map { variant ->
-                        try {
-                            withTimeoutOrNull(timeoutMs) { provider.search(variant) }.orEmpty()
-                        } catch (_: Exception) {
-                            emptyList()
+                    // Spelling variants run in parallel instead of one after another.
+                    val attempts = queryVariants.map { variant ->
+                        async {
+                            try {
+                                withTimeoutOrNull(timeoutMs) { provider.search(variant) }
+                            } catch (_: Exception) {
+                                null
+                            }
                         }
-                    }.flatten()
-                    recordOutcome(provider.name, results.isNotEmpty())
-                    provider to results
+                    }.awaitAll()
+                    // Health tracks errors and timeouts only. A niche query with zero hits is
+                    // not a provider failure and must not push a working provider down.
+                    recordOutcome(provider.name, attempts.any { it != null })
+                    provider to attempts.filterNotNull().flatten()
                 }
             }.awaitAll()
         }
@@ -196,6 +206,8 @@ class ProviderRouter(
         val prioritized = getPrioritizedProviders()
         val sourceOrdered = when {
             trackRef.startsWith("saavn_") -> prioritized.sortedBy { if (it.name == "Saavn") 0 else 1 }
+            trackRef.startsWith("audius_") -> prioritized.sortedBy { if (it.name == "Audius") 0 else 1 }
+            trackRef.startsWith("jamendo_") -> prioritized.sortedBy { if (it.name == "Jamendo") 0 else 1 }
             trackRef.length == 11 && !trackRef.startsWith("track_") -> prioritized.sortedBy { if (it.name == "YouTube") 0 else 1 }
             else -> prioritized
         }
@@ -220,7 +232,7 @@ class ProviderRouter(
                     )
                     return@withContext result
                 } else if (result is StreamResult.Failure) {
-                    recordOutcome(provider.name, false)
+                    // "Not in this catalog" is an answer, not an outage.
                     lastFailureReason = "${provider.name}: ${result.reason}"
                 } else {
                     // Timed out (null)

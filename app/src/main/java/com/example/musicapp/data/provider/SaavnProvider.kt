@@ -94,9 +94,10 @@ class SaavnProvider(
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile)")
                 .build()
 
-            val response = httpClient.newCall(request).execute()
-            if (response.isSuccessful && response.body != null) {
-                val jsonStr = response.body!!.string()
+            val jsonStr = httpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) response.body?.string() else null
+            }
+            if (jsonStr != null) {
                 val root = json.parseToJsonElement(jsonStr) as? JsonObject
                 val array = root?.get("results") as? JsonArray
                 array?.forEach { element ->
@@ -181,9 +182,10 @@ class SaavnProvider(
                     .url(url)
                     .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile)")
                     .build()
-                val response = httpClient.newCall(request).execute()
-                if (response.isSuccessful && response.body != null) {
-                    val jsonStr = response.body!!.string()
+                val jsonStr = httpClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) response.body?.string() else null
+                }
+                if (jsonStr != null) {
                     val root = json.parseToJsonElement(jsonStr) as? JsonObject
                     val songObj = root?.get(pid) as? JsonObject
                         ?: root?.values?.firstOrNull { it is JsonObject } as? JsonObject
@@ -208,14 +210,7 @@ class SaavnProvider(
         )
         for (q in searchQueries) {
             try {
-                val items = search(q)
-                val hit = items
-                    .asSequence()
-                    .filter { !it.audioStreamUrl.isNullOrBlank() }
-                    .map { it to matchConfidence(title.orEmpty(), artist.orEmpty(), durationSeconds, it) }
-                    .filter { (_, score) -> score >= 0.76 }
-                    .maxByOrNull { (candidate, score) -> score + kotlin.math.ln1p(candidate.popularityScore.toDouble()) * 0.001 }
-                    ?.first
+                val hit = TrackMatching.bestPlayable(title, artist, durationSeconds, search(q))
                 if (hit != null && hit.audioStreamUrl != null) {
                     memoryStreamCache[trackRef] = hit.audioStreamUrl
                     return@withContext StreamResult.Success(streamUrl = hit.audioStreamUrl, providerName = name)
@@ -226,76 +221,6 @@ class SaavnProvider(
         }
 
         StreamResult.Failure("No stream found for track $trackRef", canRetryWithOtherProvider = true)
-    }
-
-    /** Reject near-by catalog hits with a different singer or recording. */
-    private fun matchConfidence(queryTitle: String, queryArtist: String, queryDuration: Long, candidate: SongInfo): Double {
-        val wantedTitle = normalize(queryTitle)
-        val actualTitle = normalize(candidate.title)
-        val wantedArtist = normalize(queryArtist)
-        val actualArtist = normalize(candidate.artist)
-        if (wantedTitle.isBlank() || actualTitle.isBlank()) return 0.0
-
-        val titleScore = when {
-            actualTitle == wantedTitle -> 1.0
-            actualTitle.contains(wantedTitle) || wantedTitle.contains(actualTitle) -> 0.86
-            else -> similarity(wantedTitle, actualTitle)
-        }
-        val artistScore = when {
-            wantedArtist.isBlank() -> 0.72
-            actualArtist == wantedArtist -> 1.0
-            actualArtist.contains(wantedArtist) || wantedArtist.contains(actualArtist) -> 0.9
-            else -> tokenOverlap(wantedArtist, actualArtist)
-        }
-        if (artistScore < 0.45) return 0.0
-
-        // Version words carry meaning (especially live/remix/slowed/garba edits). Ignore
-        // upload labels, but reject a candidate whose recording type conflicts with Spotify.
-        val versionWords = setOf("live", "remix", "slowed", "reverb", "acoustic", "instrumental", "karaoke", "cover", "sped", "lofi", "lo fi", "garba", "unplugged")
-        val wantedVersions = versionWords.filter { wantedTitle.contains(it) }
-        val candidateVersions = versionWords.filter { actualTitle.contains(it) }
-        if (candidateVersions.any { it !in wantedVersions }) return 0.0
-        if (wantedVersions.any { it !in candidateVersions }) return 0.0
-
-        val candidateDuration = candidate.durationSeconds
-        val durationScore = if (queryDuration > 0 && candidateDuration > 0) {
-            val difference = kotlin.math.abs(queryDuration - candidateDuration)
-            // Allow small provider edits/rounding, while excluding alternate cuts.
-            if (difference > maxOf(12L, (queryDuration * 0.12).toLong())) return 0.0
-            1.0 - (difference.toDouble() / maxOf(queryDuration, candidateDuration).toDouble())
-        } else 0.72
-        return titleScore * 0.62 + artistScore * 0.28 + durationScore * 0.10
-    }
-
-    private fun normalize(value: String): String = value.lowercase()
-        .replace(Regex("\\b(official|audio|video|lyrics?|lyric video|visuali[sz]er|hd|hq|4k)\\b", RegexOption.IGNORE_CASE), " ")
-        .replace(Regex("\\([^)]*\\)|\\[[^]]*]")) { match ->
-            val label = match.value.lowercase()
-            if (listOf("live", "remix", "slowed", "reverb", "acoustic", "instrumental", "karaoke", "cover", "sped", "lofi", "garba", "unplugged").any(label::contains)) label else " "
-        }
-        .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
-        .trim()
-
-    private fun tokenOverlap(a: String, b: String): Double {
-        val wanted = a.split(Regex("\\s+")).filter { it.length > 1 }.toSet()
-        val found = b.split(Regex("\\s+")).filter { it.length > 1 }.toSet()
-        if (wanted.isEmpty() || found.isEmpty()) return 0.0
-        return wanted.count { token -> found.any { it == token || it.startsWith(token) || token.startsWith(it) } }.toDouble() / wanted.size
-    }
-
-    private fun similarity(a: String, b: String): Double {
-        if (a.isBlank() || b.isBlank()) return 0.0
-        val previous = IntArray(b.length + 1) { it }
-        for (i in a.indices) {
-            var diagonal = previous[0]
-            previous[0] = i + 1
-            for (j in b.indices) {
-                val old = previous[j + 1]
-                previous[j + 1] = minOf(previous[j + 1] + 1, previous[j] + 1, diagonal + if (a[i] == b[j]) 0 else 1)
-                diagonal = old
-            }
-        }
-        return 1.0 - previous[b.length].toDouble() / maxOf(a.length, b.length)
     }
 
     override fun invalidateStreamCache(trackRef: String, title: String?, artist: String?) {

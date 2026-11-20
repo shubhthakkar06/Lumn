@@ -556,12 +556,15 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
                     kotlinx.coroutines.withTimeoutOrNull(5_000L) {
                         dataRepository.getStreamUrl(song.videoId, song.title, song.artist, song.durationSeconds)
                     }
-                } else if (!song.audioStreamUrl.isNullOrBlank()) {
+                } else if (song.isEpisode && !song.audioStreamUrl.isNullOrBlank()) {
+                    // Podcast enclosure URLs are permanent feed links.
                     song.audioStreamUrl
                 } else {
+                    // Resolve through the repository (downloads first, then cached/fresh provider
+                    // URLs). A URL stored on the song may have expired, so it is only a fallback.
                     kotlinx.coroutines.withTimeoutOrNull(12_000L) {
                         dataRepository.getStreamUrl(song.videoId, song.title, song.artist, song.durationSeconds)
-                    }
+                    } ?: song.audioStreamUrl?.takeIf { it.startsWith("http") }
                 }
                 if (!isActive || _currentSong.value?.videoId != song.videoId) return@launch
 

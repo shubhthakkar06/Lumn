@@ -169,7 +169,7 @@ fun NowPlayingScreen(
                     )
                     Spacer(modifier = Modifier.width(4.5.dp))
                     Text(
-                        text = state.userProfileName.ifBlank { "Shubh Thakkar" },
+                        text = state.userProfileName.ifBlank { "Listener" },
                         color = Color.White,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,

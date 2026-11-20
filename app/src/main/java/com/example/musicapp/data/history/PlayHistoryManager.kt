@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -38,9 +39,12 @@ data class MonthlyCapsuleStats(
 )
 
 class PlayHistoryManager private constructor(private val context: Context) {
-    private val scope = CoroutineScope(Dispatchers.IO)
-    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    private val json = Json { ignoreUnknownKeys = true }
     private val historyFile = File(context.filesDir, "play_history.json")
+    private val historyBackupFile = File(context.filesDir, "play_history.backup.json")
+    private val writer = java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "rivara-history-writer").apply { isDaemon = true }
+    }
 
     private val _history = MutableStateFlow<List<PlayedSongRecord>>(emptyList())
     val history: StateFlow<List<PlayedSongRecord>> = _history.asStateFlow()
@@ -50,31 +54,27 @@ class PlayHistoryManager private constructor(private val context: Context) {
     }
 
     private fun loadHistory() {
-        try {
-            if (historyFile.exists()) {
-                val content = historyFile.readText()
-                val list = json.decodeFromString<List<PlayedSongRecord>>(content)
-                _history.value = list
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            _history.value = emptyList()
-        }
+        fun read(file: File): List<PlayedSongRecord>? =
+            if (!file.exists()) null
+            else runCatching { json.decodeFromString<List<PlayedSongRecord>>(file.readText()) }.getOrNull()
+        _history.value = read(historyFile) ?: read(historyBackupFile) ?: emptyList()
     }
 
     private fun saveHistory() {
-        scope.launch {
+        writer.execute {
             try {
-                historyFile.writeText(json.encodeToString(_history.value))
+                val content = json.encodeToString(_history.value)
+                com.example.musicapp.data.storage.AtomicFiles.writeText(historyFile, content)
+                com.example.musicapp.data.storage.AtomicFiles.writeText(historyBackupFile, content)
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("PlayHistoryManager", "Could not save play history", e)
             }
         }
     }
 
     fun recordPlay(song: SongInfo, userId: String) {
         val record = PlayedSongRecord(
-            id = "rec_${System.currentTimeMillis()}",
+            id = "rec_${System.currentTimeMillis()}_${(1000..9999).random()}",
             userId = userId,
             videoId = song.videoId,
             title = song.title,
@@ -83,8 +83,7 @@ class PlayHistoryManager private constructor(private val context: Context) {
             playedAtMs = System.currentTimeMillis()
         )
         // Keep newest at front, cap at 500 items
-        val updated = (listOf(record) + _history.value).take(500)
-        _history.value = updated
+        _history.update { (listOf(record) + it).take(500) }
         saveHistory()
     }
 

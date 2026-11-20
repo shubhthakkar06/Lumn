@@ -39,7 +39,6 @@ import com.example.musicapp.data.artist.ArtistFollowManager
 import com.example.musicapp.data.auth.UserManager
 import com.example.musicapp.data.download.MusicDownloadManager
 import com.example.musicapp.data.playlist.PlaylistManager
-import com.example.musicapp.data.playlist.SpotifyPlaylistImporter
 import com.example.musicapp.data.sync.DeviceSyncManager
 import com.example.musicapp.data.network.SongInfo
 import com.example.musicapp.data.settings.SettingsManager
@@ -97,18 +96,36 @@ fun LibraryScreen(
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
     var showSpotifyImportDialog by remember { mutableStateOf(false) }
     var spotifyPlaylistUrl by remember { mutableStateOf("") }
-    var spotifyImporting by remember { mutableStateOf(false) }
-    var spotifyImportProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var spotifyImportError by remember { mutableStateOf<String?>(null) }
+    val importState by com.example.musicapp.data.playlist.PlaylistImportManager.state.collectAsStateWithLifecycle()
+    val spotifyImporting = importState is com.example.musicapp.data.playlist.PlaylistImportState.Running
+
+    // The import runs in the background; react to its result whenever this screen is showing.
+    LaunchedEffect(importState) {
+        when (val state = importState) {
+            is com.example.musicapp.data.playlist.PlaylistImportState.Done -> {
+                val pl = state.playlist
+                showSpotifyImportDialog = false
+                com.example.musicapp.data.playlist.PlaylistImportManager.acknowledge()
+                onNavigate(Screen.Playlist(pl.id, pl.name, pl.coverUrl, "Imported Playlist • ${pl.creator}"))
+            }
+            is com.example.musicapp.data.playlist.PlaylistImportState.Failed -> {
+                spotifyImportError = state.message
+                showSpotifyImportDialog = true
+                com.example.musicapp.data.playlist.PlaylistImportManager.acknowledge()
+            }
+            else -> Unit
+        }
+    }
     var showAddArtistsSheet by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
     var pendingLibraryDelete by remember { mutableStateOf<Pair<LibraryItem, Boolean>?>(null) }
     var isSyncingWithMac by remember { mutableStateOf(false) }
+    var showMacPairingDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(currentUser.id) {
-        if (!currentUser.isGuest) {
-            runCatching { DeviceSyncManager.syncWithMac(context) }
-        }
+        // No-op unless this account has paired a Mac.
+        if (!currentUser.isGuest) DeviceSyncManager.triggerSilentSync(context)
     }
 
     val avatarColor = remember(currentUser.avatarColorHex) {
@@ -259,14 +276,19 @@ fun LibraryScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
                         onClick = {
-                            isSyncingWithMac = true
-                            coroutineScope.launch {
-                                val result = DeviceSyncManager.syncWithMac(context)
-                                isSyncingWithMac = false
-                                result.onSuccess { count ->
-                                    Toast.makeText(context, "✓ Synced $count playlists with Cloud & Mac!", Toast.LENGTH_SHORT).show()
-                                }.onFailure { err ->
-                                    Toast.makeText(context, "Sync failed: ${err.message}", Toast.LENGTH_LONG).show()
+                            if (DeviceSyncManager.getPairing(context) == null) {
+                                showMacPairingDialog = true
+                            } else {
+                                isSyncingWithMac = true
+                                coroutineScope.launch {
+                                    val result = DeviceSyncManager.syncWithMac(context)
+                                    isSyncingWithMac = false
+                                    result.onSuccess { count ->
+                                        Toast.makeText(context, "Synced $count playlists with your Mac", Toast.LENGTH_SHORT).show()
+                                    }.onFailure { err ->
+                                        Toast.makeText(context, err.message ?: "Sync failed", Toast.LENGTH_LONG).show()
+                                        showMacPairingDialog = true
+                                    }
                                 }
                             }
                         },
@@ -646,10 +668,23 @@ fun LibraryScreen(
             )
         }
 
+        if (showMacPairingDialog) {
+            com.example.musicapp.ui.sync.MacPairingDialog(
+                accent = themeAccent,
+                onDismiss = { showMacPairingDialog = false },
+                onSynced = { count ->
+                    showMacPairingDialog = false
+                    Toast.makeText(context, "Synced $count playlists with your Mac", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+
         if (showSpotifyImportDialog) {
-            val importScope = rememberCoroutineScope()
+            val progress = importState as? com.example.musicapp.data.playlist.PlaylistImportState.Running
             AlertDialog(
-                onDismissRequest = { if (!spotifyImporting) showSpotifyImportDialog = false },
+                // Closing the dialog no longer cancels the import; it keeps running and the
+                // playlist opens (with a notice) when it finishes.
+                onDismissRequest = { showSpotifyImportDialog = false },
                 containerColor = Color(0xFF131A26),
                 titleContentColor = Color.White,
                 textContentColor = Color(0xFFCBD5E1),
@@ -672,6 +707,13 @@ fun LibraryScreen(
                             ),
                             modifier = Modifier.fillMaxWidth()
                         )
+                        if (spotifyImporting) {
+                            Text(
+                                "You can close this window. The import keeps going and the playlist opens when it's ready.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF94A3B8)
+                            )
+                        }
                         spotifyImportError?.let { Text(it, color = Color(0xFFFF8A9A), style = MaterialTheme.typography.bodySmall) }
                     }
                 },
@@ -679,68 +721,27 @@ fun LibraryScreen(
                     TextButton(
                         enabled = !spotifyImporting && spotifyPlaylistUrl.isNotBlank(),
                         onClick = {
-                            spotifyImporting = true
-                            spotifyImportProgress = null
                             spotifyImportError = null
-                            importScope.launch {
-                                try {
-                                    val imported = SpotifyPlaylistImporter.import(context, spotifyPlaylistUrl) { completed, total ->
-                                        spotifyImportProgress = completed to total
-                                    }
-                                    val finalCoverUrl = imported.coverUrl.ifBlank {
-                                        imported.tracks.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
-                                    }
-                                    val songs = imported.tracks.map { track ->
-                                        val match = track.resolvedSong
-                                        val stableId = track.id.replace(Regex("[^A-Za-z0-9_-]"), "_")
-                                        val trackArt = track.albumArtUrl.ifBlank { match?.albumArtUrl.orEmpty().ifBlank { finalCoverUrl } }
-                                        SongInfo(
-                                            videoId = if (track.id.length == 11 && !track.id.contains("_")) track.id else "spotify_$stableId",
-                                            title = match?.title ?: track.title,
-                                            artist = match?.artist ?: track.artists,
-                                            albumArtUrl = trackArt,
-                                            audioStreamUrl = match?.audioStreamUrl,
-                                            albumName = match?.albumName?.ifBlank { track.albumName } ?: track.albumName,
-                                            durationSeconds = match?.durationSeconds?.takeIf { it > 0L } ?: track.durationSeconds,
-                                            importMatchFound = true
-                                        )
-                                    }
-                                    val playlist = playlistManager.createPlaylist(
-                                        name = imported.name,
-                                        creator = currentUser.name,
-                                        coverUrl = finalCoverUrl,
-                                        songs = songs,
-                                        sourceUrl = imported.spotifyUrl
-                                    )
-                                    if (playlist != null) {
-                                        showSpotifyImportDialog = false
-                                        onNavigate(Screen.Playlist(
-                                            playlist.id, playlist.name, playlist.coverUrl,
-                                            "Imported Playlist • ${playlist.creator}"
-                                        ))
-                                        Toast.makeText(context, "Imported ${songs.size} tracks into \"${playlist.name}\"!", Toast.LENGTH_LONG).show()
-                                    }
-                                } catch (e: Exception) {
-                                    spotifyImportError = e.message ?: "Could not import this playlist."
-                                } finally {
-                                    spotifyImporting = false
-                                    spotifyImportProgress = null
-                                }
-                            }
+                            com.example.musicapp.data.playlist.PlaylistImportManager.start(
+                                context, spotifyPlaylistUrl, currentUser.name
+                            )
                         }
                     ) {
                         if (spotifyImporting) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 CircularProgressIndicator(Modifier.size(18.dp), color = themeAccent, strokeWidth = 2.dp)
                                 Spacer(Modifier.width(8.dp))
-                                Text(spotifyImportProgress?.let { "Loading ${it.first}/${it.second}…" } ?: "Importing tracks…", color = themeAccent)
+                                Text(
+                                    progress?.takeIf { it.total > 0 }?.let { "Loading ${it.completed}/${it.total}…" } ?: "Importing tracks…",
+                                    color = themeAccent
+                                )
                             }
                         } else Text("Import Playlist", color = themeAccent, fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {
-                    TextButton(enabled = !spotifyImporting, onClick = { showSpotifyImportDialog = false }) {
-                        Text("Cancel", color = Color(0xFFA0A0A0))
+                    TextButton(onClick = { showSpotifyImportDialog = false }) {
+                        Text(if (spotifyImporting) "Hide" else "Cancel", color = Color(0xFFA0A0A0))
                     }
                 }
             )

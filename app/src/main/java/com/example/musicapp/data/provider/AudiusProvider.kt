@@ -35,9 +35,10 @@ class AudiusProvider(
                 .header("User-Agent", "CyberObsidianMusic/1.0 (Android)")
                 .build()
 
-            val response = httpClient.newCall(request).execute()
-            if (response.isSuccessful && response.body != null) {
-                val jsonStr = response.body!!.string()
+            val jsonStr = httpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) response.body?.string() else null
+            }
+            if (jsonStr != null) {
                 val root = json.parseToJsonElement(jsonStr) as? JsonObject
                 val array = root?.get("data") as? JsonArray
                 array?.forEach { element ->
@@ -88,9 +89,9 @@ class AudiusProvider(
         // Search by query if trackRef is not an Audius ID
         val query = listOfNotNull(title, artist).joinToString(" ")
         if (query.isNotBlank()) {
-            val hits = search(query)
-            val best = hits.firstOrNull()
-            if (best != null && best.audioStreamUrl != null) {
+            // Only stand in for the requested song when the hit really is that recording.
+            val best = TrackMatching.bestPlayable(title, artist, durationSeconds, search(query))
+            if (best?.audioStreamUrl != null) {
                 return@withContext StreamResult.Success(
                     streamUrl = best.audioStreamUrl,
                     providerName = name,

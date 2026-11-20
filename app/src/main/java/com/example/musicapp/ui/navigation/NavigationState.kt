@@ -9,7 +9,7 @@ sealed interface Screen {
         val title: String,
         val coverUrl: String,
         val subtitle: String,
-        val saves: String = "774 saves • 3h 52min",
+        val saves: String = "",
         val unmatchedTracks: List<com.example.musicapp.data.network.SongInfo> = emptyList()
     ) : Screen
     data class Artist(

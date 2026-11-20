@@ -33,21 +33,19 @@ class OkHttpDownloader : Downloader() {
             builder.get()
         }
         
-        val okHttpResponse = client.newCall(builder.build()).execute()
-        
-        val responseHeaders = mutableMapOf<String, List<String>>()
-        okHttpResponse.headers.names().forEach { name ->
-            responseHeaders[name] = okHttpResponse.headers.values(name)
+        client.newCall(builder.build()).execute().use { okHttpResponse ->
+            val responseHeaders = mutableMapOf<String, List<String>>()
+            okHttpResponse.headers.names().forEach { name ->
+                responseHeaders[name] = okHttpResponse.headers.values(name)
+            }
+            val bodyStr = okHttpResponse.body?.string() ?: ""
+            return Response(
+                okHttpResponse.code,
+                okHttpResponse.message,
+                responseHeaders,
+                bodyStr,
+                request.url()
+            )
         }
-        
-        val bodyStr = okHttpResponse.body?.string() ?: ""
-        
-        return Response(
-            okHttpResponse.code,
-            okHttpResponse.message,
-            responseHeaders,
-            bodyStr,
-            request.url()
-        )
     }
 }

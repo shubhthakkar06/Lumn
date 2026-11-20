@@ -5,7 +5,15 @@ import com.example.musicapp.data.auth.UserManager
 import com.example.musicapp.data.network.SongInfo
 import com.example.musicapp.data.playlist.PlaylistManager
 import com.example.musicapp.data.playlist.UserPlaylist
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -23,6 +31,8 @@ data class SyncSong(
     val album: String = "",
     val durationSeconds: Long = 0L,
     val albumArtUrl: String = "",
+    // Kept for wire compatibility with older desktop builds. Stream URLs expire and are
+    // provider specific, so this app never sends or trusts them.
     val audioUrl: String? = null
 )
 
@@ -49,338 +59,231 @@ data class RivaraSyncPayload(
     val likedSongs: List<SyncSong> = emptyList()
 )
 
+class MacNotPairedException : IllegalStateException(
+    "Pair with your Mac first: open Rivara on the Mac, go to Sync, and enter its address and pairing code."
+)
+
+/**
+ * Library sync between this phone and a Rivara desktop app on the same network.
+ *
+ * Sync only happens with a Mac the user has explicitly paired by entering its address and
+ * the pairing code shown in the desktop app. Nothing is uploaded to any shared or public
+ * storage, and the Mac rejects requests that do not carry its pairing code.
+ */
 object DeviceSyncManager {
-    private const val CLOUD_SYNC_URL = "https://extendsclass.com/api/json-storage/bin/daafabd"
-    private const val DEFAULT_MAC_IP = "10.50.42.238"
+    const val SYNC_PORT = 8765
+    const val PAIR_CODE_HEADER = "X-Rivara-Pair-Code"
+
     private const val PREFS_NAME = "rivara_sync_prefs"
     private const val KEY_LAST_MAC_IP = "last_mac_ip"
+    private const val KEY_PAIR_CODE = "mac_pair_code"
+    private const val SILENT_SYNC_DELAY_MS = 5_000L
 
-    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    data class MacPairing(val host: String, val code: String)
+
+    private val json = Json { ignoreUnknownKeys = true }
     private val http = OkHttpClient.Builder()
         .connectTimeout(6, TimeUnit.SECONDS)
-        .readTimeout(12, TimeUnit.SECONDS)
-        .callTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    private val syncScope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
-    private var autoSyncJob: kotlinx.coroutines.Job? = null
-    @Volatile private var isSyncInProgress = false
+    private val syncScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val syncMutex = Mutex()
+    @Volatile private var pendingSilentSync: Job? = null
 
-    fun startAutoSyncLoop(context: Context) {
-        if (autoSyncJob?.isActive == true) return
-        val appContext = context.applicationContext
-        autoSyncJob = syncScope.launch {
-            // Initial sync on startup
-            try {
-                if (!isSyncInProgress) {
-                    isSyncInProgress = true
-                    syncWithMac(appContext)
-                }
-            } catch (_: Exception) {
-            } finally {
-                isSyncInProgress = false
-            }
-
-            while (isActive) {
-                kotlinx.coroutines.delay(15_000L) // Silent auto-sync every 15 seconds
-                try {
-                    if (!isSyncInProgress) {
-                        isSyncInProgress = true
-                        syncWithMac(appContext)
-                    }
-                } catch (_: Exception) {
-                } finally {
-                    isSyncInProgress = false
-                }
-            }
-        }
+    fun getPairing(context: Context): MacPairing? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val host = prefs.getString(KEY_LAST_MAC_IP, null)?.takeIf { it.isNotBlank() } ?: return null
+        val code = prefs.getString(KEY_PAIR_CODE, null)?.takeIf { it.isNotBlank() } ?: return null
+        return MacPairing(host, code)
     }
 
+    fun forgetPairing(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .remove(KEY_LAST_MAC_IP)
+            .remove(KEY_PAIR_CODE)
+            .apply()
+    }
+
+    private fun savePairing(context: Context, pairing: MacPairing) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(KEY_LAST_MAC_IP, pairing.host)
+            .putString(KEY_PAIR_CODE, pairing.code)
+            .apply()
+    }
+
+    /** Accepts "192.168.1.5", "192.168.1.5:8765" or "http://192.168.1.5:8765/". */
+    internal fun normalizeHost(raw: String): String = raw.trim()
+        .removePrefix("http://")
+        .removePrefix("https://")
+        .substringBefore('/')
+        .substringBefore(':')
+        .trim()
+
+    /**
+     * Debounced background sync after a library change. Does nothing unless a Mac is paired,
+     * so libraries never leave the device without the user setting that up.
+     */
     fun triggerSilentSync(context: Context) {
         val appContext = context.applicationContext
-        syncScope.launch {
-            try {
-                if (!isSyncInProgress) {
-                    isSyncInProgress = true
-                    syncWithMac(appContext)
-                }
-            } catch (_: Exception) {
-            } finally {
-                isSyncInProgress = false
-            }
+        if (getPairing(appContext) == null) return
+        if (UserManager.getInstance(appContext).currentUser.value.isGuest) return
+        pendingSilentSync?.cancel()
+        pendingSilentSync = syncScope.launch {
+            delay(SILENT_SYNC_DELAY_MS)
+            runCatching { syncWithMac(appContext) }
         }
     }
 
+    /**
+     * Sends this account's library to the paired Mac and merges the Mac's library back.
+     * Pass [host] and [pairCode] to pair (or re-pair); they are saved after a successful sync.
+     */
     suspend fun syncWithMac(
         context: Context,
-        explicitIp: String? = null
+        host: String? = null,
+        pairCode: String? = null
     ): Result<Int> = withContext(Dispatchers.IO) {
-        val userManager = UserManager.getInstance(context)
-        val currentUser = userManager.currentUser.value
-        val userEmail = currentUser.email.ifBlank { "navya.shubh2006@gmail.com" }
-        val playlistManager = PlaylistManager.getInstance(context)
+        val appContext = context.applicationContext
+        val currentUser = UserManager.getInstance(appContext).currentUser.value
+        if (currentUser.isGuest) {
+            return@withContext Result.failure(IllegalStateException("Sign in to sync your library with your Mac."))
+        }
 
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val savedIp = prefs.getString(KEY_LAST_MAC_IP, null)
-        val mediaType = "application/json; charset=utf-8".toMediaType()
+        val explicit = if (!host.isNullOrBlank() && !pairCode.isNullOrBlank()) {
+            MacPairing(normalizeHost(host), pairCode.trim())
+        } else null
+        val pairing = explicit ?: getPairing(appContext)
+            ?: return@withContext Result.failure(MacNotPairedException())
+        if (pairing.host.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Enter the address shown in Rivara on your Mac."))
+        }
 
-        // 1. Primary: Cloud HTTPS Sync (Wi-Fi independent, cellular / multi-network supported)
-        try {
-            val getReq = Request.Builder()
-                .url(CLOUD_SYNC_URL)
-                .header("Cache-Control", "no-cache")
-                .get()
-                .build()
-
-            http.newCall(getReq).execute().use { resp ->
-                if (resp.isSuccessful) {
-                    val body = resp.body?.string().orEmpty()
-                    if (body.isNotBlank() && body.contains("playlists")) {
-                        val cloudPayload = json.decodeFromString<RivaraSyncPayload>(body)
-                        mergeIntoPlaylistManager(playlistManager, currentUser.id, cloudPayload)
-                    }
-                }
-            }
-
-            // Export latest merged state to Cloud
-            val outgoingPlaylists = playlistManager.playlists.value.map { pl ->
-                SyncPlaylist(
-                    id = pl.id,
-                    name = pl.name,
-                    creator = pl.creator,
-                    coverUrl = pl.coverUrl.ifBlank { pl.songs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty() },
-                    songs = pl.songs.map { s ->
-                        SyncSong(
-                            id = s.videoId,
-                            title = s.title,
-                            artist = s.artist,
-                            album = s.albumName,
-                            durationSeconds = s.durationSeconds,
-                            albumArtUrl = s.albumArtUrl,
-                            audioUrl = s.audioStreamUrl
-                        )
-                    },
-                    createdAtMs = pl.createdAtMs
-                )
-            }
-
-            val outgoingLiked = playlistManager.likedSongs.value.map { s ->
-                SyncSong(
-                    id = s.videoId,
-                    title = s.title,
-                    artist = s.artist,
-                    album = s.albumName,
-                    durationSeconds = s.durationSeconds,
-                    albumArtUrl = s.albumArtUrl,
-                    audioUrl = s.audioStreamUrl
-                )
-            }
-
+        syncMutex.withLock {
+            val playlistManager = PlaylistManager.getInstance(appContext)
             val payload = RivaraSyncPayload(
-                userEmail = userEmail,
+                userEmail = currentUser.email,
                 userId = currentUser.id,
-                playlists = outgoingPlaylists,
-                likedSongs = outgoingLiked
+                playlists = playlistManager.playlists.value.map { it.toSyncPlaylist() },
+                likedSongs = playlistManager.likedSongs.value.map { it.toSyncSong() }
             )
-
-            val putReq = Request.Builder()
-                .url(CLOUD_SYNC_URL)
-                .put(json.encodeToString(payload).toRequestBody(mediaType))
+            val request = Request.Builder()
+                .url("http://${pairing.host}:$SYNC_PORT/api/sync/library")
+                .header(PAIR_CODE_HEADER, pairing.code)
+                .post(json.encodeToString(payload).toRequestBody("application/json; charset=utf-8".toMediaType()))
                 .build()
 
-            http.newCall(putReq).execute().use { putResp ->
-                if (putResp.isSuccessful) {
-                    val candidateHosts = listOfNotNull(explicitIp, savedIp, DEFAULT_MAC_IP, "127.0.0.1", "10.0.2.2").distinct()
-                    syncScope.launch {
-                        pingLocalMacIfAvailable(candidateHosts, payload, mediaType)
-                    }
-                    return@withContext Result.success(outgoingPlaylists.size)
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-
-        // 2. Secondary fallback: Local LAN IP (when offline or cloud unreachable)
-        val candidateHosts = listOfNotNull(
-            explicitIp?.trim()?.takeIf { it.isNotBlank() },
-            savedIp,
-            DEFAULT_MAC_IP,
-            "127.0.0.1",
-            "10.0.2.2"
-        ).distinct()
-
-        val outgoingPlaylists = playlistManager.playlists.value.map { pl ->
-            SyncPlaylist(
-                id = pl.id,
-                name = pl.name,
-                creator = pl.creator,
-                coverUrl = pl.coverUrl.ifBlank { pl.songs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty() },
-                songs = pl.songs.map { s ->
-                    SyncSong(
-                        id = s.videoId,
-                        title = s.title,
-                        artist = s.artist,
-                        album = s.albumName,
-                        durationSeconds = s.durationSeconds,
-                        albumArtUrl = s.albumArtUrl,
-                        audioUrl = s.audioStreamUrl
-                    )
-                },
-                createdAtMs = pl.createdAtMs
-            )
-        }
-
-        val outgoingLiked = playlistManager.likedSongs.value.map { s ->
-            SyncSong(
-                id = s.videoId,
-                title = s.title,
-                artist = s.artist,
-                album = s.albumName,
-                durationSeconds = s.durationSeconds,
-                albumArtUrl = s.albumArtUrl,
-                audioUrl = s.audioStreamUrl
-            )
-        }
-
-        val payload = RivaraSyncPayload(
-            userEmail = userEmail,
-            userId = currentUser.id,
-            playlists = outgoingPlaylists,
-            likedSongs = outgoingLiked
-        )
-
-        val payloadJson = json.encodeToString(payload)
-        var lastError: Exception? = null
-
-        for (host in candidateHosts) {
-            val url = "http://$host:8765/api/sync/library"
             try {
-                val req = Request.Builder()
-                    .url(url)
-                    .post(payloadJson.toRequestBody(mediaType))
-                    .build()
-
-                http.newCall(req).execute().use { resp ->
-                    if (resp.isSuccessful) {
-                        val respBody = resp.body?.string().orEmpty()
-                        val merged = json.decodeFromString<RivaraSyncPayload>(respBody)
-
-                        // Save the working host in preferences
-                        prefs.edit().putString(KEY_LAST_MAC_IP, host).apply()
-
-                        // Merge into Android's local library
-                        mergeIntoPlaylistManager(playlistManager, currentUser.id, merged)
-
-                        return@withContext Result.success(merged.playlists.size)
-                    } else {
-                        lastError = IllegalStateException("Mac sync returned HTTP ${resp.code}")
+                http.newCall(request).execute().use { resp ->
+                    when {
+                        resp.code == 401 || resp.code == 403 -> Result.failure(
+                            IllegalStateException("Your Mac rejected the pairing code. Check the code shown in Rivara's Sync window on the Mac.")
+                        )
+                        !resp.isSuccessful -> Result.failure(IllegalStateException("Mac sync returned HTTP ${resp.code}"))
+                        else -> {
+                            val merged = json.decodeFromString<RivaraSyncPayload>(resp.body?.string().orEmpty())
+                            if (explicit != null) savePairing(appContext, explicit)
+                            mergeIntoPlaylistManager(playlistManager, currentUser.id, merged)
+                            Result.success(merged.playlists.size)
+                        }
                     }
                 }
             } catch (e: Exception) {
-                lastError = e
+                Result.failure(
+                    IllegalStateException(
+                        "Couldn't reach your Mac at ${pairing.host}. Make sure Rivara is open on the Mac and both devices are on the same Wi-Fi.",
+                        e
+                    )
+                )
             }
         }
-
-        Result.failure(lastError ?: IllegalStateException("Could not reach Cloud or Mac ($DEFAULT_MAC_IP:8765)"))
     }
 
-    private fun pingLocalMacIfAvailable(
-        candidateHosts: List<String>,
-        payload: RivaraSyncPayload,
-        mediaType: okhttp3.MediaType
-    ) {
-        val payloadJson = json.encodeToString(payload)
-        for (host in candidateHosts) {
-            try {
-                val req = Request.Builder()
-                    .url("http://$host:8765/api/sync/library")
-                    .post(payloadJson.toRequestBody(mediaType))
-                    .build()
-                http.newCall(req).execute().close()
-                break
-            } catch (_: Exception) {}
-        }
-    }
+    private fun UserPlaylist.toSyncPlaylist() = SyncPlaylist(
+        id = id,
+        name = name,
+        creator = creator,
+        coverUrl = coverUrl.ifBlank { songs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty() },
+        songs = songs.map { it.toSyncSong() },
+        createdAtMs = createdAtMs
+    )
+
+    private fun SongInfo.toSyncSong() = SyncSong(
+        id = videoId,
+        title = title,
+        artist = artist,
+        album = albumName,
+        durationSeconds = durationSeconds,
+        albumArtUrl = albumArtUrl,
+        audioUrl = null
+    )
+
+    private fun SyncSong.toSongInfo() = SongInfo(
+        videoId = id,
+        title = title,
+        artist = artist,
+        albumArtUrl = albumArtUrl,
+        audioStreamUrl = null,
+        albumName = album,
+        durationSeconds = durationSeconds
+    )
 
     private fun mergeIntoPlaylistManager(
         playlistManager: PlaylistManager,
         activeUserId: String,
         payload: RivaraSyncPayload
     ) {
-        val currentPlaylists = playlistManager.playlists.value.toMutableList()
-
-        for (syncPl in payload.playlists) {
-            val existingIdx = currentPlaylists.indexOfFirst {
-                it.id == syncPl.id || it.name.trim().equals(syncPl.name.trim(), ignoreCase = true)
-            }
-            val syncSongs = syncPl.songs.map { s ->
-                SongInfo(
-                    videoId = s.id,
-                    title = s.title,
-                    artist = s.artist,
-                    albumArtUrl = s.albumArtUrl,
-                    audioStreamUrl = s.audioUrl,
-                    albumName = s.album,
-                    durationSeconds = s.durationSeconds,
-                    importMatchFound = true
-                )
-            }
-
-            if (existingIdx >= 0) {
-                val existing = currentPlaylists[existingIdx]
-                val syncSongIds = syncSongs.map { it.videoId.ifBlank { "${it.title}_${it.artist}".lowercase() } }.toSet()
-                val localOnly = existing.songs.filter { s ->
-                    val key = s.videoId.ifBlank { "${s.title}_${s.artist}".lowercase() }
-                    key !in syncSongIds
+        playlistManager.updatePlaylistsFromSync { current ->
+            val merged = current.toMutableList()
+            for (syncPl in payload.playlists) {
+                val existingIdx = merged.indexOfFirst {
+                    it.id == syncPl.id || it.name.trim().equals(syncPl.name.trim(), ignoreCase = true)
                 }
-                val mergedSongs = syncSongs + localOnly
-                val cover = existing.coverUrl.ifBlank { syncPl.coverUrl }.ifBlank {
-                    mergedSongs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
-                }
-                currentPlaylists[existingIdx] = existing.copy(
-                    songs = mergedSongs,
-                    coverUrl = cover
-                )
-            } else {
-                val cover = syncPl.coverUrl.ifBlank {
-                    syncSongs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
-                }
-                currentPlaylists.add(
-                    UserPlaylist(
-                        id = syncPl.id,
-                        name = syncPl.name,
-                        creator = syncPl.creator.ifBlank { payload.userEmail.substringBefore("@") },
-                        coverUrl = cover,
-                        songs = syncSongs,
-                        createdAtMs = syncPl.createdAtMs,
-                        userId = activeUserId
+                val syncSongs = syncPl.songs.map { it.toSongInfo() }
+                if (existingIdx >= 0) {
+                    val existing = merged[existingIdx]
+                    val syncKeys = syncSongs.map { it.syncKey() }.toSet()
+                    val localOnly = existing.songs.filter { it.syncKey() !in syncKeys }
+                    // Keep local metadata for songs both sides know about, so a richer local
+                    // entry (for example one with a match flag) is not replaced by the copy.
+                    val localByKey = existing.songs.associateBy { it.syncKey() }
+                    val mergedSongs = syncSongs.map { localByKey[it.syncKey()] ?: it } + localOnly
+                    val cover = existing.coverUrl.ifBlank { syncPl.coverUrl }.ifBlank {
+                        mergedSongs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
+                    }
+                    merged[existingIdx] = existing.copy(songs = mergedSongs, coverUrl = cover)
+                } else {
+                    merged.add(
+                        UserPlaylist(
+                            id = syncPl.id,
+                            name = syncPl.name,
+                            creator = syncPl.creator.ifBlank { "You" },
+                            coverUrl = syncPl.coverUrl.ifBlank {
+                                syncSongs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
+                            },
+                            songs = syncSongs,
+                            createdAtMs = syncPl.createdAtMs,
+                            userId = activeUserId
+                        )
                     )
-                )
+                }
             }
+            merged
         }
 
-        // Apply to PlaylistManager
-        playlistManager.applyMergedPlaylists(currentPlaylists)
-
-        // Merge Liked Songs
-        val currentLiked = playlistManager.likedSongs.value.toMutableList()
-        for (syncLiked in payload.likedSongs) {
-            if (currentLiked.none { it.videoId == syncLiked.id || (it.title.equals(syncLiked.title, true) && it.artist.equals(syncLiked.artist, true)) }) {
-                currentLiked.add(
-                    SongInfo(
-                        videoId = syncLiked.id,
-                        title = syncLiked.title,
-                        artist = syncLiked.artist,
-                        albumArtUrl = syncLiked.albumArtUrl,
-                        audioStreamUrl = syncLiked.audioUrl,
-                        albumName = syncLiked.album,
-                        durationSeconds = syncLiked.durationSeconds,
-                        importMatchFound = true
-                    )
-                )
+        playlistManager.updateLikedSongsFromSync { current ->
+            val merged = current.toMutableList()
+            for (syncLiked in payload.likedSongs) {
+                val exists = merged.any {
+                    it.videoId == syncLiked.id ||
+                        (it.title.equals(syncLiked.title, true) && it.artist.equals(syncLiked.artist, true))
+                }
+                if (!exists) merged.add(syncLiked.toSongInfo())
             }
+            merged
         }
-        playlistManager.applyMergedLikedSongs(currentLiked)
     }
+
+    private fun SongInfo.syncKey(): String = videoId.ifBlank { "${title}_${artist}".lowercase() }
 }

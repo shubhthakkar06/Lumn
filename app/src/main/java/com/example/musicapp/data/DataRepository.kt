@@ -19,7 +19,7 @@ interface DataRepository {
 }
 
 class DefaultDataRepository(private val context: Context) : DataRepository {
-    private val providerRouter = ProviderRouter()
+    private val providerRouter = ProviderRouter.shared
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val inFlightRequests = ConcurrentHashMap<String, Deferred<String?>>()
     private val providerByRequestKey = ConcurrentHashMap<String, String>()
@@ -105,7 +105,7 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
 
     override fun prefetchStreamUrls(songs: List<SongInfo>) {
         songs.forEach { song ->
-            if (!inFlightRequests.containsKey(song.videoId)) {
+            if (!inFlightRequests.containsKey(requestKey(song.videoId, song.title, song.artist, song.durationSeconds))) {
                 scope.launch {
                     getStreamUrl(song.videoId, song.title, song.artist, song.durationSeconds)
                 }

@@ -4,22 +4,26 @@ import android.content.Context
 import com.example.musicapp.data.MusicCatalog
 import com.example.musicapp.data.auth.UserProfile
 import com.example.musicapp.data.network.SongInfo
+import com.example.musicapp.data.storage.AtomicFiles
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 @Serializable
 data class UserPlaylist(
     val id: String,
     val name: String,
-    val creator: String = "Shubh Thakkar",
+    val creator: String = "You",
     val coverUrl: String = "",
     val songs: List<SongInfo> = emptyList(),
     val isPinned: Boolean = false,
@@ -30,10 +34,16 @@ data class UserPlaylist(
 
 class PlaylistManager private constructor(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.IO)
-    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    private val json = Json { ignoreUnknownKeys = true }
+
+    // All disk writes go through one background thread, in order. The UI thread only updates
+    // in-memory state, so saving a 1,000-song import can no longer freeze the app.
+    private val writer: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "rivara-playlist-writer").apply { isDaemon = true }
+    }
 
     private val userManager = com.example.musicapp.data.auth.UserManager.getInstance(context)
-    private var activeUserId: String = userManager.currentUser.value.id
+    @Volatile private var activeUserId: String = userManager.currentUser.value.id
 
     private val legacyPlaylistsFile = File(context.filesDir, "user_playlists.json")
     private val legacyLikedSongsFile = File(context.filesDir, "liked_songs.json")
@@ -70,7 +80,15 @@ class PlaylistManager private constructor(private val context: Context) {
         }
     }
 
+    /** Blocks until every queued write has reached disk. */
+    fun flushPendingWrites() {
+        runCatching { writer.submit {}.get() }
+    }
+
     private fun loadData(userId: String) {
+        // A user switch reads files from disk, so writes queued for the previous user must
+        // land first or a just-made change would be lost.
+        flushPendingWrites()
         activeUserId = userId
         val userPlaylistsFile = getPlaylistsFile(userId)
         val userLikedSongsFile = getLikedSongsFile(userId)
@@ -78,22 +96,22 @@ class PlaylistManager private constructor(private val context: Context) {
 
         // 1. Liked Songs
         try {
-            var loadedLiked = emptyList<SongInfo>()
-            if (userLikedSongsFile.exists() && userLikedSongsFile.length() > 5) {
-                val content = userLikedSongsFile.readText()
-                loadedLiked = runCatching { json.decodeFromString<List<SongInfo>>(content) }.getOrDefault(emptyList())
-            }
+            // A readable file is authoritative, even when it is an empty list: the user may have
+            // unliked everything. Recovery only runs when the file is missing or unreadable.
+            val parsedLiked = if (userLikedSongsFile.exists()) {
+                runCatching { json.decodeFromString<List<SongInfo>>(userLikedSongsFile.readText()) }.getOrNull()
+            } else null
+            var loadedLiked = parsedLiked.orEmpty()
 
-            // If empty or missing, search and recover from backups, google_*, guest_*, or legacy files
-            if (loadedLiked.isEmpty()) {
+            if (parsedLiked == null) {
                 val recovered = recoverLikedSongsOnDevice(userId, otherUsers)
                 if (recovered.isNotEmpty()) {
                     loadedLiked = recovered
-                    userLikedSongsFile.writeText(json.encodeToString(loadedLiked))
+                    AtomicFiles.writeText(userLikedSongsFile, json.encodeToString(loadedLiked))
                 }
             }
 
-            _likedSongs.value = loadedLiked
+            _likedSongs.value = loadedLiked.map(::storable)
         } catch (e: Exception) {
             e.printStackTrace()
             _likedSongs.value = emptyList()
@@ -102,9 +120,11 @@ class PlaylistManager private constructor(private val context: Context) {
         // 2. Playlists
         try {
             var loadedPlaylists = emptyList<UserPlaylist>()
-            if (userPlaylistsFile.exists() && userPlaylistsFile.length() > 5) {
-                val content = userPlaylistsFile.readText()
-                val rawList = runCatching { json.decodeFromString<List<UserPlaylist>>(content) }.getOrDefault(emptyList())
+            val rawPlaylists = if (userPlaylistsFile.exists()) {
+                runCatching { json.decodeFromString<List<UserPlaylist>>(userPlaylistsFile.readText()) }.getOrNull()
+            } else null
+            if (rawPlaylists != null) {
+                val rawList = rawPlaylists
                 if (rawList.isNotEmpty()) {
                     // Sanitize against duplicate or foreign playlists while preserving user's own playlists
                     val sanitized = rawList.mapNotNull { pl ->
@@ -123,21 +143,22 @@ class PlaylistManager private constructor(private val context: Context) {
                     }
                     loadedPlaylists = sanitized
                     if (loadedPlaylists != rawList) {
-                        userPlaylistsFile.writeText(json.encodeToString(loadedPlaylists))
+                        AtomicFiles.writeText(userPlaylistsFile, json.encodeToString(loadedPlaylists))
                     }
                 }
             }
 
-            // If empty, recover from previous Google / Guest / legacy files on device (excluding other users' files)
-            if (loadedPlaylists.isEmpty()) {
+            // Missing or unreadable: recover from backup / previous Google, Guest or legacy files
+            // on this device (never other accounts' files).
+            if (rawPlaylists == null) {
                 val recovered = recoverPlaylistsOnDevice(userId, otherUsers)
                 if (recovered.isNotEmpty()) {
                     loadedPlaylists = recovered.map { it.copy(userId = userId) }
-                    userPlaylistsFile.writeText(json.encodeToString(loadedPlaylists))
+                    AtomicFiles.writeText(userPlaylistsFile, json.encodeToString(loadedPlaylists))
                 }
             }
 
-            _playlists.value = loadedPlaylists
+            _playlists.value = loadedPlaylists.map { pl -> pl.copy(songs = pl.songs.map(::storable)) }
             if (loadedPlaylists.isEmpty() && !userId.startsWith("guest_")) {
                 com.example.musicapp.data.sync.DeviceSyncManager.triggerSilentSync(context)
             }
@@ -234,35 +255,45 @@ class PlaylistManager private constructor(private val context: Context) {
         return bestMatch
     }
 
-    private fun savePlaylists() {
-        val targetFile = getPlaylistsFile(activeUserId)
-        val current = _playlists.value
-        try {
-            val content = json.encodeToString(current)
-            targetFile.writeText(content)
-            if (current.isNotEmpty()) {
-                File(context.filesDir, "user_playlists_${sanitizeUserId(activeUserId)}_backup.json").writeText(content)
+    private fun savePlaylists(notifySync: Boolean = true) {
+        val userId = activeUserId
+        val snapshot = _playlists.value
+        writer.execute {
+            try {
+                // Write the latest state for this user (a later change may already be in memory);
+                // fall back to the snapshot if the active user changed meanwhile.
+                val content = json.encodeToString(if (activeUserId == userId) _playlists.value else snapshot)
+                AtomicFiles.writeText(getPlaylistsFile(userId), content)
+                AtomicFiles.writeText(File(context.filesDir, "user_playlists_${sanitizeUserId(userId)}_backup.json"), content)
+            } catch (e: Exception) {
+                android.util.Log.e("PlaylistManager", "Could not save playlists", e)
             }
-            com.example.musicapp.data.sync.DeviceSyncManager.triggerSilentSync(context)
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
+        if (notifySync) com.example.musicapp.data.sync.DeviceSyncManager.triggerSilentSync(context)
     }
 
-    private fun saveLikedSongs() {
-        val targetFile = getLikedSongsFile(activeUserId)
-        val current = _likedSongs.value
-        try {
-            val content = json.encodeToString(current)
-            targetFile.writeText(content)
-            if (current.isNotEmpty()) {
-                File(context.filesDir, "liked_songs_${sanitizeUserId(activeUserId)}_backup.json").writeText(content)
+    private fun saveLikedSongs(notifySync: Boolean = true) {
+        val userId = activeUserId
+        val snapshot = _likedSongs.value
+        writer.execute {
+            try {
+                val content = json.encodeToString(if (activeUserId == userId) _likedSongs.value else snapshot)
+                AtomicFiles.writeText(getLikedSongsFile(userId), content)
+                AtomicFiles.writeText(File(context.filesDir, "liked_songs_${sanitizeUserId(userId)}_backup.json"), content)
+            } catch (e: Exception) {
+                android.util.Log.e("PlaylistManager", "Could not save liked songs", e)
             }
-            com.example.musicapp.data.sync.DeviceSyncManager.triggerSilentSync(context)
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
+        if (notifySync) com.example.musicapp.data.sync.DeviceSyncManager.triggerSilentSync(context)
     }
+
+    /**
+     * Stream URLs expire and belong to one provider, so they are never persisted. Podcast
+     * episodes keep theirs because it is the feed's permanent enclosure URL, and downloaded
+     * files are looked up by ID at play time.
+     */
+    private fun storable(song: SongInfo): SongInfo =
+        if (song.audioStreamUrl.isNullOrBlank() || song.isEpisode) song else song.copy(audioStreamUrl = null)
 
     fun isLiked(videoId: String): Boolean {
         return _likedSongs.value.any { it.videoId == videoId }
@@ -270,12 +301,10 @@ class PlaylistManager private constructor(private val context: Context) {
 
     fun toggleLike(song: SongInfo): Boolean {
         val currentlyLiked = isLiked(song.videoId)
-        val updated = if (currentlyLiked) {
-            _likedSongs.value.filter { it.videoId != song.videoId }
-        } else {
-            listOf(song) + _likedSongs.value
+        _likedSongs.update { liked ->
+            if (currentlyLiked) liked.filter { it.videoId != song.videoId }
+            else listOf(storable(song)) + liked.filter { it.videoId != song.videoId }
         }
-        _likedSongs.value = updated
         saveLikedSongs()
         return !currentlyLiked
     }
@@ -303,69 +332,64 @@ class PlaylistManager private constructor(private val context: Context) {
         val resolvedCoverUrl = coverUrl.ifBlank {
             songs.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
         }
-        val id = "pl_" + System.currentTimeMillis()
+        val id = "pl_" + System.currentTimeMillis() + "_" + (1000..9999).random()
         val newPlaylist = UserPlaylist(
             id = id,
             name = name.trim(),
             creator = resolvedCreator,
             coverUrl = resolvedCoverUrl,
-            songs = songs,
+            songs = songs.map(::storable),
             sourceUrl = sourceUrl,
             userId = activeUserId
         )
-        _playlists.value = listOf(newPlaylist) + _playlists.value
+        _playlists.update { listOf(newPlaylist) + it }
         savePlaylists()
         return newPlaylist
     }
 
     fun addSongToPlaylist(playlistId: String, song: SongInfo) {
         if (com.example.musicapp.data.auth.UserManager.getInstance(context).currentUser.value.isGuest) return
-        val updated = _playlists.value.map { pl ->
-            if (pl.id == playlistId) {
-                if (pl.songs.none { it.videoId == song.videoId }) {
-                    pl.copy(songs = pl.songs + song)
+        _playlists.update { all ->
+            all.map { pl ->
+                if (pl.id == playlistId && pl.songs.none { it.videoId == song.videoId }) {
+                    pl.copy(songs = pl.songs + storable(song))
                 } else pl
-            } else pl
+            }
         }
-        _playlists.value = updated
         savePlaylists()
     }
 
     fun removeSongFromPlaylist(playlistId: String, videoId: String) {
-        val updated = _playlists.value.map { pl ->
-            if (pl.id == playlistId) {
-                pl.copy(songs = pl.songs.filter { it.videoId != videoId })
-            } else pl
+        _playlists.update { all ->
+            all.map { pl -> if (pl.id == playlistId) pl.copy(songs = pl.songs.filter { it.videoId != videoId }) else pl }
         }
-        _playlists.value = updated
         savePlaylists()
     }
 
     fun renamePlaylist(playlistId: String, newName: String) {
         if (newName.isBlank()) return
-        val updated = _playlists.value.map { pl ->
-            if (pl.id == playlistId) pl.copy(name = newName.trim()) else pl
-        }
-        _playlists.value = updated
+        _playlists.update { all -> all.map { pl -> if (pl.id == playlistId) pl.copy(name = newName.trim()) else pl } }
         savePlaylists()
     }
 
     fun moveSong(playlistId: String, fromIndex: Int, toIndex: Int) {
-        val pl = _playlists.value.find { it.id == playlistId } ?: return
-        val songs = pl.songs.toMutableList()
-        if (fromIndex in songs.indices && toIndex in songs.indices && fromIndex != toIndex) {
-            val item = songs.removeAt(fromIndex)
-            songs.add(toIndex, item)
-            val updated = _playlists.value.map {
-                if (it.id == playlistId) it.copy(songs = songs) else it
+        var changed = false
+        _playlists.update { all ->
+            all.map { pl ->
+                if (pl.id != playlistId) return@map pl
+                val songs = pl.songs.toMutableList()
+                if (fromIndex in songs.indices && toIndex in songs.indices && fromIndex != toIndex) {
+                    songs.add(toIndex, songs.removeAt(fromIndex))
+                    changed = true
+                    pl.copy(songs = songs)
+                } else pl
             }
-            _playlists.value = updated
-            savePlaylists()
         }
+        if (changed) savePlaylists()
     }
 
     fun deletePlaylist(playlistId: String) {
-        _playlists.value = _playlists.value.filter { it.id != playlistId }
+        _playlists.update { all -> all.filter { it.id != playlistId } }
         savePlaylists()
     }
 
@@ -373,14 +397,17 @@ class PlaylistManager private constructor(private val context: Context) {
         return _playlists.value.find { it.id == playlistId }
     }
 
-    fun applyMergedPlaylists(merged: List<UserPlaylist>) {
-        _playlists.value = merged
-        savePlaylists()
+    /** Applies a sync merge atomically against the latest state, without re-triggering sync. */
+    fun updatePlaylistsFromSync(transform: (List<UserPlaylist>) -> List<UserPlaylist>) {
+        _playlists.update { current ->
+            transform(current).map { pl -> pl.copy(songs = pl.songs.map(::storable)) }
+        }
+        savePlaylists(notifySync = false)
     }
 
-    fun applyMergedLikedSongs(merged: List<SongInfo>) {
-        _likedSongs.value = merged
-        saveLikedSongs()
+    fun updateLikedSongsFromSync(transform: (List<SongInfo>) -> List<SongInfo>) {
+        _likedSongs.update { current -> transform(current).map(::storable) }
+        saveLikedSongs(notifySync = false)
     }
 
     companion object {
@@ -394,6 +421,7 @@ class PlaylistManager private constructor(private val context: Context) {
         }
 
         fun resetForTesting(context: Context) {
+            instance?.flushPendingWrites()
             instance = null
             context.filesDir.listFiles()?.filter {
                 it.name.startsWith("user_playlists") || it.name.startsWith("liked_songs")

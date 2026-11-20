@@ -22,7 +22,7 @@ data class DesktopSong(
 data class DesktopPlaylist(
     val id: String,
     val name: String,
-    val creator: String = "Shubh Thakkar",
+    val creator: String = "You",
     val songCount: Int = 0,
     val coverUrl: String = ""
 )

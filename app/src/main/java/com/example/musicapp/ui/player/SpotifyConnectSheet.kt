@@ -337,6 +337,17 @@ fun SpotifyConnectSheet(
             // Sync with Mac
             val coroutineScope = rememberCoroutineScope()
             var isSyncingMac by remember { mutableStateOf(false) }
+            var showMacPairing by remember { mutableStateOf(false) }
+            if (showMacPairing) {
+                com.example.musicapp.ui.sync.MacPairingDialog(
+                    accent = Color(0xFF00D2FF),
+                    onDismiss = { showMacPairing = false },
+                    onSynced = { count ->
+                        showMacPairing = false
+                        Toast.makeText(context, "Synced $count playlists with your Mac", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
 
             Spacer(modifier = Modifier.height(14.dp))
             Box(
@@ -345,14 +356,19 @@ fun SpotifyConnectSheet(
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color(0xFF1E293B))
                     .clickable(enabled = !isSyncingMac) {
-                        isSyncingMac = true
-                        coroutineScope.launch {
-                            val res = com.example.musicapp.data.sync.DeviceSyncManager.syncWithMac(context)
-                            isSyncingMac = false
-                            res.onSuccess { count ->
-                                Toast.makeText(context, "✓ Synced $count playlists with Cloud & Mac!", Toast.LENGTH_SHORT).show()
-                            }.onFailure { err ->
-                                Toast.makeText(context, "Sync failed: ${err.message}", Toast.LENGTH_LONG).show()
+                        if (com.example.musicapp.data.sync.DeviceSyncManager.getPairing(context) == null) {
+                            showMacPairing = true
+                        } else {
+                            isSyncingMac = true
+                            coroutineScope.launch {
+                                val res = com.example.musicapp.data.sync.DeviceSyncManager.syncWithMac(context)
+                                isSyncingMac = false
+                                res.onSuccess { count ->
+                                    Toast.makeText(context, "Synced $count playlists with your Mac", Toast.LENGTH_SHORT).show()
+                                }.onFailure { err ->
+                                    Toast.makeText(context, err.message ?: "Sync failed", Toast.LENGTH_LONG).show()
+                                    showMacPairing = true
+                                }
                             }
                         }
                     }

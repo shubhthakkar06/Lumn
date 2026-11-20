@@ -60,8 +60,7 @@ fun WearAccountScreen(
 
     val profiles = remember {
         listOf(
-            WearUserProfile("Shubh Thakkar", "shubhthakkar06@gmail.com", "ST", Color(0xFF1ED760)),
-            WearUserProfile("Navya Shubh", "navya.shubh2006@gmail.com", "NS", Color(0xFF6C5CE7))
+            WearUserProfile("Listener", "", "L", Color(0xFF1ED760))
         )
     }
 

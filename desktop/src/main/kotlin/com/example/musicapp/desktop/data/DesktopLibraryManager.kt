@@ -204,7 +204,7 @@ class DesktopLibraryManager {
 
     fun getSyncPayload(user: DesktopUser?): RivaraSyncPayload {
         val uId = user?.id ?: activeUserId
-        val email = user?.email.orEmpty().ifBlank { "navya.shubh2006@gmail.com" }
+        val email = user?.email.orEmpty()
         val syncPlaylists = _playlists.value.map { pl ->
             val songs = getSongsForPlaylist(pl.id).map { s ->
                 SyncSong(
@@ -214,7 +214,7 @@ class DesktopLibraryManager {
                     album = s.album,
                     durationSeconds = s.durationSeconds,
                     albumArtUrl = s.albumArtUrl,
-                    audioUrl = s.audioUrl
+                    audioUrl = null
                 )
             }
             SyncPlaylist(
@@ -233,7 +233,7 @@ class DesktopLibraryManager {
                 album = s.album,
                 durationSeconds = s.durationSeconds,
                 albumArtUrl = s.albumArtUrl,
-                audioUrl = s.audioUrl
+                audioUrl = null
             )
         }
         return RivaraSyncPayload(

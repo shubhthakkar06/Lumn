@@ -28,7 +28,9 @@ data class SpotifyImportedTrack(
     val albumName: String = "",
     val albumArtUrl: String = "",
     val durationSeconds: Long = 0L,
-    val resolvedSong: SongInfo? = null
+    val resolvedSong: SongInfo? = null,
+    /** True when a match was searched for at import time (so a null [resolvedSong] means "no match"). */
+    val matchAttempted: Boolean = false
 )
 
 data class SpotifyImportedPlaylist(
@@ -36,7 +38,9 @@ data class SpotifyImportedPlaylist(
     val name: String,
     val spotifyUrl: String,
     val tracks: List<SpotifyImportedTrack>,
-    val coverUrl: String = ""
+    val coverUrl: String = "",
+    /** How many tracks the source reported. Larger than [tracks] when only part could be read. */
+    val expectedTrackCount: Int = tracks.size
 )
 
 /**
@@ -72,24 +76,24 @@ object SpotifyPlaylistImporter {
 
         onProgress(playlist.tracks.size, playlist.tracks.size)
 
-        // Pre-match top 3 tracks with a fast timeout so initial playback is instantaneous
-        val router = ProviderRouter()
+        // Pre-match the first tracks with a fast timeout so initial playback is instant. The
+        // rest are matched by title/artist when played.
+        val router = ProviderRouter.shared
         val preMatchCount = minOf(3, playlist.tracks.size)
         val matchedTopTracks = (0 until preMatchCount).map { i ->
             val track = playlist.tracks[i]
             async {
+                // null = search timed out (unknown); Pair(true, match) = searched.
                 runCatching {
-                    withTimeoutOrNull(3000L) {
-                        val primary = router.search("${track.title} ${track.artists}")
-                        SpotifyTrackMatcher.bestMatch(track, primary)
-                    }
+                    withTimeoutOrNull(3000L) { router.search("${track.title} ${track.artists}") }
+                        ?.let { results -> true to SpotifyTrackMatcher.bestMatch(track, results) }
                 }.getOrNull()
             }
         }.awaitAll()
 
         val enrichedTracks = playlist.tracks.mapIndexed { i, track ->
-            val resolved = if (i < preMatchCount) matchedTopTracks[i] else null
-            track.copy(resolvedSong = resolved)
+            val attempt = if (i < preMatchCount) matchedTopTracks[i] else null
+            track.copy(resolvedSong = attempt?.second, matchAttempted = attempt?.first == true)
         }
 
         onProgress(playlist.tracks.size, playlist.tracks.size)
@@ -123,10 +127,11 @@ object SpotifyPlaylistImporter {
             .header("Accept-Language", "en-US,en;q=0.9")
             .build()
 
-        val response = http.newCall(req).execute()
-        val html = response.body?.string().orEmpty()
-        if (!response.isSuccessful || html.isBlank()) {
-            throw IllegalStateException("Spotify playlist could not be loaded (${response.code}).")
+        val (code, html) = http.newCall(req).execute().use { response ->
+            response.code to (if (response.isSuccessful) response.body?.string().orEmpty() else "")
+        }
+        if (html.isBlank()) {
+            throw IllegalStateException("Spotify playlist could not be loaded ($code).")
         }
 
         val scriptRegex = Regex("""<script id="__NEXT_DATA__" type="application/json">(.*?)</script>""")
@@ -224,12 +229,16 @@ object SpotifyPlaylistImporter {
             coverUrl = tracks.firstOrNull { it.albumArtUrl.isNotBlank() }?.albumArtUrl.orEmpty()
         }
 
+        val reportedTotal = (entity["trackCount"] as? JsonPrimitive)?.content?.toIntOrNull()
+            ?: ((entity["tracks"] as? JsonObject)?.get("totalCount") as? JsonPrimitive)?.content?.toIntOrNull()
+            ?: tracks.size
         return SpotifyImportedPlaylist(
             id = entityId,
             name = name,
             spotifyUrl = "https://open.spotify.com/$kind/$entityId",
             tracks = tracks,
-            coverUrl = coverUrl
+            coverUrl = coverUrl,
+            expectedTrackCount = maxOf(reportedTotal, tracks.size)
         )
     }
 
@@ -245,7 +254,7 @@ object SpotifyPlaylistImporter {
             var offset = 0
             val limit = 100
             var totalCount: Int? = null
-            val maxFetch = 600
+            val maxFetch = 10_000
 
             while (offset < (totalCount ?: Int.MAX_VALUE) && tracks.size < maxFetch) {
                 val variables = """{"uri":"spotify:playlist:$playlistId","offset":$offset,"limit":$limit,"enableWatchFeedEntrypoint":false}"""
@@ -261,9 +270,16 @@ object SpotifyPlaylistImporter {
                     .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                     .build()
 
-                val resp = http.newCall(req).execute()
-                if (!resp.isSuccessful) break
-                val bodyStr = resp.body?.string().orEmpty()
+                // One retry per page: Spotify occasionally drops a request on long playlists.
+                var bodyStr: String? = null
+                for (attempt in 0..1) {
+                    bodyStr = runCatching {
+                        http.newCall(req).execute().use { resp -> if (resp.isSuccessful) resp.body?.string() else null }
+                    }.getOrNull()
+                    if (bodyStr != null) break
+                    Thread.sleep(800)
+                }
+                if (bodyStr == null) break
                 val root = json.parseToJsonElement(bodyStr) as? JsonObject ?: break
 
                 val plData = (root["data"] as? JsonObject)?.get("playlistV2") as? JsonObject ?: break
@@ -336,7 +352,7 @@ object SpotifyPlaylistImporter {
                 offset += items.size
                 onProgress(tracks.size, totalCount)
 
-                if (offset >= totalCount) break
+                if (offset >= (totalCount ?: 0)) break
             }
 
             if (tracks.isEmpty()) return null
@@ -354,7 +370,8 @@ object SpotifyPlaylistImporter {
                 name = playlistName.ifBlank { "Spotify Playlist" },
                 spotifyUrl = "https://open.spotify.com/playlist/$playlistId",
                 tracks = filledTracks,
-                coverUrl = playlistCoverUrl
+                coverUrl = playlistCoverUrl,
+                expectedTrackCount = maxOf(totalCount ?: filledTracks.size, filledTracks.size)
             )
         } catch (_: Exception) {
             null
@@ -393,7 +410,14 @@ object SpotifyPlaylistImporter {
             extractor.fetchPage()
             val name = extractor.name.ifBlank { "YouTube Playlist" }
             val cover = extractor.thumbnails.maxByOrNull { it.height * it.width }?.url.orEmpty()
-            val tracks = extractor.initialPage.items.filterIsInstance<StreamInfoItem>().map { item ->
+            val items = mutableListOf<StreamInfoItem>()
+            var page = extractor.initialPage
+            items += page.items.filterIsInstance<StreamInfoItem>()
+            while (page.hasNextPage() && items.size < 5_000) {
+                page = runCatching { extractor.getPage(page.nextPage) }.getOrNull() ?: break
+                items += page.items.filterIsInstance<StreamInfoItem>()
+            }
+            val tracks = items.map { item ->
                 val vid = YouTubeVideoIdParser.parse(item.url) ?: item.url
                 SpotifyImportedTrack(
                     id = vid,

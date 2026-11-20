@@ -4,6 +4,7 @@ plugins {
   alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.google.services)
+  alias(libs.plugins.firebase.crashlytics)
 }
 
 android {
@@ -13,8 +14,8 @@ android {
         applicationId = "com.example.musicapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 40
-        versionName = "2.8.3"
+        versionCode = 41
+        versionName = "2.9.0"
     }
 
     signingConfigs {
@@ -153,6 +154,8 @@ dependencies {
   // Google sign-in through Credential Manager and Firebase Authentication.
   implementation(platform(libs.firebase.bom))
   implementation(libs.firebase.auth)
+  // Crash reports (stack traces, device model, OS version) so import/download crashes can be fixed.
+  implementation(libs.firebase.crashlytics)
   implementation(libs.androidx.credentials)
   implementation(libs.androidx.credentials.play.services.auth)
   implementation(libs.googleid)

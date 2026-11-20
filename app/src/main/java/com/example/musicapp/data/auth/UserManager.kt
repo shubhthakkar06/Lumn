@@ -56,10 +56,49 @@ class UserManager private constructor(private val context: Context) {
             context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE).edit().clear().commit()
         }
 
+        private const val PBKDF2_PREFIX = "pbkdf2_sha256"
+        private const val PBKDF2_ITERATIONS = 120_000
+
+        /** Legacy unsalted SHA-256 format, kept only to verify and upgrade older accounts. */
         fun hashPassword(password: String): String {
             if (password.isEmpty()) return ""
             val bytes = MessageDigest.getInstance("SHA-256").digest(password.toByteArray())
             return bytes.joinToString("") { "%02x".format(it) }
+        }
+
+        /** Salted PBKDF2 hash stored as "pbkdf2_sha256:iterations:saltHex:hashHex". */
+        fun createPasswordHash(password: String): String {
+            val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
+            val hash = pbkdf2(password, salt, PBKDF2_ITERATIONS)
+            return listOf(PBKDF2_PREFIX, PBKDF2_ITERATIONS.toString(), salt.toHex(), hash.toHex()).joinToString(":")
+        }
+
+        fun verifyPassword(password: String, stored: String): Boolean {
+            if (password.isEmpty() || stored.isEmpty()) return false
+            if (isLegacyPasswordHash(stored)) {
+                return MessageDigest.isEqual(hashPassword(password).toByteArray(), stored.toByteArray())
+            }
+            val parts = stored.split(':')
+            if (parts.size != 4) return false
+            val iterations = parts[1].toIntOrNull() ?: return false
+            val salt = parts[2].fromHex() ?: return false
+            val expected = parts[3].fromHex() ?: return false
+            return MessageDigest.isEqual(pbkdf2(password, salt, iterations), expected)
+        }
+
+        fun isLegacyPasswordHash(stored: String): Boolean =
+            stored.isNotEmpty() && !stored.startsWith("$PBKDF2_PREFIX:")
+
+        private fun pbkdf2(password: String, salt: ByteArray, iterations: Int): ByteArray {
+            val spec = javax.crypto.spec.PBEKeySpec(password.toCharArray(), salt, iterations, 256)
+            return javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
+        }
+
+        private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
+
+        private fun String.fromHex(): ByteArray? {
+            if (length % 2 != 0) return null
+            return runCatching { ByteArray(length / 2) { i -> substring(i * 2, i * 2 + 2).toInt(16).toByte() } }.getOrNull()
         }
 
         fun isValidUsername(username: String): Boolean {
@@ -138,7 +177,7 @@ class UserManager private constructor(private val context: Context) {
     private fun saveAccounts(users: List<UserProfile>) {
         try {
             val content = json.encodeToString(users.filter { !it.isGuest })
-            accountsFile.writeText(content)
+            com.example.musicapp.data.storage.AtomicFiles.writeText(accountsFile, content)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -190,17 +229,25 @@ class UserManager private constructor(private val context: Context) {
             return@runBlocking Result.failure(Exception("Please enter your username"))
         }
 
-        val passHash = hashPassword(password)
         val localUser = _allUsers.value.find {
-            it.username.equals(clean, ignoreCase = true) || it.name.equals(clean, ignoreCase = true)
+            it.username.equals(clean, ignoreCase = true)
         } ?: return@runBlocking Result.failure(Exception("No account found with username \"$clean\" on this device"))
 
-        if (localUser.passwordHash.isNotEmpty() && localUser.passwordHash != passHash) {
+        // Accounts created through Google have no password. Previously any password was
+        // accepted for them here, which let anyone open them by typing the username.
+        if (localUser.passwordHash.isEmpty()) {
+            return@runBlocking Result.failure(Exception("This account uses Google sign-in. Tap \"Continue with Google\"."))
+        }
+        if (!verifyPassword(password, localUser.passwordHash)) {
             return@runBlocking Result.failure(Exception("Incorrect password. Please try again."))
         }
 
-        applySession(localUser)
-        Result.success(localUser)
+        // Transparently upgrade old unsalted hashes on a successful login.
+        val sessionUser = if (isLegacyPasswordHash(localUser.passwordHash)) {
+            localUser.copy(passwordHash = createPasswordHash(password))
+        } else localUser
+        applySession(sessionUser)
+        Result.success(sessionUser)
     }
 
     fun signup(username: String, password: String): Result<UserProfile> = runBlocking {
@@ -215,7 +262,7 @@ class UserManager private constructor(private val context: Context) {
             return@runBlocking Result.failure(Exception("Password must be at least 6 characters"))
         }
 
-        val passHash = hashPassword(password)
+        val passHash = createPasswordHash(password)
         val existingLocal = _allUsers.value.find {
             it.username.equals(clean, ignoreCase = true) || it.name.equals(clean, ignoreCase = true)
         }

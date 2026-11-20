@@ -87,6 +87,51 @@ class AccountIsolationTest {
     }
 
     @Test
+    fun googleAccountCannotBeOpenedWithAUsernameAndAnyPassword() {
+        val google = userManager.loginWithGoogle("eve_uid_222", "eve@test.com", "Eve")
+        userManager.logout()
+        // Re-add the account as a saved account without a session, as after an app restart.
+        userManager.loginWithGoogle("eve_uid_222", "eve@test.com", "Eve")
+        val result = userManager.login(google.username, "guessed-password")
+        assertTrue("Google accounts have no password and must not open via username login", result.isFailure)
+    }
+
+    @Test
+    fun signupAndLoginUseSaltedPasswords() {
+        val created = userManager.signup("frank_music", "secret123").getOrThrow()
+        assertFalse(UserManager.isLegacyPasswordHash(created.passwordHash))
+        assertTrue(userManager.login("frank_music", "secret123").isSuccess)
+        assertTrue(userManager.login("frank_music", "wrongpass").isFailure)
+    }
+
+    @Test
+    fun unlikingEverySongStaysUnlikedAfterReload() {
+        val gina = userManager.loginWithGoogle("gina_uid_333", "gina@test.com", "Gina")
+        playlistManager.switchUser(gina.id)
+        val song = SongInfo(videoId = "liked_x", title = "Yellow", artist = "Coldplay", albumArtUrl = "")
+        playlistManager.toggleLike(song)
+        playlistManager.toggleLike(song)
+        assertFalse(playlistManager.isLiked("liked_x"))
+
+        // Reload Gina's library from disk (switch away and back).
+        val other = userManager.loginWithGoogle("hank_uid_444", "hank@test.com", "Hank")
+        playlistManager.switchUser(other.id)
+        userManager.switchUser(gina.id)
+        playlistManager.switchUser(gina.id)
+        assertFalse("A song the user unliked must not be restored from backup", playlistManager.isLiked("liked_x"))
+    }
+
+    @Test
+    fun likedSongsAreStoredWithoutStreamUrls() {
+        val ivy = userManager.loginWithGoogle("ivy_uid_555", "ivy@test.com", "Ivy")
+        playlistManager.switchUser(ivy.id)
+        playlistManager.toggleLike(
+            SongInfo(videoId = "saavn_1", title = "Song", artist = "Artist", albumArtUrl = "", audioStreamUrl = "https://expiring.example/x.mp4")
+        )
+        assertEquals(null, playlistManager.likedSongs.value.first().audioStreamUrl)
+    }
+
+    @Test
     fun testArtistFollowAccountIsolation() {
         // Charlie logs in
         val charlie = userManager.loginWithGoogle("charlie_uid_789", "charlie@test.com", "Charlie")

@@ -34,9 +34,10 @@ class JamendoProvider(
                 .header("User-Agent", "CyberObsidianMusic/1.0 (Android)")
                 .build()
 
-            val response = httpClient.newCall(request).execute()
-            if (response.isSuccessful && response.body != null) {
-                val jsonStr = response.body!!.string()
+            val jsonStr = httpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) response.body?.string() else null
+            }
+            if (jsonStr != null) {
                 val root = json.parseToJsonElement(jsonStr) as? JsonObject
                 val array = root?.get("results") as? JsonArray
                 array?.forEach { element ->
@@ -79,9 +80,11 @@ class JamendoProvider(
             try {
                 val url = "https://api.jamendo.com/v3.0/tracks/?client_id=$clientId&format=json&id=$id&audioformat=mp32"
                 val request = Request.Builder().url(url).build()
-                val response = httpClient.newCall(request).execute()
-                if (response.isSuccessful && response.body != null) {
-                    val root = json.parseToJsonElement(response.body!!.string()) as? JsonObject
+                val body = httpClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) response.body?.string() else null
+                }
+                if (body != null) {
+                    val root = json.parseToJsonElement(body) as? JsonObject
                     val array = root?.get("results") as? JsonArray
                     val first = array?.firstOrNull() as? JsonObject
                     val audioUrl = first?.get("audio")?.let { (it as? JsonPrimitive)?.content }
@@ -96,9 +99,8 @@ class JamendoProvider(
 
         val query = listOfNotNull(title, artist).joinToString(" ")
         if (query.isNotBlank()) {
-            val hits = search(query)
-            val best = hits.firstOrNull { !it.audioStreamUrl.isNullOrBlank() }
-            if (best != null && best.audioStreamUrl != null) {
+            val best = TrackMatching.bestPlayable(title, artist, durationSeconds, search(query))
+            if (best?.audioStreamUrl != null) {
                 return@withContext StreamResult.Success(streamUrl = best.audioStreamUrl, providerName = name, bitrateKbps = 192)
             }
         }

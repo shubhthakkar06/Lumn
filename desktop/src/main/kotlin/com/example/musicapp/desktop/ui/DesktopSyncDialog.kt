@@ -47,11 +47,10 @@ fun DesktopSyncDialog(
 
     var adbStatus by remember { mutableStateOf<String?>(null) }
     var pingStatus by remember { mutableStateOf<String?>(null) }
-    var isCheckingPing by remember { mutableStateOf(false) }
 
     val localIp = remember { DesktopSyncService.getLocalIpAddress() }
     val port = DesktopSyncService.SYNC_PORT
-    val fullUrl = "http://$localIp:$port"
+    var pairCode by remember { mutableStateOf(DesktopSyncService.pairCode) }
 
     val lastSyncFormatted = remember(DesktopSyncService.lastSyncTimestampMs) {
         val ts = DesktopSyncService.lastSyncTimestampMs
@@ -168,8 +167,11 @@ fun DesktopSyncDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column {
-                                Text("Wi-Fi Sync URL", color = Color.Gray, fontSize = 10.5.sp)
-                                Text(fullUrl, color = themeAccent, fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                                Text("Mac address", color = Color.Gray, fontSize = 10.5.sp)
+                                Text(localIp, color = themeAccent, fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text("Pairing code", color = Color.Gray, fontSize = 10.5.sp)
+                                Text(pairCode, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp, letterSpacing = 3.sp)
                             }
                             Button(
                                 onClick = {
@@ -211,7 +213,7 @@ fun DesktopSyncDialog(
                                         .background(Color(0xFF4285F4)),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text("G", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text(currentUser?.avatarLetter ?: "U", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 }
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
@@ -228,7 +230,7 @@ fun DesktopSyncDialog(
                                 },
                                 contentPadding = PaddingValues(0.dp)
                             ) {
-                                Text("Switch Account", color = Color(0xFF4285F4), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Profiles", color = Color(0xFF4285F4), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
 
@@ -278,10 +280,10 @@ fun DesktopSyncDialog(
                         .padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("1. Wi-Fi Independent: Seamless cloud sync works across any Wi-Fi, cellular, or hotspot.", color = Color.White, fontSize = 12.sp)
-                    Text("2. Playlists and liked songs auto-sync seamlessly in the background every 15s.", color = Color.White, fontSize = 12.sp)
-                    Text("3. On phone, tap the Sync icon in Your Library to manually sync anytime.", color = Color.White, fontSize = 12.sp)
-                    Text("4. Local Wi-Fi and USB cable links are active as automatic instant fallbacks.", color = Color(0xFF1ED760), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("1. Put the phone and this Mac on the same Wi-Fi.", color = Color.White, fontSize = 12.sp)
+                    Text("2. On the phone, tap the Sync icon in Your Library.", color = Color.White, fontSize = 12.sp)
+                    Text("3. Enter the Mac address and pairing code shown above.", color = Color.White, fontSize = 12.sp)
+                    Text("After pairing, the phone syncs automatically a few seconds after each change. Your library is never uploaded anywhere else.", color = Color(0xFF1ED760), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
 
                 if (adbStatus != null) {
@@ -321,7 +323,7 @@ fun DesktopSyncDialog(
                                             }
                                         } else {
                                             withContext(Dispatchers.Main) {
-                                                adbStatus = "ADB not found. Cloud & Wi-Fi sync are active."
+                                                adbStatus = "ADB not found. Wi-Fi sync is active."
                                             }
                                         }
                                     } catch (e: Exception) {
@@ -344,29 +346,17 @@ fun DesktopSyncDialog(
 
                     Button(
                         onClick = {
-                            isCheckingPing = true
-                            coroutineScope.launch {
-                                val res = DesktopSyncService.syncCloud()
-                                isCheckingPing = false
-                                pingStatus = if (res.isSuccess) {
-                                    "✓ Cloud Sync Complete! (${res.getOrNull()} playlists synchronized)"
-                                } else {
-                                    "Cloud sync error: ${res.exceptionOrNull()?.message}"
-                                }
-                            }
+                            pairCode = DesktopSyncService.regeneratePairCode()
+                            pingStatus = "New pairing code created. Phones paired with the old code must pair again."
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = themeAccent, contentColor = Color.Black),
                         shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
                     ) {
-                        if (isCheckingPing) {
-                            CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.Black, strokeWidth = 2.dp)
-                        } else {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Sync Now (Cloud)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("New pairing code", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
                 }

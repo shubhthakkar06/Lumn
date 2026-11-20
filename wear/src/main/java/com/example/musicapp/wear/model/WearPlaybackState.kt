@@ -21,8 +21,8 @@ data class WearPlaybackState(
     val progressMs: Long = 0L,
     val durationMs: Long = 258_000L,
     val volume: Float = 0.8f,
-    val userProfileName: String = "Shubh Thakkar",
-    val userProfileEmail: String = "shubhthakkar06@gmail.com",
+    val userProfileName: String = "Listener",
+    val userProfileEmail: String = "",
     val isPhoneConnected: Boolean = true,
     val queue: List<WearSongItem> = defaultWearMusicCatalog
 )

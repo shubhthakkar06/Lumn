@@ -111,12 +111,7 @@ fun main() {
         audioPlayer.downloadManager = downloadManager
         DesktopSyncService.start(libraryManager, currentUser)
         DesktopSyncService.onSyncCompleted = { payload ->
-            toastMessage = "✓ Auto-synced with ${payload.deviceName} (${payload.playlists.size} playlists)!"
-        }
-        DesktopSyncService.onAuthCallbackReceived = { email, name ->
-            userManager.signIn(name = name, email = email, isGuest = false)
-            showAuthDialog = false
-            toastMessage = "✓ Connected to Google: $name ($email)"
+            toastMessage = "Synced with ${payload.deviceName} (${payload.playlists.size} playlists)"
         }
         delay(1800)
         showLaunchSplash = false

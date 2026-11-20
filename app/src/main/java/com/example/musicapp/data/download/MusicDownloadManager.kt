@@ -2,21 +2,27 @@ package com.example.musicapp.data.download
 
 import android.content.Context
 import com.example.musicapp.data.network.SongInfo
+import com.example.musicapp.data.storage.AtomicFiles
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @Serializable
 data class DownloadedTrack(
@@ -26,7 +32,9 @@ data class DownloadedTrack(
     val albumArtUrl: String,
     val localFilePath: String,
     val sizeBytes: Long,
-    val downloadedAtMs: Long = System.currentTimeMillis()
+    val downloadedAtMs: Long = System.currentTimeMillis(),
+    val albumName: String = "",
+    val durationSeconds: Long = 0L
 ) {
     fun toSongInfo(): SongInfo {
         return SongInfo(
@@ -34,7 +42,9 @@ data class DownloadedTrack(
             title = title,
             artist = artist,
             albumArtUrl = albumArtUrl,
-            audioStreamUrl = "file://$localFilePath"
+            audioStreamUrl = "file://$localFilePath",
+            albumName = albumName,
+            durationSeconds = durationSeconds
         )
     }
 }
@@ -47,12 +57,22 @@ sealed interface DownloadStatus {
 
 class MusicDownloadManager private constructor(private val context: Context) {
     // Bound simultaneous transfers so album downloads remain stable on mid-range phones.
-    private val scope = CoroutineScope(Dispatchers.IO.limitedParallelism(3))
-    private val okHttpClient = OkHttpClient()
-    private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(3))
+    private val okHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .build()
+    private val json = Json { ignoreUnknownKeys = true }
 
     private val downloadsDir = File(context.filesDir, "downloads").apply { if (!exists()) mkdirs() }
     private val catalogFile = File(context.filesDir, "downloaded_tracks.json")
+    private val catalogBackupFile = File(context.filesDir, "downloaded_tracks.backup.json")
+
+    // Catalog writes are serialized on one thread so parallel downloads can't interleave
+    // writes to the same file (which used to corrupt it and wipe every download).
+    private val catalogWriter = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "rivara-download-catalog").apply { isDaemon = true }
+    }
 
     private val _downloadedSongs = MutableStateFlow<List<DownloadedTrack>>(emptyList())
     val downloadedSongs: StateFlow<List<DownloadedTrack>> = _downloadedSongs.asStateFlow()
@@ -66,33 +86,32 @@ class MusicDownloadManager private constructor(private val context: Context) {
         loadCatalog()
     }
 
-    private fun loadCatalog() {
-        try {
-            if (catalogFile.exists()) {
-                val content = catalogFile.readText()
-                val list = json.decodeFromString<List<DownloadedTrack>>(content)
-                // Filter out any entries where file was deleted on disk
-                val validList = list.filter { File(it.localFilePath).exists() }
-                _downloadedSongs.value = validList
+    private fun readCatalog(file: File): List<DownloadedTrack>? {
+        if (!file.exists()) return null
+        return runCatching { json.decodeFromString<List<DownloadedTrack>>(file.readText()) }.getOrNull()
+    }
 
-                val states = mutableMapOf<String, DownloadStatus>()
-                validList.forEach { track ->
-                    states[track.videoId] = DownloadStatus.Downloaded(track.localFilePath)
-                }
-                _downloadStates.value = states
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            _downloadedSongs.value = emptyList()
-        }
+    private fun loadCatalog() {
+        // Fall back to the backup if the main file is unreadable, rather than treating a bad
+        // read as "no downloads".
+        val list = readCatalog(catalogFile) ?: readCatalog(catalogBackupFile) ?: emptyList()
+        val validList = list.filter { File(it.localFilePath).let { f -> f.exists() && f.length() > 0 } }
+        _downloadedSongs.value = validList
+        _downloadStates.value = validList.associate { it.videoId to DownloadStatus.Downloaded(it.localFilePath) }
+        // Clean up partial files left behind by a download interrupted when the app was killed.
+        downloadsDir.listFiles { f -> f.name.endsWith(".tmp") }?.forEach { it.delete() }
     }
 
     private fun saveCatalog() {
-        try {
-            val content = json.encodeToString(_downloadedSongs.value)
-            catalogFile.writeText(content)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        catalogWriter.execute {
+            try {
+                // Always write the latest state, so a burst of finished downloads coalesces.
+                val content = json.encodeToString(_downloadedSongs.value)
+                AtomicFiles.writeText(catalogFile, content)
+                AtomicFiles.writeText(catalogBackupFile, content)
+            } catch (e: Exception) {
+                android.util.Log.e("MusicDownloadManager", "Could not save download catalog", e)
+            }
         }
     }
 
@@ -106,170 +125,170 @@ class MusicDownloadManager private constructor(private val context: Context) {
         return if (file.exists() && file.length() > 0) file else null
     }
 
+    private fun toast(message: String) {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     fun downloadSong(song: SongInfo, notify: Boolean = true, streamUrlProvider: suspend (SongInfo) -> String?) {
         if (com.example.musicapp.data.auth.UserManager.getInstance(context).currentUser.value.isGuest) {
-            if (notify) android.os.Handler(android.os.Looper.getMainLooper()).post {
-                android.widget.Toast.makeText(context, "Sign in to download music", android.widget.Toast.LENGTH_SHORT).show()
-            }
+            if (notify) toast("Sign in to download music")
             return
         }
         if (isDownloaded(song.videoId)) {
-            if (notify) android.os.Handler(android.os.Looper.getMainLooper()).post {
-                android.widget.Toast.makeText(context, "\"${song.title}\" is already downloaded", android.widget.Toast.LENGTH_SHORT).show()
-            }
+            if (notify) toast("\"${song.title}\" is already downloaded")
             return
         }
-        if (inProgressVideos.contains(song.videoId)) return
-        inProgressVideos.add(song.videoId)
+        if (!inProgressVideos.add(song.videoId)) return
 
-        if (notify) android.os.Handler(android.os.Looper.getMainLooper()).post {
-            android.widget.Toast.makeText(context, "Starting download: ${song.title}...", android.widget.Toast.LENGTH_SHORT).show()
-        }
+        if (notify) toast("Starting download: ${song.title}...")
+        updateState(song.videoId, DownloadStatus.Downloading(0.02f))
 
         scope.launch {
+            val tempFile = File(downloadsDir, "${safeName(song.videoId)}.tmp")
             try {
-                updateState(song.videoId, DownloadStatus.Downloading(0.05f))
-
-                var streamUrl = if (!song.audioStreamUrl.isNullOrBlank()) {
-                    song.audioStreamUrl
-                } else {
-                    streamUrlProvider(song)
-                }
-                if (streamUrl == null) {
+                val result = download(song, tempFile, streamUrlProvider)
+                if (result == null) {
                     updateState(song.videoId, DownloadStatus.NotDownloaded)
-                    inProgressVideos.remove(song.videoId)
-                    if (notify) android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        android.widget.Toast.makeText(context, "Failed to resolve stream for ${song.title}", android.widget.Toast.LENGTH_SHORT).show()
-                    }
+                    if (notify) toast("Couldn't download \"${song.title}\". Please try again.")
+                    return@launch
+                }
+                val (extension, size) = result
+                val targetFile = File(downloadsDir, "${safeName(song.videoId)}.$extension")
+                if (targetFile.exists()) targetFile.delete()
+                if (!tempFile.renameTo(targetFile)) {
+                    tempFile.delete()
+                    updateState(song.videoId, DownloadStatus.NotDownloaded)
+                    if (notify) toast("Couldn't save \"${song.title}\".")
                     return@launch
                 }
 
-                val targetFile = File(downloadsDir, "${song.videoId}.m4a")
-                val tempFile = File(downloadsDir, "${song.videoId}.tmp")
-
-                val mobileUserAgent = "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-                val requestBuilder = Request.Builder()
-                    .url(streamUrl)
-                    .header("User-Agent", mobileUserAgent)
-                    .header("Accept", "*/*")
-
-                var response = okHttpClient.newCall(requestBuilder.build()).execute()
-
-                // If 403 Forbidden or expired URL, fetch fresh stream URL and retry once
-                if (!response.isSuccessful || response.code == 403) {
-                    response.close()
-                    val freshUrl = streamUrlProvider(song)
-                    if (freshUrl != null) {
-                        streamUrl = freshUrl
-                        val retryRequest = Request.Builder()
-                            .url(streamUrl)
-                            .header("User-Agent", mobileUserAgent)
-                            .header("Accept", "*/*")
-                            .build()
-                        response = okHttpClient.newCall(retryRequest).execute()
-                    }
-                }
-
-                if (!response.isSuccessful || response.body == null) {
-                    response.close()
-                    updateState(song.videoId, DownloadStatus.NotDownloaded)
-                    inProgressVideos.remove(song.videoId)
-                    if (notify) android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        android.widget.Toast.makeText(context, "Download failed for ${song.title} (HTTP ${response.code})", android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                    return@launch
-                }
-
-                val body = response.body!!
-                val contentLength = body.contentLength()
-                val inputStream = java.io.BufferedInputStream(body.byteStream(), 64 * 1024)
-                val outputStream = java.io.BufferedOutputStream(FileOutputStream(tempFile), 64 * 1024)
-
-                val buffer = ByteArray(64 * 1024)
-                var bytesRead: Int
-                var totalBytesRead = 0L
-                var lastProgressUpdateMs = 0L
-                var lastProgressValue = 0f
-
-                inputStream.use { input ->
-                    outputStream.use { output ->
-                        while (input.read(buffer).also { bytesRead = it } != -1) {
-                            output.write(buffer, 0, bytesRead)
-                            totalBytesRead += bytesRead
-                            if (contentLength > 0) {
-                                val progress = (totalBytesRead.toFloat() / contentLength.toFloat()).coerceIn(0f, 1f)
-                                val now = System.currentTimeMillis()
-                                if (progress - lastProgressValue >= 0.03f || (now - lastProgressUpdateMs) > 150) {
-                                    lastProgressUpdateMs = now
-                                    lastProgressValue = progress
-                                    updateState(song.videoId, DownloadStatus.Downloading(progress))
-                                }
-                            }
-                        }
-                        output.flush()
-                    }
-                }
-
-                if (tempFile.exists() && tempFile.length() > 0) {
-                    if (targetFile.exists()) targetFile.delete()
-                    tempFile.renameTo(targetFile)
-
-                    val downloadedTrack = DownloadedTrack(
-                        videoId = song.videoId,
-                        title = song.title,
-                        artist = song.artist,
-                        albumArtUrl = song.albumArtUrl,
-                        localFilePath = targetFile.absolutePath,
-                        sizeBytes = targetFile.length()
-                    )
-
-                    val updatedList = _downloadedSongs.value.filter { it.videoId != song.videoId } + downloadedTrack
-                    _downloadedSongs.value = updatedList
-                    saveCatalog()
-
-                    updateState(song.videoId, DownloadStatus.Downloaded(targetFile.absolutePath))
-
-                    if (notify) android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        android.widget.Toast.makeText(context, "Downloaded: ${song.title}", android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                } else {
-                    updateState(song.videoId, DownloadStatus.NotDownloaded)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
+                val downloadedTrack = DownloadedTrack(
+                    videoId = song.videoId,
+                    title = song.title,
+                    artist = song.artist,
+                    albumArtUrl = song.albumArtUrl,
+                    localFilePath = targetFile.absolutePath,
+                    sizeBytes = size,
+                    albumName = song.albumName,
+                    durationSeconds = song.durationSeconds
+                )
+                _downloadedSongs.update { list -> list.filter { it.videoId != song.videoId } + downloadedTrack }
+                saveCatalog()
+                updateState(song.videoId, DownloadStatus.Downloaded(targetFile.absolutePath))
+                if (notify) toast("Downloaded: ${song.title}")
+            } catch (e: CancellationException) {
+                tempFile.delete()
                 updateState(song.videoId, DownloadStatus.NotDownloaded)
-                if (notify) android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    android.widget.Toast.makeText(context, "Download error: ${e.localizedMessage ?: "Unknown"}", android.widget.Toast.LENGTH_SHORT).show()
-                }
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("MusicDownloadManager", "Download failed for ${song.videoId}", e)
+                tempFile.delete()
+                updateState(song.videoId, DownloadStatus.NotDownloaded)
+                if (notify) toast("Download error: ${e.localizedMessage ?: "Unknown"}")
             } finally {
                 inProgressVideos.remove(song.videoId)
             }
         }
     }
 
-    fun deleteDownload(videoId: String) {
-        scope.launch {
-            val track = _downloadedSongs.value.find { it.videoId == videoId }
-            if (track != null) {
-                val file = File(track.localFilePath)
-                if (file.exists()) file.delete()
-                _downloadedSongs.value = _downloadedSongs.value.filter { it.videoId != videoId }
-                saveCatalog()
-                updateState(videoId, DownloadStatus.NotDownloaded)
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    android.widget.Toast.makeText(context, "Removed from downloads: ${track.title}", android.widget.Toast.LENGTH_SHORT).show()
+    /**
+     * Downloads into [tempFile]. Returns the file extension and size, or null when no source
+     * produced real audio. A freshly resolved URL is tried first: URLs stored on a song may
+     * have expired, and the song's own URL is only a last resort.
+     */
+    private suspend fun download(
+        song: SongInfo,
+        tempFile: File,
+        streamUrlProvider: suspend (SongInfo) -> String?
+    ): Pair<String, Long>? {
+        val candidates = buildList {
+            runCatching { streamUrlProvider(song) }.getOrNull()?.let { add(it) }
+            song.audioStreamUrl?.takeIf { it.startsWith("http") }?.let { add(it) }
+        }.distinct()
+
+        for (url in candidates) {
+            if (url.startsWith("file://")) continue
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+                .header("Accept", "*/*")
+                .build()
+            val outcome = runCatching {
+                okHttpClient.newCall(request).execute().use { response -> writeAudio(song.videoId, response, tempFile) }
+            }.getOrNull()
+            if (outcome != null) return outcome
+            tempFile.delete()
+        }
+        return null
+    }
+
+    private fun writeAudio(videoId: String, response: Response, tempFile: File): Pair<String, Long>? {
+        if (!response.isSuccessful) return null
+        val body = response.body ?: return null
+        val contentType = body.contentType()?.let { "${it.type}/${it.subtype}" }.orEmpty().lowercase()
+        // Error pages and JSON errors used to be saved as songs.
+        if (contentType.startsWith("text/") || contentType.contains("json") || contentType.contains("xml")) return null
+
+        val contentLength = body.contentLength()
+        var total = 0L
+        var lastProgress = 0f
+        var lastUpdateMs = 0L
+        body.byteStream().use { input ->
+            FileOutputStream(tempFile).buffered(64 * 1024).use { output ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read == -1) break
+                    output.write(buffer, 0, read)
+                    total += read
+                    if (contentLength > 0) {
+                        val progress = (total.toFloat() / contentLength).coerceIn(0f, 1f)
+                        val now = System.currentTimeMillis()
+                        if (progress - lastProgress >= 0.03f || now - lastUpdateMs > 250) {
+                            lastProgress = progress
+                            lastUpdateMs = now
+                            updateState(videoId, DownloadStatus.Downloading(progress))
+                        }
+                    }
                 }
             }
+        }
+        if (contentLength > 0 && total < contentLength) return null // connection dropped
+        if (total < MIN_AUDIO_BYTES) return null
+        return extensionFor(contentType) to total
+    }
+
+    private fun extensionFor(contentType: String): String = when {
+        contentType.contains("mpeg") || contentType.contains("mp3") -> "mp3"
+        contentType.contains("webm") -> "webm"
+        contentType.contains("ogg") || contentType.contains("opus") -> "ogg"
+        contentType.contains("aac") -> "aac"
+        else -> "m4a"
+    }
+
+    private fun safeName(videoId: String): String = videoId.replace(Regex("[^A-Za-z0-9_-]"), "_")
+
+    fun deleteDownload(videoId: String) {
+        scope.launch {
+            val track = _downloadedSongs.value.find { it.videoId == videoId } ?: return@launch
+            File(track.localFilePath).delete()
+            _downloadedSongs.update { list -> list.filter { it.videoId != videoId } }
+            saveCatalog()
+            updateState(videoId, DownloadStatus.NotDownloaded)
+            toast("Removed from downloads: ${track.title}")
         }
     }
 
     private fun updateState(videoId: String, status: DownloadStatus) {
-        val map = _downloadStates.value.toMutableMap()
-        map[videoId] = status
-        _downloadStates.value = map
+        _downloadStates.update { it + (videoId to status) }
     }
 
     companion object {
+        /** Anything smaller than this is an error response or a truncated file, not a song. */
+        private const val MIN_AUDIO_BYTES = 64 * 1024L
+
         @Volatile
         private var instance: MusicDownloadManager? = null
 
