@@ -154,6 +154,20 @@ class SaavnProvider(
         trackRef: String,
         title: String?,
         artist: String?,
+        durationSeconds: Long,
+        quality: StreamQuality
+    ): StreamResult = when (val result = resolveBestQuality(trackRef, title, artist, durationSeconds)) {
+        is StreamResult.Success -> if (trackRef.startsWith("baps_ep_")) result else result.copy(
+            streamUrl = quality.applyToSaavnUrl(result.streamUrl),
+            bitrateKbps = quality.kbps
+        )
+        is StreamResult.Failure -> result
+    }
+
+    private suspend fun resolveBestQuality(
+        trackRef: String,
+        title: String?,
+        artist: String?,
         durationSeconds: Long
     ): StreamResult = withContext(Dispatchers.IO) {
         if (trackRef.startsWith("baps_ep_")) {

@@ -87,6 +87,7 @@ fun FullScreenPlayerSheet(
     val duration by viewModel.duration.collectAsStateWithLifecycle()
     val isShuffle by viewModel.isShuffle.collectAsStateWithLifecycle()
     val isRepeat by viewModel.isRepeat.collectAsStateWithLifecycle()
+    val repeatMode by viewModel.repeatMode.collectAsStateWithLifecycle()
     val currentQueue by viewModel.currentQueue.collectAsStateWithLifecycle()
     val upcomingQueue = remember(currentQueue, song.videoId) { viewModel.getUpcomingQueue() }
 
@@ -446,10 +447,7 @@ fun FullScreenPlayerSheet(
                     IconButton(
                         onClick = {
                             if (downloadStatus is DownloadStatus.NotDownloaded) {
-                                downloadManager.downloadSong(song) { target ->
-                                    val repo = com.example.musicapp.data.DefaultDataRepository(context)
-                                    repo.getStreamUrl(target.videoId, target.title, target.artist, target.durationSeconds)
-                                }
+                                downloadManager.downloadSong(song)
                             }
                         }
                     ) {
@@ -548,7 +546,7 @@ fun FullScreenPlayerSheet(
                 }
                 IconButton(onClick = { viewModel.toggleRepeat() }) {
                     Icon(
-                        imageVector = Icons.Default.Repeat,
+                        imageVector = if (repeatMode == androidx.media3.common.Player.REPEAT_MODE_ONE) Icons.Default.RepeatOne else Icons.Default.Repeat,
                         contentDescription = "Repeat",
                         tint = if (isRepeat) Color(0xFF00F59B) else Color(0xFFA0A0A0),
                         modifier = Modifier.size(28.dp)

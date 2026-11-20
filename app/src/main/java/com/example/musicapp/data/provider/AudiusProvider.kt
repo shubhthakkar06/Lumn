@@ -78,7 +78,8 @@ class AudiusProvider(
         trackRef: String,
         title: String?,
         artist: String?,
-        durationSeconds: Long
+        durationSeconds: Long,
+        quality: StreamQuality
     ): StreamResult = withContext(Dispatchers.IO) {
         if (trackRef.startsWith("audius_")) {
             val id = trackRef.removePrefix("audius_")

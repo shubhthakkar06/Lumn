@@ -47,13 +47,10 @@ fun SettingsScreen(onBack: () -> Unit) {
     val themeGradientColors = remember(appTheme) { AppThemeHelper.getThemeGradient(appTheme) }
     val themeAccent = remember(appTheme) { AppThemeHelper.getThemeAccent(appTheme) }
 
-    val gapless by settingsManager.gaplessPlayback.collectAsStateWithLifecycle()
-    val automix by settingsManager.automix.collectAsStateWithLifecycle()
+    val autoplay by settingsManager.autoplay.collectAsStateWithLifecycle()
     val crossfade by settingsManager.crossfadeSeconds.collectAsStateWithLifecycle()
     val streamingQuality by settingsManager.streamingQuality.collectAsStateWithLifecycle()
     val downloadQuality by settingsManager.downloadQuality.collectAsStateWithLifecycle()
-    val canvasVideos by settingsManager.canvasVideos.collectAsStateWithLifecycle()
-    val pushNotif by settingsManager.pushNotifications.collectAsStateWithLifecycle()
 
     val currentUser by userManager.currentUser.collectAsStateWithLifecycle()
 
@@ -281,22 +278,10 @@ fun SettingsScreen(onBack: () -> Unit) {
                     onClick = { activeCategorySheet = "Account" }
                 )
                 SettingRow(
-                    icon = Icons.Default.MusicNote,
-                    title = "Content and display",
-                    subtitle = "Music styling • Gen Z aesthetics",
-                    onClick = { activeCategorySheet = "Content" }
-                )
-                SettingRow(
                     icon = Icons.Default.VolumeUp,
                     title = "Playback",
-                    subtitle = "Gapless playback • Crossfade engine",
+                    subtitle = "Autoplay • Fade between songs",
                     onClick = { activeCategorySheet = "Playback" }
-                )
-                SettingRow(
-                    icon = Icons.Default.Notifications,
-                    title = "Notifications",
-                    subtitle = "Push • Media playback controls",
-                    onClick = { activeCategorySheet = "Notifications" }
                 )
                 SettingRow(
                     icon = Icons.Default.Devices,
@@ -313,7 +298,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 SettingRow(
                     icon = Icons.Default.GraphicEq,
                     title = "Media quality",
-                    subtitle = "Wi-Fi: $streamingQuality • Download: $downloadQuality",
+                    subtitle = "Streaming: ${com.example.musicapp.data.provider.StreamQuality.fromLabel(streamingQuality).kbps} kbps • Download: ${com.example.musicapp.data.provider.StreamQuality.fromLabel(downloadQuality).kbps} kbps",
                     onClick = { activeCategorySheet = "Quality" }
                 )
 
@@ -435,27 +420,20 @@ fun SettingsScreen(onBack: () -> Unit) {
                         "Playback" -> {
                             Text("Playback Preferences", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
                             Spacer(modifier = Modifier.height(16.dp))
-                            SwitchRow("Gapless playback", gapless) { settingsManager.setGaplessPlayback(it) }
-                            SwitchRow("Automix", automix) { settingsManager.setAutomix(it) }
-                            Text("Crossfade: ${crossfade}s", color = Color.White, modifier = Modifier.padding(top = 12.dp))
+                            SwitchRow("Autoplay similar songs when your music ends", autoplay) { settingsManager.setAutoplay(it) }
+                            Text("Fade between songs: ${if (crossfade == 0) "Off" else "${crossfade}s"}", color = Color.White, modifier = Modifier.padding(top = 12.dp))
                             Slider(
                                 value = crossfade.toFloat(),
                                 onValueChange = { settingsManager.setCrossfadeSeconds(it.toInt()) },
                                 valueRange = 0f..12f,
+                                steps = 11,
                                 colors = SliderDefaults.colors(thumbColor = Color(0xFF00F59B), activeTrackColor = Color(0xFF00F59B))
                             )
-                        }
-                        "Content" -> {
-                            Text("Content and Display", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
-                            Spacer(modifier = Modifier.height(16.dp))
-                            SwitchRow("Canvas video loops", canvasVideos) { settingsManager.setCanvasVideos(it) }
-                            SwitchRow("Show live visualizers", true) { }
-                        }
-                        "Notifications" -> {
-                            Text("Notifications", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
-                            Spacer(modifier = Modifier.height(16.dp))
-                            SwitchRow("Push notifications", pushNotif) { settingsManager.setPushNotifications(it) }
-                            SwitchRow("System media controls (Next / Prev)", true) { }
+                            Text(
+                                "Songs already play back-to-back with no gap; the next one is loaded before the current one ends.",
+                                color = Color(0xFFA0A0A0),
+                                fontSize = 13.sp
+                            )
                         }
                         "Storage" -> {
                             Text("Data-saving & Offline Storage", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
@@ -476,24 +454,14 @@ fun SettingsScreen(onBack: () -> Unit) {
                         "Quality" -> {
                             Text("Media Quality", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text("Streaming Quality: $streamingQuality", color = Color.White, fontWeight = FontWeight.SemiBold)
-                            listOf("Low", "Normal", "High", "Ultra 320kbps").forEach { q ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { settingsManager.setStreamingQuality(q) }
-                                        .padding(vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(
-                                        selected = streamingQuality == q,
-                                        onClick = { settingsManager.setStreamingQuality(q) },
-                                        colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF00F59B))
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(q, color = Color.White)
-                                }
-                            }
+                            QualityGroup("Streaming", streamingQuality) { settingsManager.setStreamingQuality(it) }
+                            Text(
+                                "Data Saver lowers streaming quality automatically on mobile data.",
+                                color = Color(0xFFA0A0A0),
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+                            QualityGroup("Downloads", downloadQuality) { settingsManager.setDownloadQuality(it) }
                         }
                         else -> {
                             Text("Connected Audio Devices", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
@@ -504,6 +472,34 @@ fun SettingsScreen(onBack: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun QualityGroup(title: String, selectedLabel: String, onSelect: (String) -> Unit) {
+    val selected = com.example.musicapp.data.provider.StreamQuality.fromLabel(selectedLabel)
+    Text(title, color = Color.White, fontWeight = FontWeight.SemiBold)
+    listOf(
+        "Low" to "Low • 96 kbps",
+        "Normal" to "Normal • 160 kbps",
+        "High" to "High • 320 kbps"
+    ).forEach { (label, description) ->
+        val isSelected = com.example.musicapp.data.provider.StreamQuality.fromLabel(label) == selected
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onSelect(label) }
+                .padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RadioButton(
+                selected = isSelected,
+                onClick = { onSelect(label) },
+                colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF00F59B))
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(description, color = Color.White)
         }
     }
 }

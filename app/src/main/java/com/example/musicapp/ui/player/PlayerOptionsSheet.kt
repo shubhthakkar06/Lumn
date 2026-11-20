@@ -206,10 +206,7 @@ fun PlayerOptionsSheet(
                     title = if (downloadStatus is DownloadStatus.Downloading) "Downloading..." else "Download song",
                     onClick = {
                         if (downloadStatus !is DownloadStatus.Downloading) {
-                            downloadManager.downloadSong(song) { target ->
-                                val repo = DefaultDataRepository(context)
-                                repo.getStreamUrl(target.videoId, target.title, target.artist, target.durationSeconds)
-                            }
+                            downloadManager.downloadSong(song)
                             Toast.makeText(context, "Downloading \"${song.title}\"", Toast.LENGTH_SHORT).show()
                         }
                         onDismiss()

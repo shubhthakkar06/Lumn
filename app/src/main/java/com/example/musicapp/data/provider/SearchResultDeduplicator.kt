@@ -19,15 +19,22 @@ internal object SearchResultDeduplicator {
         Regex("ધીમું|ધીમા|ધીમી|ઝડપી|ઝડપથી|ગરબા|દાંડિયા")
     )
 
+    /**
+     * Collapses copies of the same recording while keeping the caller's order (search results
+     * arrive ranked by relevance). When two copies collide, the slot keeps whichever is more
+     * popular, preferring one that is directly playable.
+     */
     fun deduplicate(songs: List<SongInfo>): List<SongInfo> {
-        val ranked = songs.sortedWith(
-            compareByDescending<SongInfo> { it.popularityScore }
-                .thenByDescending { !it.audioStreamUrl.isNullOrBlank() }
-        )
         val kept = mutableListOf<SongInfo>()
-        for (song in ranked) {
-            if (kept.any { sameRecording(it, song) }) continue
-            kept += song
+        for (song in songs) {
+            val index = kept.indexOfFirst { sameRecording(it, song) }
+            if (index < 0) {
+                kept += song
+                continue
+            }
+            val existing = kept[index]
+            val better = compareValuesBy(song, existing, { !it.audioStreamUrl.isNullOrBlank() }, { it.popularityScore }) > 0
+            if (better) kept[index] = song
         }
         return kept
     }

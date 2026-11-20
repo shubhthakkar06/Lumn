@@ -73,7 +73,8 @@ class JamendoProvider(
         trackRef: String,
         title: String?,
         artist: String?,
-        durationSeconds: Long
+        durationSeconds: Long,
+        quality: StreamQuality
     ): StreamResult = withContext(Dispatchers.IO) {
         if (trackRef.startsWith("jamendo_")) {
             val id = trackRef.removePrefix("jamendo_")

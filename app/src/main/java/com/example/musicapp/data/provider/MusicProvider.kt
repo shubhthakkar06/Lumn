@@ -20,6 +20,12 @@ interface MusicProvider {
     val name: String
     val isOfficial: Boolean
     suspend fun search(query: String): List<SongInfo>
-    suspend fun resolveStream(trackRef: String, title: String? = null, artist: String? = null, durationSeconds: Long = 0L): StreamResult
+    suspend fun resolveStream(
+        trackRef: String,
+        title: String? = null,
+        artist: String? = null,
+        durationSeconds: Long = 0L,
+        quality: StreamQuality = StreamQuality.HIGH
+    ): StreamResult
     fun invalidateStreamCache(trackRef: String, title: String? = null, artist: String? = null) = Unit
 }

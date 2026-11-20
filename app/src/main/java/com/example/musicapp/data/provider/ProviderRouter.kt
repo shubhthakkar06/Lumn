@@ -182,11 +182,12 @@ class ProviderRouter(
         title: String? = null,
         artist: String? = null,
         durationSeconds: Long = 0L,
-        excludedProviders: Set<String> = emptySet()
+        excludedProviders: Set<String> = emptySet(),
+        quality: StreamQuality = StreamQuality.HIGH
     ): StreamResult = withContext(Dispatchers.IO) {
         // Keep stream caches ID-specific. Two recordings can share title/artist text
         // while mapping to different language versions or remasters.
-        val cacheKey = "$trackRef:${normalize(title)}:${normalize(artist)}"
+        val cacheKey = "$trackRef:${normalize(title)}:${normalize(artist)}:${quality.name}"
 
         // 1. Check valid cache
         streamCache[cacheKey]?.let { cached ->
@@ -218,7 +219,7 @@ class ProviderRouter(
             try {
                 val timeoutMs = if (provider.name == "YouTube") 6000L else 3000L
                 val result = withTimeoutOrNull(timeoutMs) {
-                    provider.resolveStream(trackRef, title, artist, durationSeconds)
+                    provider.resolveStream(trackRef, title, artist, durationSeconds, quality)
                 }
 
                 if (result is StreamResult.Success) {
@@ -249,8 +250,8 @@ class ProviderRouter(
     }
 
     fun invalidateCache(trackRef: String, title: String? = null, artist: String? = null) {
-        val cacheKey = "$trackRef:${normalize(title)}:${normalize(artist)}"
-        streamCache.remove(cacheKey)
+        val prefix = "$trackRef:${normalize(title)}:${normalize(artist)}:"
+        streamCache.keys.removeIf { it.startsWith(prefix) }
         allProviders.forEach { it.invalidateStreamCache(trackRef, title, artist) }
     }
 }

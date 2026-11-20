@@ -57,7 +57,7 @@ sealed interface DownloadStatus {
 
 class MusicDownloadManager private constructor(private val context: Context) {
     // Bound simultaneous transfers so album downloads remain stable on mid-range phones.
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(3))
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -131,7 +131,13 @@ class MusicDownloadManager private constructor(private val context: Context) {
         }
     }
 
-    fun downloadSong(song: SongInfo, notify: Boolean = true, streamUrlProvider: suspend (SongInfo) -> String?) {
+    enum class Outcome { SUCCESS, ALREADY_DONE, FAILED }
+
+    /**
+     * Queues [song] for download. The work runs through WorkManager, so it continues when the
+     * app is closed, resumes after it is killed, and waits for a network connection.
+     */
+    fun downloadSong(song: SongInfo, notify: Boolean = true) {
         if (com.example.musicapp.data.auth.UserManager.getInstance(context).currentUser.value.isGuest) {
             if (notify) toast("Sign in to download music")
             return
@@ -140,57 +146,83 @@ class MusicDownloadManager private constructor(private val context: Context) {
             if (notify) toast("\"${song.title}\" is already downloaded")
             return
         }
-        if (!inProgressVideos.add(song.videoId)) return
+        if (_downloadStates.value[song.videoId] is DownloadStatus.Downloading) return
 
-        if (notify) toast("Starting download: ${song.title}...")
         updateState(song.videoId, DownloadStatus.Downloading(0.02f))
+        if (notify) toast("Downloading ${song.title}…")
 
-        scope.launch {
-            val tempFile = File(downloadsDir, "${safeName(song.videoId)}.tmp")
-            try {
-                val result = download(song, tempFile, streamUrlProvider)
-                if (result == null) {
-                    updateState(song.videoId, DownloadStatus.NotDownloaded)
-                    if (notify) toast("Couldn't download \"${song.title}\". Please try again.")
-                    return@launch
-                }
-                val (extension, size) = result
-                val targetFile = File(downloadsDir, "${safeName(song.videoId)}.$extension")
-                if (targetFile.exists()) targetFile.delete()
-                if (!tempFile.renameTo(targetFile)) {
-                    tempFile.delete()
-                    updateState(song.videoId, DownloadStatus.NotDownloaded)
-                    if (notify) toast("Couldn't save \"${song.title}\".")
-                    return@launch
-                }
-
-                val downloadedTrack = DownloadedTrack(
-                    videoId = song.videoId,
-                    title = song.title,
-                    artist = song.artist,
-                    albumArtUrl = song.albumArtUrl,
-                    localFilePath = targetFile.absolutePath,
-                    sizeBytes = size,
-                    albumName = song.albumName,
-                    durationSeconds = song.durationSeconds
+        val request = androidx.work.OneTimeWorkRequestBuilder<DownloadWorker>()
+            .setInputData(
+                androidx.work.workDataOf(
+                    DownloadWorker.KEY_SONG to DownloadWorker.encode(song),
+                    DownloadWorker.KEY_NOTIFY to notify
                 )
-                _downloadedSongs.update { list -> list.filter { it.videoId != song.videoId } + downloadedTrack }
-                saveCatalog()
-                updateState(song.videoId, DownloadStatus.Downloaded(targetFile.absolutePath))
-                if (notify) toast("Downloaded: ${song.title}")
-            } catch (e: CancellationException) {
-                tempFile.delete()
-                updateState(song.videoId, DownloadStatus.NotDownloaded)
-                throw e
-            } catch (e: Exception) {
-                android.util.Log.w("MusicDownloadManager", "Download failed for ${song.videoId}", e)
-                tempFile.delete()
-                updateState(song.videoId, DownloadStatus.NotDownloaded)
-                if (notify) toast("Download error: ${e.localizedMessage ?: "Unknown"}")
-            } finally {
-                inProgressVideos.remove(song.videoId)
+            )
+            .setConstraints(
+                androidx.work.Constraints.Builder()
+                    .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                    .build()
+            )
+            .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 15, TimeUnit.SECONDS)
+            .addTag(WORK_TAG)
+            .build()
+        androidx.work.WorkManager.getInstance(context)
+            .enqueueUniqueWork("download_${song.videoId}", androidx.work.ExistingWorkPolicy.KEEP, request)
+    }
+
+    /** Runs one download attempt. Called by [DownloadWorker]. */
+    internal suspend fun performDownload(song: SongInfo, notify: Boolean): Outcome {
+        if (isDownloaded(song.videoId)) return Outcome.ALREADY_DONE
+        if (!inProgressVideos.add(song.videoId)) return Outcome.ALREADY_DONE
+        updateState(song.videoId, DownloadStatus.Downloading(0.02f))
+        val tempFile = File(downloadsDir, "${safeName(song.videoId)}.tmp")
+        try {
+            val repository = com.example.musicapp.data.DefaultDataRepository(context)
+            val result = download(song, tempFile) { track ->
+                repository.getDownloadStreamUrl(track.videoId, track.title, track.artist, track.durationSeconds)
             }
+            if (result == null) {
+                updateState(song.videoId, DownloadStatus.Downloading(0.02f))
+                return Outcome.FAILED
+            }
+            val (extension, size) = result
+            val targetFile = File(downloadsDir, "${safeName(song.videoId)}.$extension")
+            if (targetFile.exists()) targetFile.delete()
+            if (!tempFile.renameTo(targetFile)) {
+                tempFile.delete()
+                return Outcome.FAILED
+            }
+            val downloadedTrack = DownloadedTrack(
+                videoId = song.videoId,
+                title = song.title,
+                artist = song.artist,
+                albumArtUrl = song.albumArtUrl,
+                localFilePath = targetFile.absolutePath,
+                sizeBytes = size,
+                albumName = song.albumName,
+                durationSeconds = song.durationSeconds
+            )
+            _downloadedSongs.update { list -> list.filter { it.videoId != song.videoId } + downloadedTrack }
+            saveCatalog()
+            updateState(song.videoId, DownloadStatus.Downloaded(targetFile.absolutePath))
+            if (notify) toast("Downloaded: ${song.title}")
+            return Outcome.SUCCESS
+        } catch (e: CancellationException) {
+            tempFile.delete()
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.w("MusicDownloadManager", "Download failed for ${song.videoId}", e)
+            tempFile.delete()
+            return Outcome.FAILED
+        } finally {
+            inProgressVideos.remove(song.videoId)
         }
+    }
+
+    /** Called after the last retry fails. */
+    internal fun markFailed(song: SongInfo, notify: Boolean) {
+        updateState(song.videoId, DownloadStatus.NotDownloaded)
+        if (notify) toast("Couldn't download \"${song.title}\". Please try again.")
     }
 
     /**
@@ -286,6 +318,8 @@ class MusicDownloadManager private constructor(private val context: Context) {
     }
 
     companion object {
+        const val WORK_TAG = "rivara_download"
+
         /** Anything smaller than this is an error response or a truncated file, not a song. */
         private const val MIN_AUDIO_BYTES = 64 * 1024L
 

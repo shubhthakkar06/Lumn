@@ -68,12 +68,20 @@ class YoutubeProvider : MusicProvider {
         results
     }
 
-    private fun extractStream(vid: String): String? {
+    private fun extractStream(vid: String, quality: StreamQuality = StreamQuality.HIGH): String? {
         return try {
             val streamExtractor = ServiceList.YouTube.getStreamExtractor("https://www.youtube.com/watch?v=$vid")
             streamExtractor.fetchPage()
             val audioStreams = streamExtractor.audioStreams
-            audioStreams.maxByOrNull { it.bitrate }?.content
+            val targetBps = quality.kbps * 1000
+            val chosen = if (quality == StreamQuality.HIGH) {
+                audioStreams.maxByOrNull { it.bitrate }
+            } else {
+                // Highest bitrate not above the target, else the smallest available.
+                audioStreams.filter { it.bitrate in 1..targetBps }.maxByOrNull { it.bitrate }
+                    ?: audioStreams.minByOrNull { it.bitrate }
+            }
+            chosen?.content
                 ?: streamExtractor.videoStreams.firstOrNull()?.content
         } catch (e: Exception) {
             null
@@ -84,10 +92,12 @@ class YoutubeProvider : MusicProvider {
         trackRef: String,
         title: String?,
         artist: String?,
-        durationSeconds: Long
+        durationSeconds: Long,
+        quality: StreamQuality
     ): StreamResult = withContext(Dispatchers.IO) {
+        val cacheKey = "$trackRef@${quality.name}"
         // 1. Direct memory cache check
-        memoryStreamCache[trackRef]?.let {
+        memoryStreamCache[cacheKey]?.let {
             return@withContext StreamResult.Success(
                 streamUrl = it,
                 providerName = name,
@@ -102,7 +112,7 @@ class YoutubeProvider : MusicProvider {
         }
 
         // 3. Try direct videoId extraction first
-        var stream = if (!ytVideoId.isNullOrBlank()) extractStream(ytVideoId) else null
+        var stream = if (!ytVideoId.isNullOrBlank()) extractStream(ytVideoId, quality) else null
 
         // 4. If direct extraction failed (e.g. video unavailable/restricted), fall back to searching title + artist
         if (stream.isNullOrBlank() && (!title.isNullOrBlank() || !artist.isNullOrBlank())) {
@@ -117,7 +127,7 @@ class YoutubeProvider : MusicProvider {
                     .maxByOrNull { it.second }
                     ?.first?.videoId
                 if (!fallbackVid.isNullOrBlank() && fallbackVid != ytVideoId) {
-                    stream = extractStream(fallbackVid)
+                    stream = extractStream(fallbackVid, quality)
                     if (!stream.isNullOrBlank()) {
                         ytVideoId = fallbackVid
                     }
@@ -128,12 +138,12 @@ class YoutubeProvider : MusicProvider {
         }
 
         if (!stream.isNullOrBlank()) {
-            memoryStreamCache[trackRef] = stream
-            ytVideoId?.let { memoryStreamCache[it] = stream }
+            memoryStreamCache[cacheKey] = stream
+            ytVideoId?.let { memoryStreamCache["$it@${quality.name}"] = stream }
             return@withContext StreamResult.Success(
                 streamUrl = stream,
                 providerName = name,
-                bitrateKbps = 160
+                bitrateKbps = minOf(160, quality.kbps)
             )
         }
 

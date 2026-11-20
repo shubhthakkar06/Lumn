@@ -135,6 +135,9 @@ dependencies {
   implementation("androidx.media3:media3-datasource-okhttp:1.6.0")
   implementation("androidx.media3:media3-database:1.6.0")
 
+  // Background downloads that survive the app closing
+  implementation("androidx.work:work-runtime-ktx:2.10.1")
+
   // Coil
   implementation("io.coil-kt.coil3:coil-compose:3.1.0")
   implementation("io.coil-kt.coil3:coil-network-okhttp:3.1.0")

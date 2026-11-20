@@ -76,37 +76,50 @@ fun MainScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    var backstack by remember { mutableStateOf(listOf<Screen>(Screen.Home)) }
-    val currentScreen = backstack.lastOrNull() ?: Screen.Home
+    // Per-tab back stacks that survive rotation and process death; each screen's own state
+    // (scroll position, expanded sections) is kept while it is anywhere in a stack.
+    var nav by androidx.compose.runtime.saveable.rememberSaveable(stateSaver = com.example.musicapp.ui.navigation.TabStacks.saver) {
+        mutableStateOf(com.example.musicapp.ui.navigation.TabStacks())
+    }
+    val currentScreen = nav.current
+    val screenStateHolder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
 
     var isPlayerExpanded by remember { mutableStateOf(false) }
     var showConnectFromMini by remember { mutableStateOf(false) }
 
     LaunchedEffect(sharedPlaylist) {
         sharedPlaylist?.let { playlist ->
-            backstack = listOf(
-                Screen.Home,
-                Screen.Playlist(playlist.id, playlist.name, playlist.coverUrl, "Playlist • ${playlist.creator}")
+            nav = nav.copy(activeTab = 0).replaceActive(
+                listOf(
+                    Screen.Home,
+                    Screen.Playlist(playlist.id, playlist.name, playlist.coverUrl, "Playlist • ${playlist.creator}")
+                )
             )
             onSharedPlaylistOpened()
         }
     }
 
     fun navigateTo(screen: Screen) {
-        backstack = backstack + screen
+        val tab = com.example.musicapp.ui.navigation.TabStacks.tabOf(screen)
+        nav = if (tab != null) nav.copy(activeTab = tab) else nav.push(screen)
     }
 
     fun popBack() {
-        if (backstack.size > 1) {
-            backstack = backstack.dropLast(1)
+        val before = nav
+        val after = before.pop()
+        // Forget the saved state of the screen that was popped.
+        if (after.stacks[before.activeTab].size < before.stacks[before.activeTab].size) {
+            screenStateHolder.removeState("${before.activeTab}:${before.stacks[before.activeTab].lastIndex}:${before.current.hashCode()}")
         }
+        nav = after
     }
 
     fun switchTab(screen: Screen) {
-        backstack = listOf(screen)
+        val tab = com.example.musicapp.ui.navigation.TabStacks.tabOf(screen) ?: return
+        nav = nav.selectTab(tab)
     }
 
-    BackHandler(enabled = backstack.size > 1 || isPlayerExpanded) {
+    BackHandler(enabled = nav.canGoBack || isPlayerExpanded) {
         if (isPlayerExpanded) {
             isPlayerExpanded = false
         } else {
@@ -141,6 +154,8 @@ fun MainScreen(
                         )
                     )
             ) {
+                val entryKey = "${nav.activeTab}:${nav.stacks[nav.activeTab].lastIndex}:${currentScreen.hashCode()}"
+                screenStateHolder.SaveableStateProvider(entryKey) {
                 when (currentScreen) {
                     is Screen.Home -> HomeScreen(
                         onOpenDrawer = { scope.launch { drawerState.open() } },
@@ -188,6 +203,19 @@ fun MainScreen(
                         viewModel = viewModel,
                         onNavigate = { navigateTo(it) }
                     )
+                    is Screen.Album -> com.example.musicapp.ui.album.AlbumScreen(
+                        screen = currentScreen,
+                        viewModel = viewModel,
+                        onBack = { popBack() },
+                        onNavigate = { navigateTo(it) }
+                    )
+                    is Screen.Mix -> com.example.musicapp.ui.mix.MixScreen(
+                        screen = currentScreen,
+                        viewModel = viewModel,
+                        onBack = { popBack() },
+                        onNavigate = { navigateTo(it) }
+                    )
+                }
                 }
             }
 
@@ -223,9 +251,9 @@ fun MainScreen(
                             windowInsets = WindowInsets(0, 0, 0, 0),
                             modifier = Modifier.fillMaxWidth().height(64.dp)
                         ) {
-                            val isHome = currentScreen is Screen.Home
-                            val isSearch = currentScreen is Screen.Search
-                            val isLibrary = currentScreen is Screen.Library
+                            val isHome = nav.activeTab == 0
+                            val isSearch = nav.activeTab == 1
+                            val isLibrary = nav.activeTab == 2
 
                             val navItemColors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = themeAccent,

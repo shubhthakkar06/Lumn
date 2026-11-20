@@ -492,10 +492,7 @@ fun PlaylistScreen(
                                 val songsToDownload = filteredSongs.ifEmpty { playlistSongs }
                                 Toast.makeText(context, "Downloading ${songsToDownload.size} tracks...", Toast.LENGTH_SHORT).show()
                                 songsToDownload.forEach { s ->
-                                    downloadManager.downloadSong(s) { target ->
-                                        val repo = com.example.musicapp.data.DefaultDataRepository(context)
-                                        repo.getStreamUrl(target.videoId, target.title, target.artist, target.durationSeconds)
-                                    }
+                                    downloadManager.downloadSong(s)
                                 }
                             },
                             modifier = Modifier.size(24.dp)
