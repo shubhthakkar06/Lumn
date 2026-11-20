@@ -54,7 +54,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.musicapp.ui.components.TrackArtwork
 import com.example.musicapp.data.download.DownloadStatus
 import com.example.musicapp.data.download.MusicDownloadManager
-import com.example.musicapp.data.MusicCatalog
 import com.example.musicapp.data.auth.UserManager
 import com.example.musicapp.data.lyrics.LyricLine
 import com.example.musicapp.data.lyrics.LyricsManager
@@ -111,13 +110,24 @@ fun FullScreenPlayerSheet(
     val lyricStyle = remember(song.videoId) { LyricsTypographyHelper.getFontStyle(song) }
 
     // Similar Songs & Fans Also Like
-    val artistCatalog = remember(song.artist) { MusicCatalog.getArtistData(song.artist) }
-    val similarSongs = remember(artistCatalog, song.videoId) {
-        val filtered = artistCatalog.topTracks.filter { it.videoId != song.videoId && !it.title.equals(song.title, ignoreCase = true) }
-        if (filtered.size >= 4) filtered.take(5)
-        else (filtered + MusicCatalog.hitsSongs.filter { it.videoId != song.videoId }).distinctBy { it.videoId }.take(5)
+    var similarSongs by remember(song.videoId) { mutableStateOf<List<SongInfo>>(emptyList()) }
+    var similarArtists by remember(song.artist) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    LaunchedEffect(song.videoId) {
+        if (!song.isEpisode) {
+            similarSongs = runCatching {
+                com.example.musicapp.data.recommend.RecommendationEngine.getInstance(context).songRadio(song, 8).drop(1).take(5)
+            }.getOrDefault(emptyList())
+        }
     }
-    val similarArtists = remember(artistCatalog) { artistCatalog.similarArtists }
+    LaunchedEffect(song.artist) {
+        if (!song.isEpisode) {
+            val primary = song.artist.split(",", "&").first().trim()
+            val names = runCatching { com.example.musicapp.data.catalog.DeezerArtists.relatedArtistNames(primary, 6) }.getOrDefault(emptyList())
+            similarArtists = names.map { name ->
+                name to (runCatching { com.example.musicapp.data.catalog.SaavnCatalog.findArtist(name)?.imageUrl }.getOrNull().orEmpty())
+            }
+        }
+    }
 
     // Lyrics State
     var lyrics by remember(song.videoId) { mutableStateOf<List<LyricLine>>(emptyList()) }

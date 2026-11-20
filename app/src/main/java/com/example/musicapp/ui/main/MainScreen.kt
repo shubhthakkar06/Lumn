@@ -304,7 +304,7 @@ fun MainScreen(
                         onNavigateToArtist = { artistName ->
                             isPlayerExpanded = false
                             val cleanArtist = artistName.split(",").firstOrNull()?.trim() ?: artistName
-                            navigateTo(Screen.Artist(cleanArtist, com.example.musicapp.data.MusicCatalog.getArtistImageUrl(cleanArtist)))
+                            navigateTo(Screen.Artist(cleanArtist))
                         }
                     )
                 }

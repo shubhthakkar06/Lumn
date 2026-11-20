@@ -1,7 +1,6 @@
 package com.example.musicapp.data.playlist
 
 import android.content.Context
-import com.example.musicapp.data.MusicCatalog
 import com.example.musicapp.data.auth.UserProfile
 import com.example.musicapp.data.network.SongInfo
 import com.example.musicapp.data.storage.AtomicFiles

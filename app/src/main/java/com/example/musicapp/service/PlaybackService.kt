@@ -74,6 +74,10 @@ class PlaybackService : MediaLibraryService() {
     private var lastRecordedItemUid: String? = null
     private var fadeInStartedAtMs = 0L
 
+    // Listening signals for recommendations: how long the current song has actually played.
+    private var listening: SongInfo? = null
+    private var listenedMs = 0L
+
     companion object {
         const val ACTION_SET_SHUFFLE = "rivara.SET_SHUFFLE"
         const val EXTRA_ENABLED = "enabled"
@@ -141,6 +145,9 @@ class PlaybackService : MediaLibraryService() {
             .setSessionActivity(pendingIntent)
             .build()
 
+        AutoplaySource.provider = { ctx, seeds, exclude, count ->
+            com.example.musicapp.data.recommend.RecommendationEngine.getInstance(ctx).radioContinuation(seeds, exclude, count)
+        }
         restoreQueue(exo)
         startTicker()
     }
@@ -284,6 +291,9 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            finishListen(reason)
+            listening = mediaItem?.let(TrackMediaItems::toSong)
+            listenedMs = 0L
             fadeInStartedAtMs = if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) System.currentTimeMillis() else 0L
             player?.volume = if (fadeInStartedAtMs > 0 && crossfadeMs() > 0) 0f else 1f
             recordPlay(mediaItem)
@@ -418,6 +428,7 @@ class PlaybackService : MediaLibraryService() {
                 } else if (p.volume != 1f && fadeMs == 0L) {
                     p.volume = 1f
                 }
+                if (p.isPlaying) listenedMs += 100
                 sinceSave += 100
                 if (p.isPlaying && sinceSave >= 15_000) {
                     sinceSave = 0
@@ -425,6 +436,32 @@ class PlaybackService : MediaLibraryService() {
                 }
             }
         }
+    }
+
+    /** Logs how the previous song went: finished, skipped early, or partly heard. */
+    private fun finishListen(transitionReason: Int?) {
+        val song = listening ?: return
+        val durationMs = song.durationSeconds * 1000
+        val completed = transitionReason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
+            transitionReason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT ||
+            (durationMs > 0 && listenedMs >= durationMs * 9 / 10)
+        val skipped = !completed && transitionReason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK && listenedMs < 30_000
+        if (listenedMs < 3_000 && !skipped) return
+        com.example.musicapp.data.recommend.ListeningLog.getInstance(this).record(
+            com.example.musicapp.data.recommend.ListenEvent(
+                userId = UserManager.getInstance(this).currentUser.value.id,
+                videoId = song.videoId,
+                title = song.title,
+                artist = song.artist,
+                language = song.language,
+                atMs = System.currentTimeMillis(),
+                listenedMs = listenedMs,
+                durationMs = durationMs,
+                completed = completed,
+                skipped = skipped
+            )
+        )
+        com.example.musicapp.data.recommend.RecommendationEngine.getInstance(this).invalidateTaste()
     }
 
     private fun recordPlay(item: MediaItem?) {
@@ -470,6 +507,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        finishListen(null)
         saveQueue()
         scope.cancel()
         if (currentInstance === this) currentInstance = null

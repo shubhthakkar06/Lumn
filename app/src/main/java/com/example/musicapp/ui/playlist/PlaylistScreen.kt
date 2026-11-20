@@ -98,7 +98,7 @@ fun PlaylistScreen(
             else -> {
                 val found = userPlaylists.find { it.id == playlistId }
                 if (found != null) found.songs
-                else com.example.musicapp.data.MusicCatalog.getPlaylistSongs(playlistId, title)
+                else emptyList()
             }
         }
     }

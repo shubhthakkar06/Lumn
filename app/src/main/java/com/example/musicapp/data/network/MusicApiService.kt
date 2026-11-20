@@ -26,7 +26,9 @@ data class SongInfo(
     val importMatchFound: Boolean? = null,
     val isEpisode: Boolean = false,
     val description: String = "",
-    val releaseDate: String = ""
+    val releaseDate: String = "",
+    /** Song language as reported by the catalog ("hindi", "english", "gujarati"…), if known. */
+    val language: String = ""
 )
 
 class MusicApiService {

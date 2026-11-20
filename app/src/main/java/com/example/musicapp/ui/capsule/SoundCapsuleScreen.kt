@@ -30,7 +30,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
-import com.example.musicapp.data.MusicCatalog
 import com.example.musicapp.data.auth.UserManager
 import com.example.musicapp.data.history.PlayHistoryManager
 import com.example.musicapp.data.network.SongInfo
@@ -57,14 +56,21 @@ fun SoundCapsuleScreen(
         historyManager.getUserHistory(currentUser.id)
     }
 
+    // This month and last month (previously fixed to October/September 2026).
+    val nowCal = remember { Calendar.getInstance() }
+    val thisMonth = nowCal.get(Calendar.MONTH)
+    val thisYear = nowCal.get(Calendar.YEAR)
+    val lastMonthCal = remember { (Calendar.getInstance()).apply { add(Calendar.MONTH, -1) } }
+    val lastMonth = lastMonthCal.get(Calendar.MONTH)
+    val lastMonthYear = lastMonthCal.get(Calendar.YEAR)
     // October 2026 stats
     val octStats = remember(userRecords, currentUser) {
-        historyManager.getMonthlyStats(currentUser.id, Calendar.OCTOBER, 2026)
+        historyManager.getMonthlyStats(currentUser.id, thisMonth, thisYear)
     }
 
     // September 2026 stats
     val septStats = remember(userRecords, currentUser) {
-        historyManager.getMonthlyStats(currentUser.id, Calendar.SEPTEMBER, 2026)
+        historyManager.getMonthlyStats(currentUser.id, lastMonth, lastMonthYear)
     }
 
     // Dynamic Top Artists & Songs for October
@@ -72,20 +78,17 @@ fun SoundCapsuleScreen(
         if (octStats.topArtist != "Your Top Artist" && octStats.playCount > 0) {
             octStats.topArtist
         } else {
-            currentUser.selectedArtists.firstOrNull() ?: "Pritam"
+            currentUser.selectedArtists.firstOrNull() ?: "No plays yet"
         }
     }
-    val topArtistOctImage = remember(topArtistOct) {
-        MusicCatalog.getArtistImageUrl(topArtistOct)
-    }
+    val topArtistOctImage = com.example.musicapp.ui.components.rememberArtistImage(topArtistOct)
 
     val topSongOct = remember(octStats, userRecords, topArtistOct) {
         val matchingRecord = userRecords.find { it.title == octStats.topSongTitle }
         if (matchingRecord != null) {
             SongInfo(matchingRecord.videoId, matchingRecord.title, matchingRecord.artist, matchingRecord.albumArtUrl)
         } else {
-            val artistData = MusicCatalog.getArtistData(topArtistOct)
-            artistData.topTracks.firstOrNull() ?: SongInfo("yKNxeF4PgnY", "Yellow", "Coldplay", "https://i.ytimg.com/vi/yKNxeF4PgnY/hqdefault.jpg")
+            SongInfo("", "Nothing played yet", topArtistOct, "")
         }
     }
 
@@ -94,20 +97,17 @@ fun SoundCapsuleScreen(
         if (septStats.topArtist != "Your Top Artist" && septStats.playCount > 0) {
             septStats.topArtist
         } else {
-            currentUser.selectedArtists.getOrNull(1) ?: currentUser.selectedArtists.firstOrNull() ?: "Alan Walker"
+            currentUser.selectedArtists.getOrNull(1) ?: currentUser.selectedArtists.firstOrNull() ?: "No plays yet"
         }
     }
-    val topArtistSeptImage = remember(topArtistSept) {
-        MusicCatalog.getArtistImageUrl(topArtistSept)
-    }
+    val topArtistSeptImage = com.example.musicapp.ui.components.rememberArtistImage(topArtistSept)
 
     val topSongSept = remember(septStats, userRecords, topArtistSept) {
         val matchingRecord = userRecords.find { it.title == septStats.topSongTitle }
         if (matchingRecord != null) {
             SongInfo(matchingRecord.videoId, matchingRecord.title, matchingRecord.artist, matchingRecord.albumArtUrl)
         } else {
-            val artistData = MusicCatalog.getArtistData(topArtistSept)
-            artistData.topTracks.firstOrNull() ?: SongInfo("dvgZkm1xWPE", "Viva La Vida", "Coldplay", "https://i.ytimg.com/vi/dvgZkm1xWPE/hqdefault.jpg")
+            SongInfo("", "Nothing played yet", topArtistSept, "")
         }
     }
 
@@ -124,7 +124,7 @@ fun SoundCapsuleScreen(
     val throwbackSong = remember(userRecords, comboSong1, comboSong2) {
         userRecords.firstOrNull { it.videoId != comboSong1.videoId && it.videoId != comboSong2.videoId }?.let {
             SongInfo(it.videoId, it.title, it.artist, it.albumArtUrl)
-        } ?: MusicCatalog.mostFavSongs.first()
+        } ?: topSongOct
     }
 
     // Dynamic Repeat Song (Story 3)
@@ -206,7 +206,7 @@ fun SoundCapsuleScreen(
                             modifier = Modifier.clickable { showInfoDialog = true }
                         ) {
                             Text(
-                                text = "October 2026",
+                                text = "${octStats.monthName} ${octStats.year}",
                                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                                 color = Color.White
                             )
@@ -220,7 +220,7 @@ fun SoundCapsuleScreen(
                         }
                         IconButton(onClick = {
                             shareCapsuleStory(
-                                "October 2026 Sound Capsule",
+                                "${octStats.monthName} ${octStats.year} Sound Capsule",
                                 "Time listened: ${octStats.totalMinutes} minutes. Top Artist: $topArtistOct. Top Song: ${topSongOct.title}."
                             )
                         }) {
@@ -237,7 +237,7 @@ fun SoundCapsuleScreen(
                             .clip(RoundedCornerShape(12.dp))
                             .background(Color(0xFF222222))
                             .clickable {
-                                Toast.makeText(context, "Detailed listening breakdown for October (${octStats.playCount} songs played)", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Detailed listening breakdown for ${octStats.monthName} (${octStats.playCount} songs played)", Toast.LENGTH_SHORT).show()
                             }
                             .padding(16.dp)
                     ) {
@@ -420,7 +420,7 @@ fun SoundCapsuleScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Sept 28 - Oct 4, 2026",
+                                    text = "${octStats.monthName} ${octStats.year}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFFA0A0A0)
                                 )
@@ -445,13 +445,13 @@ fun SoundCapsuleScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "September 2026",
+                            text = "${septStats.monthName} ${septStats.year}",
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                             color = Color.White
                         )
                         IconButton(onClick = {
                             shareCapsuleStory(
-                                "September 2026 Sound Capsule",
+                                "${septStats.monthName} ${septStats.year} Sound Capsule",
                                 "Time listened: ${septStats.totalMinutes} minutes. Top Artist: $topArtistSept."
                             )
                         }) {
@@ -578,7 +578,7 @@ fun SoundCapsuleScreen(
                         headline = "Throwback to your favorites",
                         story = "You enjoyed listening to ${throwbackSong.title} by ${throwbackSong.artist}.",
                         song = throwbackSong,
-                        dateRange = "Sept 2026",
+                        dateRange = "${septStats.monthName} ${septStats.year}",
                         onPlay = { viewModel?.playSong(throwbackSong) },
                         onShare = { shareCapsuleStory("Throwback favorites", "Loved listening to ${throwbackSong.title} by ${throwbackSong.artist}.") }
                     )
@@ -591,7 +591,7 @@ fun SoundCapsuleScreen(
                         headline = "You hit $repeatCount plays",
                         story = "You listened to ${repeatSong.title} by ${repeatSong.artist} on repeat. Such a dedicated fan.",
                         song = repeatSong,
-                        dateRange = "Sept 21 - 27, 2026",
+                        dateRange = "${septStats.monthName} ${septStats.year}",
                         onPlay = { viewModel?.playSong(repeatSong) },
                         onShare = { shareCapsuleStory("Top Track", "You listened to ${repeatSong.title} by ${repeatSong.artist} $repeatCount times!") }
                     )
@@ -604,7 +604,7 @@ fun SoundCapsuleScreen(
                         headline = "You kept the music going",
                         story = "You played ${streakSong.title} by ${streakSong.artist} day after day.",
                         song = streakSong,
-                        dateRange = "Sept 14 - 20, 2026",
+                        dateRange = "${septStats.monthName} ${septStats.year}",
                         onPlay = { viewModel?.playSong(streakSong) },
                         onShare = { shareCapsuleStory("Listening streak", "You played ${streakSong.title} day after day.") }
                     )
@@ -623,7 +623,7 @@ fun SoundCapsuleScreen(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = if (listState.firstVisibleItemScrollOffset > 300) "Sept, 2026" else "Oct, 2026",
+                    text = if (listState.firstVisibleItemScrollOffset > 300) "${septStats.monthName} ${septStats.year}" else "${octStats.monthName} ${octStats.year}",
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )

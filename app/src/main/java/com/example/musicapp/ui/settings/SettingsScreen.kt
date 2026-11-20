@@ -48,6 +48,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     val themeAccent = remember(appTheme) { AppThemeHelper.getThemeAccent(appTheme) }
 
     val autoplay by settingsManager.autoplay.collectAsStateWithLifecycle()
+    val discovery by settingsManager.discoveryLevel.collectAsStateWithLifecycle()
     val crossfade by settingsManager.crossfadeSeconds.collectAsStateWithLifecycle()
     val streamingQuality by settingsManager.streamingQuality.collectAsStateWithLifecycle()
     val downloadQuality by settingsManager.downloadQuality.collectAsStateWithLifecycle()
@@ -280,7 +281,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 SettingRow(
                     icon = Icons.Default.VolumeUp,
                     title = "Playback",
-                    subtitle = "Autoplay • Fade between songs",
+                    subtitle = "Autoplay • Discovery • Fade between songs",
                     onClick = { activeCategorySheet = "Playback" }
                 )
                 SettingRow(
@@ -421,6 +422,27 @@ fun SettingsScreen(onBack: () -> Unit) {
                             Text("Playback Preferences", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
                             Spacer(modifier = Modifier.height(16.dp))
                             SwitchRow("Autoplay similar songs when your music ends", autoplay) { settingsManager.setAutoplay(it) }
+                            Text(
+                                "Discovery: " + when {
+                                    discovery < 25 -> "Stick to what I know"
+                                    discovery < 60 -> "Balanced"
+                                    discovery < 85 -> "Show me new music"
+                                    else -> "Surprise me"
+                                },
+                                color = Color.White,
+                                modifier = Modifier.padding(top = 12.dp)
+                            )
+                            Slider(
+                                value = discovery.toFloat(),
+                                onValueChange = { settingsManager.setDiscoveryLevel(it.toInt()) },
+                                valueRange = 0f..100f,
+                                colors = SliderDefaults.colors(thumbColor = Color(0xFF00F59B), activeTrackColor = Color(0xFF00F59B))
+                            )
+                            Text(
+                                "Shapes Daily Mixes, radio and autoplay: familiar favourites on the left, new artists on the right.",
+                                color = Color(0xFFA0A0A0),
+                                fontSize = 13.sp
+                            )
                             Text("Fade between songs: ${if (crossfade == 0) "Off" else "${crossfade}s"}", color = Color.White, modifier = Modifier.padding(top = 12.dp))
                             Slider(
                                 value = crossfade.toFloat(),

@@ -103,8 +103,12 @@ class PlayHistoryManager private constructor(private val context: Context) {
         }
 
         val totalPlays = matching.size
-        // Estimate ~3.5 minutes per play
-        val totalMinutes = if (totalPlays > 0) totalPlays * 3 + (totalPlays % 3) else 45
+        // Real listening time from the listening log; plays recorded before it existed count ~3.5 min.
+        val loggedMs = com.example.musicapp.data.recommend.ListeningLog.getInstance(context).forUser(userId).filter { e ->
+            cal.timeInMillis = e.atMs
+            cal.get(Calendar.MONTH) == targetMonth && cal.get(Calendar.YEAR) == targetYear
+        }.sumOf { it.listenedMs }
+        val totalMinutes = if (loggedMs > 0) (loggedMs / 60_000).toInt() else (totalPlays * 7) / 2
 
         val artistCounts = matching.groupingBy { it.artist }.eachCount()
         val topArtist = artistCounts.maxByOrNull { it.value }?.key ?: "Your Top Artist"

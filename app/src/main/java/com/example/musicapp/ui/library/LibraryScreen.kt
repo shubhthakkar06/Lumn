@@ -193,7 +193,7 @@ fun LibraryScreen(
                         id = "artist_" + artistName.lowercase().replace(" ", "_"),
                         title = artistName,
                         subtitle = "Artist",
-                        imageUrl = com.example.musicapp.data.MusicCatalog.getArtistImageUrl(artistName),
+                        imageUrl = "",
                         isArtist = true,
                         timestampMs = System.currentTimeMillis()
                     )
@@ -454,6 +454,12 @@ fun LibraryScreen(
                                             Icon(Icons.Default.Bookmark, contentDescription = null, tint = themeAccent, modifier = Modifier.size(36.dp))
                                         }
                                     }
+                                } else if (item.isArtist) {
+                                    com.example.musicapp.ui.components.TrackArtwork(
+                                        model = com.example.musicapp.ui.components.rememberArtistImage(item.title),
+                                        contentDescription = item.title,
+                                        modifier = Modifier.fillMaxSize().clip(CircleShape)
+                                    )
                                 } else if (item.imageUrl.isBlank()) {
                                     Box(
                                         modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp))
@@ -534,6 +540,12 @@ fun LibraryScreen(
                                         Icon(Icons.Default.Bookmark, contentDescription = null, tint = themeAccent, modifier = Modifier.size(28.dp))
                                     }
                                 }
+                            } else if (item.isArtist) {
+                                com.example.musicapp.ui.components.TrackArtwork(
+                                    model = com.example.musicapp.ui.components.rememberArtistImage(item.title),
+                                    contentDescription = item.title,
+                                    modifier = Modifier.size(64.dp).clip(CircleShape)
+                                )
                             } else if (item.imageUrl.isBlank()) {
                                 Box(
                                     modifier = Modifier.size(64.dp).clip(RoundedCornerShape(4.dp))

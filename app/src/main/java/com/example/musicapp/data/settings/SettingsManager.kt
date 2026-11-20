@@ -42,6 +42,15 @@ class SettingsManager private constructor(private val context: Context) {
     private val _pushNotifications = MutableStateFlow(prefs.getBoolean(KEY_PUSH_NOTIF, true))
     val pushNotifications: StateFlow<Boolean> = _pushNotifications.asStateFlow()
 
+    private val _discoveryLevel = MutableStateFlow(prefs.getInt(KEY_DISCOVERY, 50))
+    /** 0 = recommend what I already like, 100 = surprise me with new music. */
+    val discoveryLevel: StateFlow<Int> = _discoveryLevel.asStateFlow()
+
+    fun setDiscoveryLevel(level: Int) {
+        _discoveryLevel.value = level.coerceIn(0, 100)
+        prefs.edit().putInt(KEY_DISCOVERY, _discoveryLevel.value).apply()
+    }
+
     private val _appTheme = MutableStateFlow(prefs.getString(KEY_THEME, "Dynamic Time") ?: "Dynamic Time")
     val appTheme: StateFlow<String> = _appTheme.asStateFlow()
 
@@ -145,6 +154,7 @@ class SettingsManager private constructor(private val context: Context) {
         private const val KEY_CANVAS = "key_canvas"
         private const val KEY_PUSH_NOTIF = "key_push_notif"
         private const val KEY_THEME = "key_app_theme"
+        private const val KEY_DISCOVERY = "discovery_level"
 
         @Volatile
         private var instance: SettingsManager? = null

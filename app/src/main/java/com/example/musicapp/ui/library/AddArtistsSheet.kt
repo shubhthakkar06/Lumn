@@ -41,16 +41,27 @@ fun AddArtistsSheet(
     val followManager = remember { ArtistFollowManager.getInstance(context) }
     val followedArtists by followManager.followedArtists.collectAsStateWithLifecycle()
 
-    val suggestedArtists = remember {
-        listOf(
-            SuggestedArtist("Coldplay", "https://i.ytimg.com/vi/dvgZkm1xWPE/hq720.jpg", "94.9M monthly listeners"),
-            SuggestedArtist("Arijit Singh", "https://i.ytimg.com/vi/Oextk-If8HQ/hqdefault.jpg", "45.8M monthly listeners"),
-            SuggestedArtist("Vishal Mishra", "https://i.ytimg.com/vi/kuhh3JVms4w/hqdefault.jpg", "24.1M monthly listeners"),
-            SuggestedArtist("Darshan Raval", "https://i.ytimg.com/vi/V7LwfY5U5WI/hqdefault.jpg", "18.4M monthly listeners"),
-            SuggestedArtist("Billie Eilish", "https://i.ytimg.com/vi/viimfQi_pUw/hqdefault.jpg", "102.5M monthly listeners"),
-            SuggestedArtist("Maroon 5", "https://i.ytimg.com/vi/09R8_2nJtjg/hqdefault.jpg", "62.3M monthly listeners"),
-            SuggestedArtist("Jordana Bryant", "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/9b/ab/3b/9bab3bf7-d876-10ef-7e41-0a5efee154c1/196925002585.jpg/600x600bb.jpg", "890K monthly listeners")
-        )
+    // Suggestions: artists related to the ones you already play, or search results.
+    var query by remember { mutableStateOf("") }
+    var suggestedArtists by remember { mutableStateOf<List<SuggestedArtist>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    LaunchedEffect(query) {
+        loading = true
+        if (query.isNotBlank()) kotlinx.coroutines.delay(350)
+        suggestedArtists = runCatching {
+            if (query.isNotBlank()) {
+                com.example.musicapp.data.catalog.SaavnCatalog.searchArtists(query.trim(), 15).map { SuggestedArtist(it.name, it.imageUrl, "Artist") }
+            } else {
+                val engine = com.example.musicapp.data.recommend.RecommendationEngine.getInstance(context)
+                val seeds = engine.taste().topArtists.take(3)
+                val names = seeds.flatMap { com.example.musicapp.data.catalog.DeezerArtists.relatedArtistNames(it, 6) }
+                    .distinctBy { it.lowercase() }
+                    .filterNot { followManager.isFollowing(it) }
+                    .take(15)
+                names.mapNotNull { n -> engine.artist(n)?.let { SuggestedArtist(it.name, it.imageUrl, "Similar to artists you play") } }
+            }
+        }.getOrDefault(emptyList())
+        loading = false
     }
 
     ModalBottomSheet(
@@ -95,6 +106,20 @@ fun AddArtistsSheet(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
             )
 
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text("Search artists") },
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
+            )
+            if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            else if (suggestedArtists.isEmpty()) Text(
+                if (query.isBlank()) "Play some music first, or search for artists you like." else "No artists found.",
+                color = Color(0xFFA0A0A0),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+            )
             HorizontalDivider(color = Color(0xFF2E2E2E), thickness = 1.dp, modifier = Modifier.padding(top = 12.dp))
 
             LazyColumn(

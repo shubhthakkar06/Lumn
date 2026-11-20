@@ -29,6 +29,7 @@ class SaavnProvider(
     private val json = Json { ignoreUnknownKeys = true }
     private val memoryStreamCache = ConcurrentHashMap<String, String>()
 
+    @Suppress("unused")
     private fun unescapeHtml(text: String): String {
         return text.replace("&quot;", "\"")
             .replace("&amp;", "&")
@@ -63,29 +64,6 @@ class SaavnProvider(
 
     override suspend fun search(query: String): List<SongInfo> = withContext(Dispatchers.IO) {
         val results = mutableListOf<SongInfo>()
-        val trimmed = query.trim()
-        val tokens = trimmed.lowercase().split("\\s+".toRegex()).filter { it.isNotBlank() }
-        val isSatsangQuery = trimmed.contains("satsang", ignoreCase = true) ||
-            trimmed.contains("baps", ignoreCase = true) ||
-            trimmed.contains("swami", ignoreCase = true) ||
-            trimmed.contains("katha", ignoreCase = true) ||
-            trimmed.contains("gujarati", ignoreCase = true) ||
-            trimmed.contains("patience", ignoreCase = true) ||
-            trimmed.contains("episode", ignoreCase = true) ||
-            trimmed.contains("podcast", ignoreCase = true)
-
-        if (isSatsangQuery) {
-            val allEpisodes = getBapsSatsangEpisodes()
-            val matched = allEpisodes.filter { ep ->
-                tokens.any { token ->
-                    ep.title.contains(token, ignoreCase = true) ||
-                    ep.artist.contains(token, ignoreCase = true) ||
-                    ep.description.contains(token, ignoreCase = true) ||
-                    token in "baps satsang gujarati katha swaminarayan bhagwan pravachan"
-                }
-            }
-            results.addAll(if (matched.isNotEmpty()) matched else allEpisodes)
-        }
         try {
             val encoded = URLEncoder.encode(query, "UTF-8")
             val url = "https://www.jiosaavn.com/api.php?__call=search.getResults&q=$encoded&_format=json&_marker=0&ctx=android&p=1&n=20"
@@ -93,59 +71,23 @@ class SaavnProvider(
                 .url(url)
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile)")
                 .build()
-
             val jsonStr = httpClient.newCall(request).execute().use { response ->
                 if (response.isSuccessful) response.body?.string() else null
             }
             if (jsonStr != null) {
                 val root = json.parseToJsonElement(jsonStr) as? JsonObject
-                val array = root?.get("results") as? JsonArray
-                array?.forEach { element ->
-                    val obj = element as? JsonObject ?: return@forEach
-                    val id = obj["id"]?.let { (it as? JsonPrimitive)?.content } ?: ""
-                    val songName = obj["song"]?.let { (it as? JsonPrimitive)?.content } ?: ""
-                    val primaryArtists = obj["primary_artists"]?.let { (it as? JsonPrimitive)?.content }
-                        ?: obj["singers"]?.let { (it as? JsonPrimitive)?.content } ?: ""
-                    val moreInfo = obj["more_info"] as? JsonObject
-                    val albumName = (obj["album"] ?: moreInfo?.get("album"))
-                        ?.let { (it as? JsonPrimitive)?.content }.orEmpty()
-                    val durationSeconds = (obj["duration"] ?: moreInfo?.get("duration"))
-                        ?.let { (it as? JsonPrimitive)?.content?.toLongOrNull() } ?: 0L
-                    val rawImg = obj["image"]?.let { (it as? JsonPrimitive)?.content } ?: ""
-                    val highResImg = rawImg.replace("150x150.jpg", "500x500.jpg")
-                        .replace("150x150.webp", "500x500.jpg")
-                        .replace("50x50.jpg", "500x500.jpg")
-                    val encUrl = obj["encrypted_media_url"]?.let { (it as? JsonPrimitive)?.content } ?: ""
-                    val popularity = obj["play_count"]?.let { (it as? JsonPrimitive)?.content?.toLongOrNull() }
-                        ?: (obj["more_info"] as? JsonObject)?.get("play_count")?.let { (it as? JsonPrimitive)?.content?.toLongOrNull() }
-                        ?: 0L
-                    val directStream = if (encUrl.isNotBlank()) decryptSaavnUrl(encUrl) else null
-
-                    if (id.isNotBlank() && songName.isNotBlank()) {
-                        val cleanTitle = unescapeHtml(songName)
-                        val cleanArtist = unescapeHtml(primaryArtists)
-                        val videoId = "saavn_$id"
-                        if (!directStream.isNullOrBlank()) {
-                            memoryStreamCache[videoId] = directStream
-                            memoryStreamCache["${cleanTitle.lowercase()}_${cleanArtist.lowercase()}"] = directStream
-                        }
-                        results.add(
-                            SongInfo(
-                                videoId = videoId,
-                                title = cleanTitle,
-                                artist = cleanArtist,
-                                albumArtUrl = highResImg,
-                                audioStreamUrl = directStream,
-                                albumName = albumName,
-                                popularityScore = popularity,
-                                durationSeconds = durationSeconds
-                            )
-                        )
+                (root?.get("results") as? JsonArray)?.forEach { element ->
+                    val song = (element as? JsonObject)?.let { com.example.musicapp.data.catalog.SaavnCatalog.parseSong(it, ::decryptSaavnUrl) }
+                        ?: return@forEach
+                    song.audioStreamUrl?.let { stream ->
+                        memoryStreamCache[song.videoId] = stream
+                        memoryStreamCache["${song.title.lowercase()}_${song.artist.lowercase()}"] = stream
                     }
+                    results.add(song)
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.w("SaavnProvider", "Search failed", e)
         }
         results
     }
@@ -157,7 +99,7 @@ class SaavnProvider(
         durationSeconds: Long,
         quality: StreamQuality
     ): StreamResult = when (val result = resolveBestQuality(trackRef, title, artist, durationSeconds)) {
-        is StreamResult.Success -> if (trackRef.startsWith("baps_ep_")) result else result.copy(
+        is StreamResult.Success -> result.copy(
             streamUrl = quality.applyToSaavnUrl(result.streamUrl),
             bitrateKbps = quality.kbps
         )
@@ -170,13 +112,6 @@ class SaavnProvider(
         artist: String?,
         durationSeconds: Long
     ): StreamResult = withContext(Dispatchers.IO) {
-        if (trackRef.startsWith("baps_ep_")) {
-            val ep = getBapsSatsangEpisodes().firstOrNull { it.videoId == trackRef }
-            if (ep?.audioStreamUrl != null) {
-                return@withContext StreamResult.Success(streamUrl = ep.audioStreamUrl, providerName = name)
-            }
-        }
-
         // 1. Check in-memory stream cache
         memoryStreamCache[trackRef]?.let {
             return@withContext StreamResult.Success(streamUrl = it, providerName = name)
@@ -242,118 +177,5 @@ class SaavnProvider(
         if (!title.isNullOrBlank() && !artist.isNullOrBlank()) {
             memoryStreamCache.remove("${title.lowercase()}_${artist.lowercase()}")
         }
-    }
-
-    fun getBapsSatsangEpisodes(): List<SongInfo> {
-        return listOf(
-            SongInfo(
-                videoId = "baps_ep_aksharatitdas",
-                title = "વચનામૃત ગઢડા પ્રથમ ૫૮: સત્પુરુષનો પ્રસંગ | પૂજ્ય અક્ષરાતીતદાસ સ્વામી | BAPS Satsang Gujarati",
-                artist = "પૂજ્ય અક્ષરાતીતદાસ સ્વામી",
-                albumArtUrl = "assets/aksharatitdas_episode.png",
-                audioStreamUrl = "https://p.scdn.co/mp3-preview/fa88a13eafcd9aa77ca98e20ceb435c786e229c6.mp3",
-                albumName = "Episode • BAPS Satsang Gujarati",
-                durationSeconds = 3600L,
-                isEpisode = true,
-                description = "આજે આપણે પૂજા, દર્શન અને ભક્તિ તો કરીએ છીએ, પણ શું આપણી ભક્તિ સાચી છે કે પછી આપણે ભગવાન સાથે માત્ર વ્યવહાર સાચવી રહ્યા છીએ? આ કથામાં પૂજ્ય અક્ષરાતીતદાસ સ્વામી વચનામૃત ગઢડા પ્રથમ ૫૮ ના આધારે સત્પુરુષના સાચા મહિમા અને દિવ્ય પ્રસંગોની સુંદર છણાવટ કરે છે.",
-                releaseDate = "Aug 3"
-            ),
-            SongInfo(
-                videoId = "baps_ep_uttamcharan",
-                title = "મહંત સ્વામી મહારાજનો નિઃસ્વાર્થ સ્નેહ | પૂજ્ય ઉત્તમયોગીદાસ સ્વામી | BAPS Satsang",
-                artist = "પૂજ્ય ઉત્તમયોગીદાસ સ્વામી",
-                albumArtUrl = "assets/uttamyogidas_episode.png",
-                audioStreamUrl = "https://anchor.fm/s/11be3c80/podcast/play/9702112/https%3A%2F%2Fd3ctxlq1ktw2nl.cloudfront.net%2Fproduction%2F2020-0-15%2F43524604-44100-2-6f1b842bf8afb.mp3",
-                albumName = "Episode • BAPS Satsang Gujarati",
-                durationSeconds = 3660L,
-                isEpisode = true,
-                description = "સ્વાર્થી જગતમાં કોઈ નિરપેક્ષ પ્રેમ કરી શકે? આ કથામાં પૂજ્ય ઉત્તમયોગીદાસ સ્વામી વચનામૃત સારંગપુર ૨ ના આધારે સમજાવે છે કે સામાન્ય રીતે આપણો પ્રેમ સ્વાર્થથી જોડાયેલો હોય છે. પરમ પૂજ્ય મહંત સ્વામી મહારાજનો સ્નેહ કેવો નિર્દોષ, નિઃસ્વાર્થ અને દિવ્ય છે તેની પ્રેરક વાતો.",
-                releaseDate = "Jul 27"
-            ),
-            SongInfo(
-                videoId = "baps_ep_atmatruptdas",
-                title = "ચમત્કારો પાછળ ન દોડો: ભગવાનને ઓળખવાનો આ છે સાચો માર્ગ | Pujya Atmatruptdas Swami | BAPS Satsang",
-                artist = "Pujya Atmatruptdas Swami",
-                albumArtUrl = "assets/atmatruptdas_episode.png",
-                audioStreamUrl = "https://anchor.fm/s/11be3c80/podcast/play/10202928/https%3A%2F%2Fd3ctxlq1ktw2nl.cloudfront.net%2Fstaging%2F2020-02-06%2F4e117b5b3a1fd9ab4821bb33e862a648.m4a",
-                albumName = "Episode • BAPS Satsang Gujarati",
-                durationSeconds = 3480L,
-                isEpisode = true,
-                description = "આજના યુગમાં ચમત્કારો પાછળ દોડવાને બદલે ભગવાનના સાચા સ્વરૂપને સમજવું અને જીવનમાં નિયમ, ધર્મ અને સત્સંગનું પાલન કરવું એ જ કલ્યાણનો રાજમાર્ગ છે.",
-                releaseDate = "Jul 20"
-            ),
-            SongInfo(
-                videoId = "baps_ep_1",
-                title = "Patience and True Refuge in Bhagwan | Pujya Somprakashdas Swami | BAPS Satsang",
-                artist = "Pujya Somprakashdas Swami",
-                albumArtUrl = "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/00/72/c6/0072c641-891b-71ff-8c1c-3e6f20be1f02/mza_13154730571231814752.jpg/600x600bb.jpg",
-                audioStreamUrl = "https://p.scdn.co/mp3-preview/fa88a13eafcd9aa77ca98e20ceb435c786e229c6.mp3",
-                albumName = "Episode • BAPS Satsang Gujarati",
-                durationSeconds = 2837L,
-                isEpisode = true,
-                description = "આપણું જીવન સુખ અને દુઃખ બંનેથી ભરેલું છે. જ્યારે મુશ્કેલીઓ આવે છે, ત્યારે આપણે ઘણીવાર નિરાશ થઈ જઈએ છીએ અથવા ખોટી જગ્યાએ ઉકેલ શોધીએ છીએ. પૂજ્ય સોમપ્રકાશદાસ સ્વામી આ કથામાં સમજાવે છે કે સુખ અને દુઃખ એ જીવનના બે પાસાં છે.",
-                releaseDate = "Oct 12"
-            ),
-            SongInfo(
-                videoId = "baps_ep_2",
-                title = "વાણી , વિચાર અને વલણ (Vani, Vichar ane Valan) | Pu. Gyanvatsal Swami",
-                artist = "Pujya Gyanvatsal Swami",
-                albumArtUrl = "https://d3t3ozftmdmh3i.cloudfront.net/production/podcast_uploaded_nologo/3720760/3720760-1582650047432-8e3427f300f86.jpg",
-                audioStreamUrl = "https://anchor.fm/s/11be3c80/podcast/play/9702112/https%3A%2F%2Fd3ctxlq1ktw2nl.cloudfront.net%2Fproduction%2F2020-0-15%2F43524604-44100-2-6f1b842bf8afb.mp3",
-                albumName = "Episode • BAPS Satsang Gujarati",
-                durationSeconds = 2712L,
-                isEpisode = true,
-                description = "પૂજ્ય જ્ઞાનવત્સલ સ્વામી દ્વારા જીવનમાં વાણી, વિચાર અને વલણની પવિત્રતા અને સત્સંગ દ્વારા માનસિક શાંતિ પ્રાપ્ત કરવા માટેનું પ્રેરણાદાયી પ્રવચન.",
-                releaseDate = "Oct 19"
-            ),
-            SongInfo(
-                videoId = "baps_ep_3",
-                title = "સારા અને સફળ સંબંધો રાખવાનું રહસ્ય | Pu. Apurvamuni Swami",
-                artist = "Pujya Apurvamuni Swami",
-                albumArtUrl = "https://d3t3ozftmdmh3i.cloudfront.net/production/podcast_uploaded_nologo/3720760/3720760-1582650047432-8e3427f300f86.jpg",
-                audioStreamUrl = "https://anchor.fm/s/11be3c80/podcast/play/10202928/https%3A%2F%2Fd3ctxlq1ktw2nl.cloudfront.net%2Fstaging%2F2020-02-06%2F4e117b5b3a1fd9ab4821bb33e862a648.m4a",
-                albumName = "Episode • BAPS Satsang Gujarati",
-                durationSeconds = 2320L,
-                isEpisode = true,
-                description = "પૂજ્ય અપૂર્વમુનિ સ્વામી સમજાવે છે કે પરિવાર અને સમાજમાં સંબંધોમાં મીઠાશ, સહનશીલતા અને સત્સંગનું મહત્ત્વ કેવું હોવું જોઈએ.",
-                releaseDate = "Sep 25"
-            ),
-            SongInfo(
-                videoId = "baps_ep_4",
-                title = "તણાવ મુક્ત જીવન જીવવાની કળા (Stress Management) | Pu. Gyanvatsal Swami",
-                artist = "Pujya Gyanvatsal Swami",
-                albumArtUrl = "https://d3t3ozftmdmh3i.cloudfront.net/production/podcast_uploaded_nologo/3720760/3720760-1582650047432-8e3427f300f86.jpg",
-                audioStreamUrl = "https://anchor.fm/s/11be3c80/podcast/play/9342893/https%3A%2F%2Fd3ctxlq1ktw2nl.cloudfront.net%2Fstaging%2F2020-03-05%2Fdda0f33ab415b7535c18bcaf0347ae3b.m4a",
-                albumName = "Episode • BAPS Satsang Gujarati",
-                durationSeconds = 2538L,
-                isEpisode = true,
-                description = "આજના દોડધામભર્યા જીવનમાં આધ્યાત્મિકતા અને સ્વામિનારાયણ ભગવાનના આશ્રય દ્વારા તણાવમુક્ત અને સંતોષી જીવન કેવી રીતે જીવવું.",
-                releaseDate = "Sep 12"
-            ),
-            SongInfo(
-                videoId = "baps_ep_5",
-                title = "સફળતા અને નિષ્ફળતા - જીવન મૂલ્યો | Pu. Gyanvatsal Swami",
-                artist = "Pujya Gyanvatsal Swami",
-                albumArtUrl = "https://d3t3ozftmdmh3i.cloudfront.net/production/podcast_uploaded_nologo/3720760/3720760-1582650047432-8e3427f300f86.jpg",
-                audioStreamUrl = "https://anchor.fm/s/11be3c80/podcast/play/9149804/https%3A%2F%2Fd3ctxlq1ktw2nl.cloudfront.net%2Fstaging%2F2020-02-06%2Fd1b49f50-fc82-3d71-c0ef-11c750a92543.m4a",
-                albumName = "Episode • BAPS Satsang Gujarati",
-                durationSeconds = 2210L,
-                isEpisode = true,
-                description = "જીવનમાં મુશ્કેલીઓ કે નિષ્ફળતા આવે ત્યારે સત્સંગ અને સત્પુરુષની આજ્ઞામાં રહીને કેવી રીતે સ્થિર મતિ રાખવી તેની સુંદર સમજૂતી.",
-                releaseDate = "Aug 28"
-            ),
-            SongInfo(
-                videoId = "baps_ep_6",
-                title = "દરેક પરિસ્થિતિમાં હકારાત્મકતા (Positivity in Everything) | Pu. Brahmaviharidas Swami",
-                artist = "Pujya Brahmaviharidas Swami",
-                albumArtUrl = "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/00/b2/ff/00b2ff57-d8bf-b00d-a317-b6c7788b0890/mza_13015016754983816106.jpg/600x600bb.jpg",
-                audioStreamUrl = "https://anchor.fm/s/11be3c80/podcast/play/13479437/https%3A%2F%2Fd3ctxlq1ktw2nl.cloudfront.net%2Fproduction%2F2020-4-8%2F71372863-48000-1-3104d1f71b053.mp3",
-                albumName = "Episode • BAPS Satsang Gujarati",
-                durationSeconds = 3130L,
-                isEpisode = true,
-                description = "પૂજ્ય બ્રહ્મવિહારીદાસ સ્વામીનું પ્રેરણાદાયી પ્રવચન: પરમાત્માના સંકલ્પ પર વિશ્વાસ રાખીને હકારાત્મક દ્રષ્ટિકોણ કેળવવો.",
-                releaseDate = "Aug 14"
-            )
-        )
     }
 }
