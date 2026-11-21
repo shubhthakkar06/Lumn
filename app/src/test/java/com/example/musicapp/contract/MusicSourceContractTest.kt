@@ -82,6 +82,9 @@ class MusicSourceContractTest {
 
     @Test
     fun test30MusicSourceContracts() = runBlocking {
+        // Queries live JioSaavn/YouTube/Audius. JioSaavn's catalog is region-locked and hosted CI
+        // runners are outside India, so this only runs locally (like the YouTube check below).
+        assumeFalse("Live provider contract check is skipped in CI", System.getenv("CI") == "true")
         val results = mutableListOf<ContractResult>()
 
         for (q in sampleQueries) {
