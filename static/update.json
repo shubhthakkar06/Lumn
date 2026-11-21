@@ -1,7 +1,7 @@
 {
-  "versionName": "2.8.3",
-  "versionCode": 40,
-  "minimumVersionCode": 40,
+  "versionName": "3.0.1",
+  "versionCode": 43,
+  "minimumVersionCode": 43,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
   "releaseNotes": "Rivara 2.8.3: Seamless Google sign-in fallback sheet for devices with no saved credentials, multi-account isolation, and automatic playlist recovery."
 }
