@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Strings generated from google-services.json that are only looked up by name at runtime
+  (GoogleAuthManager reads default_web_client_id with getIdentifier). Without this file the
+  release resource shrinker removes them and Google sign-in fails.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@string/default_web_client_id,@string/google_crash_reporting_api_key" />

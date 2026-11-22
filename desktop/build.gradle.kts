@@ -35,7 +35,7 @@ compose.desktop {
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Pkg
             )
             packageName = "Rivara"
-            packageVersion = "3.0.1"
+            packageVersion = "3.0.2"
             description = "Rivara Music for macOS"
             copyright = "© 2026 Rivara. All rights reserved."
             vendor = "Rivara Music"
