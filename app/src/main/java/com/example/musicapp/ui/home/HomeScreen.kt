@@ -72,6 +72,15 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { homeViewModel.refresh() }
 
+    // Newest episodes from followed podcasts and YouTube channels.
+    val followedShows by remember { com.example.musicapp.data.shows.ShowFollowManager.getInstance(context) }.shows.collectAsStateWithLifecycle()
+    var newEpisodes by remember { mutableStateOf<List<com.example.musicapp.data.network.SongInfo>>(emptyList()) }
+    LaunchedEffect(followedShows.map { it.id }) {
+        newEpisodes = if (followedShows.isEmpty()) emptyList() else runCatching {
+            com.example.musicapp.data.catalog.Shows.newEpisodes(followedShows.map(com.example.musicapp.data.catalog.ShowRef::of))
+        }.getOrDefault(emptyList())
+    }
+
     fun openMix(id: String, title: String, subtitle: String, cover: String) = onNavigate(Screen.Mix(id, title, subtitle, cover))
 
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(themeGradientColors))) {
@@ -97,7 +106,7 @@ fun HomeScreen(
                     Box(
                         Modifier.size(44.dp).clip(CircleShape).background(avatarColor).clickable { onOpenDrawer() },
                         contentAlignment = Alignment.Center
-                    ) { Text(currentUser.avatarLetter, color = Color.Black, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp) }
+                    ) { com.example.musicapp.ui.components.AvatarContent(currentUser, 18.sp) }
                 }
             }
 
@@ -145,6 +154,14 @@ fun HomeScreen(
                 if (mixes == null) ShelfPlaceholder("Made for you")
                 else Shelf("Made for you", mixes, key = { it.id }, subtitle = "Updated from what you play, skip and like") { mix ->
                     MediaCard(mix.title, mix.subtitle, mix.imageUrl, onClick = { openMix(mix.id, mix.title, mix.subtitle, mix.imageUrl) })
+                }
+            }
+
+            if (newEpisodes.isNotEmpty()) {
+                item(key = "episodes") {
+                    Shelf("New episodes", newEpisodes, key = { it.videoId }, subtitle = "From shows you follow") { ep ->
+                        MediaCard(ep.title, listOf(ep.artist, ep.releaseDate).filter { it.isNotBlank() }.joinToString(" • "), ep.albumArtUrl, onClick = { viewModel?.playSong(ep, newEpisodes) }, size = 176.dp)
+                    }
                 }
             }
 

@@ -71,7 +71,7 @@ fun SearchScreen(
     val currentSong by viewModel.currentSong.collectAsStateWithLifecycle()
     var selectedFilterChip by remember { mutableStateOf(0) }
     var selectedSongForOptions by remember { mutableStateOf<SongInfo?>(null) }
-    val filterChips = listOf("All", "Podcasts & Shows", "Artists", "Songs", "Playlists", "Albums", "Genres & Moods")
+    val filterChips = listOf("All", "Shows & Episodes", "Artists", "Songs", "Playlists", "Albums", "Genres & Moods")
 
     // Browse grid: real mood and genre channels.
     var channels by remember { mutableStateOf<List<com.example.musicapp.data.catalog.ChannelRef>>(emptyList()) }
@@ -94,7 +94,8 @@ fun SearchScreen(
     var artistResults by remember { mutableStateOf<List<com.example.musicapp.data.catalog.ArtistRef>>(emptyList()) }
     var albumResults by remember { mutableStateOf<List<com.example.musicapp.data.catalog.AlbumRef>>(emptyList()) }
     var playlistResults by remember { mutableStateOf<List<com.example.musicapp.data.catalog.PlaylistRef>>(emptyList()) }
-    var podcastResults by remember { mutableStateOf<List<com.example.musicapp.data.catalog.PodcastShow>>(emptyList()) }
+    var podcastResults by remember { mutableStateOf<List<com.example.musicapp.data.catalog.ShowRef>>(emptyList()) }
+    var episodeResults by remember { mutableStateOf<List<com.example.musicapp.data.network.SongInfo>>(emptyList()) }
     LaunchedEffect(searchQuery) {
         val q = searchQuery.trim()
         if (q.isBlank()) return@LaunchedEffect
@@ -103,10 +104,51 @@ fun SearchScreen(
             launch { artistResults = runCatching { com.example.musicapp.data.catalog.SaavnCatalog.searchArtists(q, 10) }.getOrDefault(emptyList()) }
             launch { albumResults = runCatching { com.example.musicapp.data.catalog.SaavnCatalog.searchAlbums(q, 12) }.getOrDefault(emptyList()) }
             launch { playlistResults = runCatching { com.example.musicapp.data.catalog.SaavnCatalog.searchPlaylists(q, 12) }.getOrDefault(emptyList()) }
-            launch { podcastResults = runCatching { com.example.musicapp.data.catalog.Podcasts.search(q, 15) }.getOrDefault(emptyList()) }
+            launch {
+                // Shows (podcasts + YouTube channels) and the newest episodes of the best match.
+                val shows = runCatching { com.example.musicapp.data.catalog.Shows.search(q, 15) }.getOrDefault(emptyList())
+                podcastResults = shows
+                episodeResults = shows.firstOrNull()?.let { top ->
+                    runCatching { com.example.musicapp.data.catalog.Shows.detail(top)?.episodes?.take(6) }.getOrNull()
+                }.orEmpty()
+            }
         }
     }
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val isPlayingNow by viewModel.isPlaying.collectAsStateWithLifecycle()
+    // Shows come before songs only when the search clearly names a show ("baps satsang").
+    val showsFirst = remember(podcastResults, searchQuery) {
+        val words = searchQuery.trim().lowercase().split(Regex("\\s+")).filter { it.length > 1 }
+        val top = podcastResults.firstOrNull()?.title?.lowercase().orEmpty()
+        words.isNotEmpty() && words.all { top.contains(it) } && !top.contains("song") && !top.contains("topic")
+    }
+    val showSection: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
+                        item(key = "show-shelf") {
+                            com.example.musicapp.ui.components.Shelf("Shows", podcastResults.take(8), key = { it.id }) { show ->
+                                com.example.musicapp.ui.components.MediaCard(show.title, show.subtitle.ifBlank { show.author }, show.imageUrl, onClick = {
+                                    onNavigate(Screen.Show(show.id, show.title, show.author, show.imageUrl))
+                                }, size = 132.dp)
+                            }
+                        }
+                        if (episodeResults.isNotEmpty()) {
+                            item(key = "all-eps-title") {
+                                Text("Episodes", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White, modifier = Modifier.padding(bottom = 4.dp))
+                            }
+                            items(episodeResults.take(3), key = { "all-ep-${it.videoId}" }) { ep ->
+                                com.example.musicapp.ui.show.EpisodeRow(
+                                    episode = ep,
+                                    isCurrent = currentSong?.videoId == ep.videoId,
+                                    isPlaying = currentSong?.videoId == ep.videoId && isPlayingNow,
+                                    isLoading = loadingSongVideoId == ep.videoId,
+                                    accent = MaterialTheme.colorScheme.primary,
+                                    onPlay = { viewModel.playSong(ep, episodeResults) },
+                                    onQueue = { viewModel.addToQueue(ep) },
+                                    onDownload = { com.example.musicapp.data.download.MusicDownloadManager.getInstance(context).downloadSong(ep) }
+                                )
+                            }
+                            item(key = "all-eps-gap") { Spacer(Modifier.height(16.dp)) }
+                        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -132,7 +174,7 @@ fun SearchScreen(
                                 .clickable { onOpenDrawer() },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(currentUser.avatarLetter, color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            com.example.musicapp.ui.components.AvatarContent(currentUser, 18.sp)
                         }
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
@@ -342,16 +384,35 @@ fun SearchScreen(
                                 })
                             }
                         }
+                        if (showsFirst) showSection()
                         item(key = "songs-title") {
                             Text("Songs", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White, modifier = Modifier.padding(bottom = 4.dp))
                         }
                     }
                     when (selectedFilterChip) {
                         1 -> if (podcastResults.isEmpty()) item { Text("No shows found for \"$searchQuery\".", color = Color(0xFF909AAB), modifier = Modifier.padding(vertical = 24.dp)) }
-                        else items(podcastResults, key = { "pod-${it.feedUrl}" }) { show ->
-                            SearchResultRow(show.title, "Podcast • ${show.author}", show.artworkUrl) {
-                                val id = "podcast:" + kotlinx.serialization.json.Json.encodeToString(com.example.musicapp.data.catalog.PodcastShow.serializer(), show)
-                                onNavigate(Screen.Mix(id, show.title, show.author, show.artworkUrl))
+                        else {
+                            items(podcastResults, key = { "show-${it.id}" }) { show ->
+                                SearchResultRow(show.title, show.subtitle.ifBlank { show.author }, show.imageUrl, circle = show.isYouTube) {
+                                    onNavigate(Screen.Show(show.id, show.title, show.author, show.imageUrl))
+                                }
+                            }
+                            if (episodeResults.isNotEmpty()) {
+                                item(key = "eps-title") {
+                                    Text("Episodes", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White, modifier = Modifier.padding(top = 16.dp, bottom = 4.dp))
+                                }
+                                items(episodeResults, key = { "ep-${it.videoId}" }) { ep ->
+                                    com.example.musicapp.ui.show.EpisodeRow(
+                                        episode = ep,
+                                        isCurrent = currentSong?.videoId == ep.videoId,
+                                        isPlaying = currentSong?.videoId == ep.videoId && isPlayingNow,
+                                        isLoading = loadingSongVideoId == ep.videoId,
+                                        accent = MaterialTheme.colorScheme.primary,
+                                        onPlay = { viewModel.playSong(ep, episodeResults) },
+                                        onQueue = { viewModel.addToQueue(ep) },
+                                        onDownload = { com.example.musicapp.data.download.MusicDownloadManager.getInstance(context).downloadSong(ep) }
+                                    )
+                                }
                             }
                         }
                         2 -> if (artistResults.isEmpty()) item { Text("No artists found", color = Color(0xFF909AAB), modifier = Modifier.padding(vertical = 24.dp)) }
@@ -622,6 +683,7 @@ fun SearchScreen(
                             }
                         }
                     }
+                    if (selectedFilterChip == 0 && !showsFirst) showSection()
                 }
             }
         }

@@ -1,15 +1,15 @@
 package com.example.musicapp.ui.player
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -23,321 +23,159 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.musicapp.audio.DeviceCategory
-import com.example.musicapp.audio.EqPresetMode
+import com.example.musicapp.audio.OutputKind
+import com.example.musicapp.audio.SoundMode
 import com.example.musicapp.ui.main.MainScreenViewModel
+import kotlin.math.roundToInt
 
+/** Rivara Sound: the in-player sound engine (works on every phone and Bluetooth device). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AudioEffectsSheet(
     viewModel: MainScreenViewModel,
     onDismiss: () -> Unit
 ) {
-    val activeProfile by viewModel.activeAudioProfile.collectAsStateWithLifecycle()
+    val settings by viewModel.soundSettings.collectAsStateWithLifecycle()
+    val output by viewModel.soundOutput.collectAsStateWithLifecycle()
+    val accent = MaterialTheme.colorScheme.primary
+    val studio = settings.mode == SoundMode.STUDIO
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = Color(0xFF0F141C),
-        dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(vertical = 12.dp)
-                    .width(44.dp)
-                    .height(4.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF334155))
-            )
-        },
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
         Column(
-            modifier = Modifier
+            Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 36.dp)
         ) {
-            // Header Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    colors = listOf(Color(0xFF00F59B), Color(0xFF00D2FF))
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        val icon = when (activeProfile?.category) {
-                            DeviceCategory.EARBUDS -> Icons.Default.Headphones
-                            DeviceCategory.HEADPHONES -> Icons.Default.Headphones
-                            DeviceCategory.HOME_THEATRE -> Icons.Default.Speaker
-                            DeviceCategory.CAR_AUDIO -> Icons.Default.DirectionsCar
-                            else -> Icons.Default.PhoneAndroid
-                        }
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            tint = Color.Black,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column {
-                        Text(
-                            text = "Adaptive Audio Engine",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp
-                            ),
-                            color = Color.White
-                        )
-                        Text(
-                            text = activeProfile?.deviceName ?: "Detecting device...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF00D2FF)
-                        )
-                    }
-                }
-
-                IconButton(onClick = onDismiss) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape).background(Brush.linearGradient(listOf(accent, Color(0xFF00D2FF)))),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = Color(0xFF94A3B8)
+                        when (output.kind) {
+                            OutputKind.HEADPHONES, OutputKind.EARBUDS -> Icons.Default.Headphones
+                            OutputKind.CAR -> Icons.Default.DirectionsCar
+                            OutputKind.EXTERNAL_SPEAKER -> Icons.Default.Speaker
+                            OutputKind.SPEAKER -> Icons.Default.PhoneAndroid
+                        },
+                        contentDescription = null, tint = Color.Black
                     )
                 }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // Active Profile Info Banner
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(
-                        Brush.horizontalGradient(
-                            colors = listOf(Color(0xFF1E293B), Color(0xFF172033))
-                        )
-                    )
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(Color(0xFF00F59B).copy(alpha = 0.3f), Color(0xFF00D2FF).copy(alpha = 0.3f))
-                        ),
-                        shape = RoundedCornerShape(16.dp)
-                    )
-                    .padding(16.dp)
-            ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF00F59B))
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = activeProfile?.profileLabel ?: "Hardware DSP Active",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                            color = Color.White
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Rivara Sound", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 19.sp)
                     Text(
-                        text = activeProfile?.description ?: "Hardware equalizer tuned to your connected audio output.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF94A3B8)
+                        if (settings.adaptive && !studio) "Tuned for ${output.name} (${output.kind.label.lowercase()})" else output.name,
+                        color = Color(0xFF94A3B8), fontSize = 13.sp
                     )
                 }
+                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Close", tint = Color(0xFF94A3B8)) }
             }
 
-            Spacer(modifier = Modifier.height(22.dp))
-
-            // Presets Selector
-            Text(
-                text = "Acoustic Presets",
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = Color(0xFFE2E8F0)
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(EqPresetMode.entries.toTypedArray()) { preset ->
-                    val isSelected = activeProfile?.presetMode == preset
-                    val bgBrush = if (isSelected) {
-                        Brush.horizontalGradient(listOf(Color(0xFF00F59B), Color(0xFF00D2FF)))
-                    } else {
-                        Brush.horizontalGradient(listOf(Color(0xFF1E293B), Color(0xFF1E293B)))
-                    }
-                    val textColor = if (isSelected) Color.Black else Color.White
-
+            Spacer(Modifier.height(18.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(SoundMode.entries.toList()) { mode ->
+                    val selected = settings.mode == mode
                     Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(bgBrush)
-                            .border(
-                                width = 1.dp,
-                                color = if (isSelected) Color.Transparent else Color(0xFF334155),
-                                shape = RoundedCornerShape(24.dp)
-                            )
-                            .clickable {
-                                viewModel.setAudioPreset(preset)
-                            }
+                        Modifier
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(if (selected) accent else Color(0xFF1E293B))
+                            .border(1.dp, if (selected) Color.Transparent else Color(0xFF334155), RoundedCornerShape(22.dp))
+                            .clickable { viewModel.selectSoundMode(mode) }
                             .padding(horizontal = 16.dp, vertical = 10.dp)
                     ) {
-                        Text(
-                            text = preset.displayName,
-                            color = textColor,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                            )
-                        )
+                        Text(mode.label, color = if (selected) Color.Black else Color.White, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, fontSize = 13.sp)
                     }
                 }
             }
+            Spacer(Modifier.height(10.dp))
+            Text(settings.mode.blurb, color = Color(0xFF94A3B8), fontSize = 13.sp)
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(Modifier.height(18.dp))
+            SoundSlider("3D Space", "Room and hall around the music", settings.space, 0f..1f, percent = true, enabled = !studio, accent = accent) { v ->
+                viewModel.tweakSound { it.copy(space = v) }
+            }
+            SoundSlider(
+                "Surround", if (output.kind == OutputKind.HEADPHONES || output.kind == OutputKind.EARBUDS) "Moves sound out of your head, in front of you" else "Headphones only",
+                settings.surround, 0f..1f, percent = true, enabled = !studio, accent = accent
+            ) { v -> viewModel.tweakSound { it.copy(surround = v) } }
+            SoundSlider("Width", "Stereo spread (bass stays centred)", settings.width, 0f..1f, percent = true, enabled = !studio, accent = accent) { v ->
+                viewModel.tweakSound { it.copy(width = v) }
+            }
+            SoundSlider("Bass", "Low-end weight", settings.bassDb, -6f..12f, unit = "dB", enabled = !studio, accent = accent) { v ->
+                viewModel.tweakSound { it.copy(bassDb = v) }
+            }
+            SoundSlider("Vocals", "Presence around 3 kHz", settings.presenceDb, -6f..8f, unit = "dB", enabled = !studio, accent = accent) { v ->
+                viewModel.tweakSound { it.copy(presenceDb = v) }
+            }
+            SoundSlider("Treble", "Air and detail", settings.trebleDb, -6f..10f, unit = "dB", enabled = !studio, accent = accent) { v ->
+                viewModel.tweakSound { it.copy(trebleDb = v) }
+            }
+            SoundSlider("Punch", "Glue compression for impact", settings.punch, 0f..1f, percent = true, enabled = !studio, accent = accent) { v ->
+                viewModel.tweakSound { it.copy(punch = v) }
+            }
+            SoundSlider("Loudness", "Extra volume, limited so it never distorts", settings.loudnessDb, 0f..8f, unit = "dB", enabled = !studio, accent = accent) { v ->
+                viewModel.tweakSound { it.copy(loudnessDb = v) }
+            }
 
-            // Real-Time Audio Metric Gauges (BassBoost & 3D Spatial Field)
+            Spacer(Modifier.height(8.dp))
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0xFF161F2E)).padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Bass Metric Slider
-                AudioMetricCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Bass Boost",
-                    strengthValue = activeProfile?.bassBoostStrength?.toInt() ?: 0,
-                    maxValue = 1000,
-                    accentColor = Color(0xFFFF5757),
-                    enabled = activeProfile?.bassBoostAvailable == true || activeProfile?.equalizerAvailable == true,
-                    onValueChange = { newValue ->
-                        viewModel.setBassBoostStrength(newValue.toShort())
-                    }
-                )
-
-                // Spatial Virtualizer Metric Slider
-                AudioMetricCard(
-                    modifier = Modifier.weight(1f),
-                    title = "3D Virtualizer",
-                    strengthValue = activeProfile?.virtualizerStrength?.toInt() ?: 0,
-                    maxValue = 1000,
-                    accentColor = Color(0xFF00D2FF),
-                    enabled = activeProfile?.virtualizerAvailable == true,
-                    onValueChange = { newValue ->
-                        viewModel.setVirtualizerStrength(newValue.toShort())
-                    }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Loudness Enhancer Gain Card
-            var loudnessGain by remember { mutableFloatStateOf(0f) }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFF161F2E))
-                    .border(1.dp, Color(0xFF243247), RoundedCornerShape(16.dp))
-                    .padding(14.dp)
-            ) {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Loudness Boost (Hardware DSP Gain)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF94A3B8)
-                        )
-                        Text(
-                            text = "+${loudnessGain.toInt()} mB",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = Color(0xFF00F59B)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Slider(
-                        value = loudnessGain,
-                        onValueChange = {
-                            loudnessGain = it
-                            viewModel.setLoudnessGain(it.toInt())
-                        },
-                        valueRange = 0f..1200f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = Color(0xFF00F59B),
-                            activeTrackColor = Color(0xFF00F59B),
-                            inactiveTrackColor = Color(0xFF243247)
-                        )
-                    )
+                Column(Modifier.weight(1f)) {
+                    Text("Adapt to device", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("Safer bass on the phone speaker, crossfeed only on headphones, clearer vocals in the car", color = Color(0xFF94A3B8), fontSize = 12.sp)
                 }
+                Switch(checked = settings.adaptive, enabled = !studio, onCheckedChange = { viewModel.setSoundAdaptive(it) })
+            }
+            Spacer(Modifier.height(10.dp))
+            TextButton(onClick = { viewModel.selectSoundMode(SoundMode.CINEMATIC) }) {
+                Text("Reset to Cinematic 3D", color = Color(0xFFCBD5E1))
             }
         }
     }
 }
 
 @Composable
-private fun AudioMetricCard(
-    modifier: Modifier = Modifier,
+private fun SoundSlider(
     title: String,
-    strengthValue: Int,
-    maxValue: Int,
-    accentColor: Color,
+    subtitle: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    unit: String = "",
+    percent: Boolean = false,
     enabled: Boolean,
-    onValueChange: (Int) -> Unit
+    accent: Color,
+    onChange: (Float) -> Unit
 ) {
-    val percent = ((strengthValue.toFloat() / maxValue.toFloat()) * 100).toInt()
-
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF161F2E))
-            .border(1.dp, Color(0xFF243247), RoundedCornerShape(16.dp))
-            .padding(14.dp)
-    ) {
-        Column {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF94A3B8)
-                )
-                Text(
-                    text = "$percent%",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = accentColor
-                )
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, color = if (enabled) Color.White else Color(0xFF64748B), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Text(subtitle, color = Color(0xFF94A3B8), fontSize = 12.sp)
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            Slider(
-                value = strengthValue.toFloat(),
-                onValueChange = { onValueChange(it.toInt()) },
-                valueRange = 0f..maxValue.toFloat(),
-                enabled = enabled,
-                colors = SliderDefaults.colors(
-                    thumbColor = accentColor,
-                    activeTrackColor = accentColor,
-                    inactiveTrackColor = Color(0xFF243247)
-                )
+            Text(
+                when {
+                    percent -> "${(value * 100).roundToInt()}%"
+                    else -> (if (value > 0.05f) "+" else "") + "%.1f %s".format(value, unit)
+                },
+                color = if (enabled) accent else Color(0xFF64748B), fontWeight = FontWeight.Bold, fontSize = 14.sp
             )
         }
+        Slider(
+            value = value.coerceIn(range.start, range.endInclusive),
+            onValueChange = onChange,
+            valueRange = range,
+            enabled = enabled,
+            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent, inactiveTrackColor = Color(0xFF243247))
+        )
     }
 }
+

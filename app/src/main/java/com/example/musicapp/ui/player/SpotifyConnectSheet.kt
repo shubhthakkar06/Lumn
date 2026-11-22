@@ -339,14 +339,7 @@ fun SpotifyConnectSheet(
             var isSyncingMac by remember { mutableStateOf(false) }
             var showMacPairing by remember { mutableStateOf(false) }
             if (showMacPairing) {
-                com.example.musicapp.ui.sync.MacPairingDialog(
-                    accent = Color(0xFF00D2FF),
-                    onDismiss = { showMacPairing = false },
-                    onSynced = { count ->
-                        showMacPairing = false
-                        Toast.makeText(context, "Synced $count playlists with your Mac", Toast.LENGTH_SHORT).show()
-                    }
-                )
+                com.example.musicapp.ui.sync.CloudLibraryDialog(accent = Color(0xFF00D2FF), onDismiss = { showMacPairing = false })
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -355,23 +348,7 @@ fun SpotifyConnectSheet(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color(0xFF1E293B))
-                    .clickable(enabled = !isSyncingMac) {
-                        if (com.example.musicapp.data.sync.DeviceSyncManager.getPairing(context) == null) {
-                            showMacPairing = true
-                        } else {
-                            isSyncingMac = true
-                            coroutineScope.launch {
-                                val res = com.example.musicapp.data.sync.DeviceSyncManager.syncWithMac(context)
-                                isSyncingMac = false
-                                res.onSuccess { count ->
-                                    Toast.makeText(context, "Synced $count playlists with your Mac", Toast.LENGTH_SHORT).show()
-                                }.onFailure { err ->
-                                    Toast.makeText(context, err.message ?: "Sync failed", Toast.LENGTH_LONG).show()
-                                    showMacPairing = true
-                                }
-                            }
-                        }
-                    }
+                    .clickable { showMacPairing = true }
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 Row(

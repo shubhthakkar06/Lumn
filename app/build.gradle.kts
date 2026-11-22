@@ -146,6 +146,9 @@ dependencies {
   implementation("androidx.work:work-runtime-ktx:2.10.1")
 
   // Coil
+  implementation("androidx.exifinterface:exifinterface:1.3.7")
+  // Long-press-anywhere drag to reorder, with auto-scroll at the list edges.
+  implementation("sh.calvin.reorderable:reorderable:2.5.1")
   implementation("io.coil-kt.coil3:coil-compose:3.1.0")
   implementation("io.coil-kt.coil3:coil-network-okhttp:3.1.0")
 
@@ -164,6 +167,10 @@ dependencies {
   // Google sign-in through Credential Manager and Firebase Authentication.
   implementation(platform(libs.firebase.bom))
   implementation(libs.firebase.auth)
+  implementation(libs.firebase.database)
+  // Galaxy Watch: library sync over the Wear Data Layer.
+  implementation("com.google.android.gms:play-services-wearable:19.0.0")
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
   // Crash reports (stack traces, device model, OS version) so import/download crashes can be fixed.
   implementation(libs.firebase.crashlytics)
   implementation(libs.androidx.credentials)

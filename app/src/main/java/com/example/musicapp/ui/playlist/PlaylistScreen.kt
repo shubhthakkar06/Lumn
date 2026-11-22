@@ -12,7 +12,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -28,7 +27,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Search
@@ -41,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -52,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import sh.calvin.reorderable.ReorderableItem
 import com.example.musicapp.data.download.DownloadStatus
 import com.example.musicapp.data.download.MusicDownloadManager
 import com.example.musicapp.data.network.SongInfo
@@ -134,8 +134,6 @@ fun PlaylistScreen(
             "${song.videoId}#$occurrence"
         }
     }
-    val latestFilteredSongKeys by rememberUpdatedState(filteredSongKeys)
-    val latestPlaylistSize by rememberUpdatedState(playlistSongs.size)
 
     var playBounced by remember { mutableStateOf(false) }
     val playScale by animateFloatAsState(
@@ -188,9 +186,22 @@ fun PlaylistScreen(
     var selectedSongForMenu by remember { mutableStateOf<SongInfo?>(null) }
     var selectedSongIndex by remember { mutableIntStateOf(-1) }
     var showSongMenu by remember { mutableStateOf(false) }
-    var draggingPlaylistIndex by remember { mutableIntStateOf(-1) }
-    var playlistDragOffsetPx by remember { mutableFloatStateOf(0f) }
     val playlistListState = rememberLazyListState()
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+
+    // Order shown while dragging; saved to the playlist when the drag ends.
+    var ordered by remember(filteredSongs, filteredSongKeys) { mutableStateOf(filteredSongKeys.zip(filteredSongs)) }
+    val canReorder = isUserPlaylist && playlistSearchQuery.isBlank()
+    val reorderState = sh.calvin.reorderable.rememberReorderableLazyListState(playlistListState) { from, to ->
+        val fromIndex = ordered.indexOfFirst { it.first == from.key }
+        val toIndex = ordered.indexOfFirst { it.first == to.key }
+        if (fromIndex >= 0 && toIndex >= 0) {
+            ordered = ordered.toMutableList().apply { add(toIndex, removeAt(fromIndex)) }
+            haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.SegmentFrequentTick)
+        }
+    }
+    val totalSeconds = remember(playlistSongs) { playlistSongs.sumOf { it.durationSeconds } }
+    val durationLabel = remember(totalSeconds, playlistSongs) { formatPlaylistDuration(totalSeconds, playlistSongs.count { it.durationSeconds <= 0 }) }
 
     // Rename Dialog
     if (showRenameDialog) {
@@ -462,7 +473,7 @@ fun PlaylistScreen(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "${filteredSongs.size} tracks • 3h 52min",
+                        text = listOf("${playlistSongs.size} ${if (playlistSongs.size == 1) "song" else "songs"}", durationLabel).filter { it.isNotBlank() }.joinToString(" • "),
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFFA0A0A0)
                     )
@@ -626,23 +637,28 @@ fun PlaylistScreen(
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        // Song Items
-        itemsIndexed(filteredSongs, key = { index, _ -> filteredSongKeys[index] }) { index, song ->
-            val latestSongIndex = rememberUpdatedState(index)
+        // Song Items. Long-press anywhere on a song and drag to move it; the list scrolls by
+        // itself near the top and bottom edges, so a song can travel the whole playlist.
+        itemsIndexed(ordered, key = { _, entry -> entry.first }) { index, entry ->
+            val song = entry.second
             val isCurrent = currentSong?.videoId == song.videoId
             val isLoading = loadingSongVideoId == song.videoId
             val dlStatus = downloadStates[song.videoId] ?: DownloadStatus.NotDownloaded
 
+            ReorderableItem(reorderState, key = entry.first, enabled = canReorder) { isDragging ->
+            val lift by androidx.compose.animation.core.animateDpAsState(if (isDragging) 10.dp else 0.dp, label = "lift")
             Row(
                 modifier = Modifier
-                    .animateItem()
                     .fillMaxWidth()
-                    .graphicsLayer {
-                        translationY = if (draggingPlaylistIndex == index) playlistDragOffsetPx else 0f
-                        shadowElevation = if (draggingPlaylistIndex == index) 18f else 0f
-                    }
-                    .background(if (draggingPlaylistIndex == index) Color(0x3321C9A5) else Color.Transparent)
-                    .clickable { viewModel.playSong(song, filteredSongs) }
+                    .shadow(lift, RoundedCornerShape(10.dp))
+                    .background(if (isDragging) Color(0xFF1B2433) else Color.Transparent, RoundedCornerShape(10.dp))
+                    .then(
+                        if (canReorder) Modifier.longPressDraggableHandle(
+                            onDragStarted = { haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress) },
+                            onDragStopped = { playlistManager.setSongOrder(playlistId, ordered.map { it.second }) }
+                        ) else Modifier
+                    )
+                    .clickable { viewModel.playSong(song, ordered.map { it.second }) }
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -704,46 +720,6 @@ fun PlaylistScreen(
                         modifier = Modifier.size(20.dp)
                     )
                 }
-                if (isUserPlaylist && playlistSearchQuery.isBlank()) {
-                    Icon(
-                        imageVector = Icons.Default.DragHandle,
-                        contentDescription = "Hold and drag to reorder",
-                        tint = if (draggingPlaylistIndex == index) themeAccent else Color(0xFF8793A2),
-                        modifier = Modifier
-                            .size(40.dp)
-                            .pointerInput(playlistId) {
-                                var activeIndex = 0
-                                var draggedCenterY = 0f
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = {
-                                        val startIndex = latestSongIndex.value
-                                        activeIndex = startIndex
-                                        draggingPlaylistIndex = startIndex
-                                        playlistDragOffsetPx = 0f
-                                        val startKey = latestFilteredSongKeys.getOrNull(startIndex)
-                                        val item = playlistListState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == startKey }
-                                        draggedCenterY = (item?.offset ?: 0) + (item?.size ?: 0) / 2f
-                                    },
-                                    onDragEnd = { draggingPlaylistIndex = -1; playlistDragOffsetPx = 0f },
-                                    onDragCancel = { draggingPlaylistIndex = -1; playlistDragOffsetPx = 0f },
-                                    onDrag = { change, amount ->
-                                        change.consume()
-                                        draggedCenterY += amount.y
-                                        playlistDragOffsetPx += amount.y
-                                        val targetKey = playlistListState.layoutInfo.visibleItemsInfo
-                                            .filter { info -> latestFilteredSongKeys.contains(info.key) }
-                                            .minByOrNull { kotlin.math.abs(it.offset + it.size / 2f - draggedCenterY) }
-                                            ?.key
-                                        val target = latestFilteredSongKeys.indexOf(targetKey)
-                                        if (target >= 0 && target != activeIndex && target in 0 until latestPlaylistSize) {
-                                            playlistManager.moveSong(playlistId, activeIndex, target)
-                                            activeIndex = target
-                                        }
-                                    }
-                                )
-                            }
-                    )
-                }
                 Spacer(modifier = Modifier.width(12.dp))
                 IconButton(
                     onClick = {
@@ -761,6 +737,21 @@ fun PlaylistScreen(
                     )
                 }
             }
+            }
         }
     }
+}
+
+/** "3 hr 52 min", "47 min 12 sec"; notes songs whose length is not known yet. */
+internal fun formatPlaylistDuration(totalSeconds: Long, unknownCount: Int): String {
+    if (totalSeconds <= 0L) return ""
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    val base = when {
+        hours > 0 -> "$hours hr $minutes min"
+        minutes > 0 -> "$minutes min $seconds sec"
+        else -> "$seconds sec"
+    }
+    return if (unknownCount > 0) "about $base" else base
 }

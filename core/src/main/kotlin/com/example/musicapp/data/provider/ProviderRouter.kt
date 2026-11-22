@@ -178,9 +178,18 @@ class ProviderRouter(
 
         // Keep provider order as a tie-breaker, but prefer the most relevant title/artist
         // matches. Providers often return overlapping catalogs and duplicate editions.
+        // Each provider's own ordering is a useful signal (YouTube Music puts the original
+        // recording first), so its top few results get a small bonus on top of relevance.
+        val positionBonus = HashMap<SongInfo, Int>()
+        resultsByProvider.forEach { (provider, songs) ->
+            songs.forEachIndexed { index, song ->
+                val bonus = if (provider.name == "YouTube") maxOf(0, 12 - 3 * index) else maxOf(0, 6 - 2 * index)
+                positionBonus.merge(song, bonus, ::maxOf)
+            }
+        }
         val ranked = resultsByProvider.flatMap { it.second }
             .sortedWith(
-                compareByDescending<SongInfo> { relevance(query, it) }
+                compareByDescending<SongInfo> { relevance(query, it) + (positionBonus[it] ?: 0) }
                     .thenByDescending { it.popularityScore }
                     // When two providers return the same recording, keep a directly
                     // playable catalog entry ahead of a URL that still needs resolving.

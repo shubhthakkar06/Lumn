@@ -47,7 +47,8 @@ object GoogleAuthManager {
         return UserManager.getInstance(activity.applicationContext).loginWithGoogle(
             uid = firebaseUser.uid,
             email = firebaseUser.email.orEmpty(),
-            displayName = firebaseUser.displayName.orEmpty()
+            displayName = firebaseUser.displayName.orEmpty(),
+            photoUrl = firebaseUser.photoUrl?.toString().orEmpty()
         )
     }
 

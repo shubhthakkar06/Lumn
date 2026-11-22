@@ -1,0 +1,22 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        "grants": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid"
+        },
+        "data": {
+          ".read": "auth != null && (auth.uid === $uid || root.child('users').child($uid).child('grants').child(auth.uid).exists())",
+          ".write": "auth != null && (auth.uid === $uid || root.child('users').child($uid).child('grants').child(auth.uid).exists())"
+        }
+      }
+    },
+    "links": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null && (!data.exists() || data.child('device').val() === auth.uid || newData.child('uid').val() === auth.uid || !newData.exists())"
+      }
+    }
+  }
+}

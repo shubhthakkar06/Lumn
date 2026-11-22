@@ -82,7 +82,7 @@ fun ArtistScreen(
 
     LaunchedEffect(artistName) {
         val ref = runCatching { RecommendationEngine.getInstance(context).artist(artistName) }.getOrNull()
-        val page = ref?.let { runCatching { SaavnCatalog.artistPage(it.id) }.getOrNull() }
+        val page = runCatching { com.example.musicapp.data.catalog.ArtistCatalog.page(artistName, ref?.id, imageUrl) }.getOrNull()
         if (page == null) {
             load = ArtistLoad.NotFound
             return@LaunchedEffect

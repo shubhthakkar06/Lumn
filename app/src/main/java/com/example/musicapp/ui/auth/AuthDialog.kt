@@ -144,12 +144,7 @@ fun AuthDialog(
                                                 .background(avatarColor),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Text(
-                                                text = user.avatarLetter,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.Black,
-                                                fontSize = 18.sp
-                                            )
+                                            com.example.musicapp.ui.components.AvatarContent(user, 18.sp)
                                         }
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Column(modifier = Modifier.weight(1f)) {

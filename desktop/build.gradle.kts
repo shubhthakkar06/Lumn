@@ -23,6 +23,8 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-compose:3.1.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.1.0")
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
+    // Drag-to-reorder for playlists, with auto-scroll.
+    implementation("sh.calvin.reorderable:reorderable:2.5.1")
 }
 
 compose.desktop {

@@ -63,6 +63,8 @@ fun main() {
     val musicRepository = remember { DesktopMusicRepository() }
     val libraryManager = remember { DesktopLibraryManager() }
     val userManager = remember { DesktopUserManager() }
+    val cloudSync = remember { com.example.musicapp.desktop.sync.DesktopCloudSync(libraryManager, userManager).also { it.start() } }
+    var showCloudLink by remember { mutableStateOf(false) }
     val downloadManager = remember { DesktopDownloadManager(musicRepository) }
     val audioPlayer = remember { DesktopAudioPlayer(musicRepository) }
 
@@ -410,8 +412,13 @@ fun main() {
                     if (showAuthDialog) {
                         DesktopAuthDialog(
                             userManager = userManager,
-                            onDismiss = { showAuthDialog = false }
+                            onDismiss = { showAuthDialog = false },
+                            onSignInWithPhone = { showAuthDialog = false; showCloudLink = true }
                         )
+                    }
+
+                    if (showCloudLink) {
+                        DesktopCloudLinkDialog(cloud = cloudSync, accent = themeAccent, onDismiss = { showCloudLink = false })
                     }
 
                     // Sync Hub Dialog

@@ -429,6 +429,14 @@ class DesktopLibraryManager {
         savePlaylistSongs(activeUserId)
     }
 
+    /** Replaces the library with the merged cloud copy and saves it. */
+    fun replaceFromCloud(playlists: List<DesktopPlaylist>, songs: Map<String, List<DesktopSong>>, liked: List<DesktopSong>) {
+        _playlists.value = playlists
+        _playlistSongs.value = songs
+        _likedSongs.value = liked
+        saveDataForUser(activeUserId)
+    }
+
     fun getSongsForPlaylist(playlistId: String): List<DesktopSong> {
         return _playlistSongs.value[playlistId].orEmpty()
     }

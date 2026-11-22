@@ -9,11 +9,12 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.musicapp.wear"
+        // Same package as the phone app: required for the Wear Data Layer (library sync).
+        applicationId = "com.example.musicapp"
         minSdk = 30
         targetSdk = 35
-        versionCode = 36
-        versionName = "2.7.9"
+        versionCode = 44
+        versionName = "3.0.2"
     }
 
     buildTypes {
@@ -45,6 +46,11 @@ dependencies {
     implementation("androidx.wear.compose:compose-navigation:1.4.1")
     implementation("androidx.wear:wear:1.3.0")
     implementation("androidx.wear:wear-tooling-preview:1.0.0")
+
+    // Search, streaming and the library model shared with the phone and Mac.
+    implementation(project(":core"))
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
+    implementation("androidx.compose.foundation:foundation")
 
     // Wearable Data Layer (Phone sync)
     implementation("com.google.android.gms:play-services-wearable:19.0.0")

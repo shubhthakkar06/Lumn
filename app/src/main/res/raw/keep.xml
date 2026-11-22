@@ -5,4 +5,4 @@
   release resource shrinker removes them and Google sign-in fails.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@string/default_web_client_id,@string/google_crash_reporting_api_key" />
+    tools:keep="@string/default_web_client_id,@string/google_crash_reporting_api_key,@string/firebase_database_url" />

@@ -56,6 +56,8 @@ data class LibraryItem(
     val isPinned: Boolean = false,
     val isDownloaded: Boolean = false,
     val isSpecialIcon: Boolean = false,
+    /** Set for a followed podcast or YouTube channel. */
+    val showId: String? = null,
     val specialIconColor: Color = Color.Transparent,
     val timestampMs: Long = System.currentTimeMillis()
 )
@@ -81,9 +83,10 @@ fun LibraryScreen(
     val userPlaylists by playlistManager.playlists.collectAsStateWithLifecycle()
     val downloadedSongs by downloadManager.downloadedSongs.collectAsStateWithLifecycle()
     val followedArtists by followManager.followedArtists.collectAsStateWithLifecycle()
+    val followedShows by remember { com.example.musicapp.data.shows.ShowFollowManager.getInstance(context) }.shows.collectAsStateWithLifecycle()
 
     var selectedFilter by remember { mutableStateOf<String?>(null) }
-    val filters = remember { listOf("Playlists", "Artists", "Downloaded") }
+    val filters = remember { listOf("Playlists", "Shows", "Artists", "Downloaded") }
 
     var currentSort by remember { mutableStateOf(LibrarySortOption.RECENTS) }
     var isGridView by remember { mutableStateOf(false) }
@@ -137,7 +140,7 @@ fun LibraryScreen(
     }
 
     // Build complete list of items purely based on user's content and preferences
-    val dynamicItems = remember(likedSongs, userPlaylists, downloadedSongs, followedArtists, selectedFilter, currentSort, searchQuery, currentUser) {
+    val dynamicItems = remember(likedSongs, userPlaylists, downloadedSongs, followedArtists, followedShows, selectedFilter, currentSort, searchQuery, currentUser) {
         val list = mutableListOf<LibraryItem>()
 
         if (selectedFilter == "Downloaded") {
@@ -185,6 +188,20 @@ fun LibraryScreen(
                 )
             }
 
+            // Followed shows (podcasts and YouTube channels)
+            followedShows.forEach { show ->
+                list.add(
+                    LibraryItem(
+                        id = show.id,
+                        title = show.title,
+                        subtitle = if (show.id.startsWith("yt:")) "Show • YouTube channel" else "Podcast • ${show.author}",
+                        imageUrl = show.imageUrl,
+                        showId = show.id,
+                        timestampMs = show.followedAtMs
+                    )
+                )
+            }
+
             // Followed and user-selected interest artists
             val allArtistNames = (followedArtists.map { it.replaceFirstChar { c -> c.uppercase() } } + currentUser.selectedArtists).distinct()
             allArtistNames.forEach { artistName ->
@@ -203,7 +220,8 @@ fun LibraryScreen(
 
         // Apply Category Filter
         val filtered = when (selectedFilter) {
-            "Playlists" -> list.filter { !it.isArtist }
+            "Playlists" -> list.filter { !it.isArtist && it.showId == null }
+            "Shows" -> list.filter { it.showId != null }
             "Artists" -> list.filter { it.isArtist }
             else -> list
         }
@@ -258,12 +276,7 @@ fun LibraryScreen(
                             .clickable { onOpenDrawer() },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = currentUser.avatarLetter,
-                            color = Color.Black,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp
-                        )
+                        com.example.musicapp.ui.components.AvatarContent(currentUser, 18.sp)
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Text(
@@ -275,23 +288,7 @@ fun LibraryScreen(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
-                        onClick = {
-                            if (DeviceSyncManager.getPairing(context) == null) {
-                                showMacPairingDialog = true
-                            } else {
-                                isSyncingWithMac = true
-                                coroutineScope.launch {
-                                    val result = DeviceSyncManager.syncWithMac(context)
-                                    isSyncingWithMac = false
-                                    result.onSuccess { count ->
-                                        Toast.makeText(context, "Synced $count playlists with your Mac", Toast.LENGTH_SHORT).show()
-                                    }.onFailure { err ->
-                                        Toast.makeText(context, err.message ?: "Sync failed", Toast.LENGTH_LONG).show()
-                                        showMacPairingDialog = true
-                                    }
-                                }
-                            }
-                        },
+                        onClick = { showMacPairingDialog = true },
                         enabled = !currentUser.isGuest && !isSyncingWithMac
                     ) {
                         if (isSyncingWithMac) {
@@ -299,7 +296,7 @@ fun LibraryScreen(
                         } else {
                             Icon(
                                 imageVector = Icons.Default.Sync,
-                                contentDescription = "Sync Playlists with Mac",
+                                contentDescription = "Your library on all devices",
                                 tint = Color.White,
                                 modifier = Modifier.size(24.dp)
                             )
@@ -681,14 +678,7 @@ fun LibraryScreen(
         }
 
         if (showMacPairingDialog) {
-            com.example.musicapp.ui.sync.MacPairingDialog(
-                accent = themeAccent,
-                onDismiss = { showMacPairingDialog = false },
-                onSynced = { count ->
-                    showMacPairingDialog = false
-                    Toast.makeText(context, "Synced $count playlists with your Mac", Toast.LENGTH_SHORT).show()
-                }
-            )
+            com.example.musicapp.ui.sync.CloudLibraryDialog(accent = themeAccent, onDismiss = { showMacPairingDialog = false })
         }
 
         if (showSpotifyImportDialog) {
@@ -850,6 +840,8 @@ private fun handleItemClick(
         }
     } else if (item.isArtist) {
         onNavigate(Screen.Artist(item.title, item.imageUrl))
+    } else if (item.showId != null) {
+        onNavigate(Screen.Show(item.showId, item.title, "", item.imageUrl))
     } else {
         onNavigate(Screen.Playlist(item.id, item.title, item.imageUrl, item.subtitle))
     }

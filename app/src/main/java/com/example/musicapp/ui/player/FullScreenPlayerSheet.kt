@@ -101,7 +101,8 @@ fun FullScreenPlayerSheet(
     var showQueueDialog by remember { mutableStateOf(false) }
     var showAudioEffectsSheet by remember { mutableStateOf(false) }
     var isLyricsExpanded by remember { mutableStateOf(false) }
-    val activeAudioProfile by viewModel.activeAudioProfile.collectAsStateWithLifecycle()
+    val soundOutput by viewModel.soundOutput.collectAsStateWithLifecycle()
+    val soundSettings by viewModel.soundSettings.collectAsStateWithLifecycle()
 
     // Dynamic gradient extracted from artwork
     val gradientColors = rememberDynamicGradient(song.albumArtUrl)
@@ -337,6 +338,52 @@ fun FullScreenPlayerSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Song / Video switch, shown when this song has a music video (or is a video episode).
+            val availableVideo by viewModel.availableVideoId.collectAsStateWithLifecycle()
+            val videoMode by viewModel.isVideoMode.collectAsStateWithLifecycle()
+            if (availableVideo != null || videoMode) {
+                Row(
+                    Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Row(
+                        Modifier.clip(RoundedCornerShape(20.dp)).background(Color(0x33FFFFFF)).padding(3.dp)
+                    ) {
+                        listOf(false to (if (song.isEpisode) "Audio" else "Song"), true to "Video").forEach { (isVideo, label) ->
+                            val selected = videoMode == isVideo
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(17.dp))
+                                    .background(if (selected) Color.White else Color.Transparent)
+                                    .clickable { if (!selected) viewModel.setVideoMode(isVideo) }
+                                    .padding(horizontal = 22.dp, vertical = 7.dp)
+                            ) {
+                                Text(label, color = if (selected) Color.Black else Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (videoMode) {
+                // The music video, rendered from the playback service's player.
+                androidx.compose.ui.viewinterop.AndroidView(
+                    factory = { ctx ->
+                        androidx.media3.ui.PlayerView(ctx).apply {
+                            useController = false
+                            setShutterBackgroundColor(android.graphics.Color.BLACK)
+                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            viewModel.attachVideo(this)
+                        }
+                    },
+                    onRelease = { it.player = null },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.Black)
+                )
+            } else
             // Album Artwork with horizontal swipe to skip next / prev
             Box(
                 modifier = Modifier
@@ -580,12 +627,12 @@ fun FullScreenPlayerSheet(
                         .clickable { showAudioEffectsSheet = true }
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
-                    val deviceIcon = when (activeAudioProfile?.category) {
-                        com.example.musicapp.audio.DeviceCategory.EARBUDS,
-                        com.example.musicapp.audio.DeviceCategory.HEADPHONES -> Icons.Default.Headphones
-                        com.example.musicapp.audio.DeviceCategory.HOME_THEATRE -> Icons.Default.Speaker
-                        com.example.musicapp.audio.DeviceCategory.CAR_AUDIO -> Icons.Default.DirectionsCar
-                        else -> Icons.Default.PhoneAndroid
+                    val deviceIcon = when (soundOutput.kind) {
+                        com.example.musicapp.audio.OutputKind.EARBUDS,
+                        com.example.musicapp.audio.OutputKind.HEADPHONES -> Icons.Default.Headphones
+                        com.example.musicapp.audio.OutputKind.EXTERNAL_SPEAKER -> Icons.Default.Speaker
+                        com.example.musicapp.audio.OutputKind.CAR -> Icons.Default.DirectionsCar
+                        com.example.musicapp.audio.OutputKind.SPEAKER -> Icons.Default.PhoneAndroid
                     }
                     Icon(
                         imageVector = deviceIcon,
@@ -595,7 +642,7 @@ fun FullScreenPlayerSheet(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = activeAudioProfile?.deviceName ?: "Audio Device",
+                        text = soundOutput.name,
                         style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                         color = Color(0xFF00F59B),
                         maxLines = 1,
@@ -603,7 +650,7 @@ fun FullScreenPlayerSheet(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "• EQ",
+                        text = "• ${soundSettings.mode.label}",
                         style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
                         color = Color(0xFF00D2FF)
                     )

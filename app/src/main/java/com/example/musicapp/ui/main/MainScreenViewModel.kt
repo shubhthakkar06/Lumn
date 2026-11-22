@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 sealed interface MainScreenUiState {
@@ -85,8 +86,17 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
 
     private var currentQueueIndex = 0
 
-    private val _activeAudioProfile = MutableStateFlow<com.example.musicapp.audio.ActiveAudioProfile?>(null)
-    val activeAudioProfile: StateFlow<com.example.musicapp.audio.ActiveAudioProfile?> = _activeAudioProfile.asStateFlow()
+    private val soundEngine = com.example.musicapp.audio.SoundEngine.get(context)
+    val soundSettings: StateFlow<com.example.musicapp.audio.SoundSettings> = soundEngine.settings
+    val soundOutput: StateFlow<com.example.musicapp.audio.SoundEngine.Output> = soundEngine.output
+
+    // Song / Video switch: the current song's music video, if it has one.
+    private val _availableVideoId = MutableStateFlow<String?>(null)
+    val availableVideoId: StateFlow<String?> = _availableVideoId.asStateFlow()
+    private val _isVideoMode = MutableStateFlow(false)
+    val isVideoMode: StateFlow<Boolean> = _isVideoMode.asStateFlow()
+    private var videoLookupFor: String? = null
+    private var videoLookupJob: Job? = null
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController: MediaController? = null
@@ -137,15 +147,6 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
             }
         }
 
-        // Audio effect profile (bass, virtualizer) is owned by the service.
-        viewModelScope.launch {
-            while (isActive) {
-                PlaybackService.activeAudioEffectManager?.activeProfile?.value?.let { profile ->
-                    if (_activeAudioProfile.value != profile) _activeAudioProfile.value = profile
-                }
-                delay(1_000)
-            }
-        }
     }
 
     override fun onCleared() {
@@ -190,6 +191,10 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
             _currentQueue.value.getOrNull(currentQueueIndex)?.takeIf { it.videoId == current.mediaId }
                 ?: TrackMediaItems.toSong(current)
         } else null
+
+        val playingVideo = TrackMediaItems.videoIdOf(current)
+        _isVideoMode.value = playingVideo != null
+        _currentSong.value?.let { song -> if (song.videoId != videoLookupFor) lookUpVideo(song, playingVideo) }
 
         val buffering = controller.playbackState == Player.STATE_BUFFERING && controller.playWhenReady
         _loadingSongVideoId.value = if (buffering) current?.mediaId else null
@@ -342,6 +347,40 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
         withController { it.seekTo(positionMs) }
     }
 
+    private fun lookUpVideo(song: SongInfo, alreadyPlaying: String?) {
+        videoLookupFor = song.videoId
+        videoLookupJob?.cancel()
+        _availableVideoId.value = alreadyPlaying
+        if (alreadyPlaying != null) return
+        videoLookupJob = viewModelScope.launch {
+            val id = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { com.example.musicapp.data.catalog.VideoMatch.find(song) }.getOrNull()
+            }
+            if (videoLookupFor == song.videoId) _availableVideoId.value = id
+        }
+    }
+
+    /** Switches between the song and its music video, keeping the position. */
+    fun setVideoMode(enabled: Boolean) {
+        val videoId = _availableVideoId.value
+        if (enabled && videoId == null) return
+        _isVideoMode.value = enabled
+        withController { c ->
+            c.sendCustomCommand(
+                SessionCommand(PlaybackService.ACTION_SET_VIDEO, Bundle.EMPTY),
+                Bundle().apply {
+                    putBoolean(PlaybackService.EXTRA_ENABLED, enabled)
+                    putString(PlaybackService.EXTRA_VIDEO_ID, videoId)
+                }
+            )
+        }
+    }
+
+    /** Shows the playing video in [view] (the player itself lives in the playback service). */
+    fun attachVideo(view: androidx.media3.ui.PlayerView) {
+        view.player = mediaController
+    }
+
     fun toggleShuffle() {
         val enable = !_isShuffle.value
         _isShuffle.value = enable
@@ -416,22 +455,9 @@ class MainScreenViewModel(private val dataRepository: DataRepository, private va
         android.widget.Toast.makeText(context, "Downloading ${pending.size} songs", android.widget.Toast.LENGTH_SHORT).show()
     }
 
-    fun setAudioPreset(mode: com.example.musicapp.audio.EqPresetMode) {
-        PlaybackService.activeAudioEffectManager?.setPreset(mode)
-        PlaybackService.activeAudioEffectManager?.activeProfile?.value?.let { _activeAudioProfile.value = it }
-    }
+    fun selectSoundMode(mode: com.example.musicapp.audio.SoundMode) = soundEngine.selectMode(mode)
 
-    fun setBassBoostStrength(strength: Short) {
-        PlaybackService.activeAudioEffectManager?.setBassBoostStrength(strength)
-        PlaybackService.activeAudioEffectManager?.activeProfile?.value?.let { _activeAudioProfile.value = it }
-    }
+    fun tweakSound(change: (com.example.musicapp.audio.SoundSettings) -> com.example.musicapp.audio.SoundSettings) = soundEngine.tweak(change)
 
-    fun setVirtualizerStrength(strength: Short) {
-        PlaybackService.activeAudioEffectManager?.setVirtualizerStrength(strength)
-        PlaybackService.activeAudioEffectManager?.activeProfile?.value?.let { _activeAudioProfile.value = it }
-    }
-
-    fun setLoudnessGain(gainMb: Int) {
-        PlaybackService.activeAudioEffectManager?.setLoudnessGain(gainMb)
-    }
+    fun setSoundAdaptive(enabled: Boolean) = soundEngine.update(soundSettings.value.copy(adaptive = enabled))
 }

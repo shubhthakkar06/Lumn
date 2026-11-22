@@ -72,8 +72,10 @@ object SearchResultDeduplicator {
         val firstTokens = artistTokens(first)
         val secondTokens = artistTokens(second)
         if (firstTokens.isEmpty() || secondTokens.isEmpty()) return 0.0
+        // One catalog may credit only the singer while another adds the composer
+        // ("Arijit Singh" vs "Mithoon, Arijit Singh"), so compare against the shorter list.
         val shared = firstTokens.intersect(secondTokens).size
-        return shared.toDouble() / maxOf(firstTokens.size, secondTokens.size)
+        return shared.toDouble() / minOf(firstTokens.size, secondTokens.size)
     }
 
     private fun artistTokens(value: String): Set<String> = Normalizer.normalize(value, Normalizer.Form.NFKC)

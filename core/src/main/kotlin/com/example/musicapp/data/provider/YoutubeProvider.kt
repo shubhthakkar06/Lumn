@@ -31,6 +31,9 @@ class YoutubeProvider : MusicProvider {
     }
 
     override suspend fun search(query: String): List<SongInfo> = withContext(Dispatchers.IO) {
+        // YouTube Music's own search gives full artist credits, album and play counts.
+        val music = runCatching { com.example.musicapp.data.catalog.YouTubeMusic.searchSongs(query) }.getOrDefault(emptyList())
+        if (music.isNotEmpty()) return@withContext music
         val results = mutableListOf<SongInfo>()
         try {
             val searchExtractor = ServiceList.YouTube.getSearchExtractor(

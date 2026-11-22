@@ -58,7 +58,26 @@ class TrackDataSource(
         return source.open(spec)
     }
 
+    private fun routeVideo(ref: TrackMediaItems.TrackRef, dataSpec: DataSpec): Pair<DataSource, DataSpec> {
+        val key = dataSpec.key ?: "v:${ref.id}"
+        if (isFullyCached(key)) {
+            return cachedFactory.createDataSource() to dataSpec.buildUpon().setUri("https://cache.rivara.invalid/$key").setKey(key).build()
+        }
+        val url = runBlocking {
+            withTimeoutOrNull(RESOLVE_TIMEOUT_MS) { com.example.musicapp.data.catalog.VideoMatch.videoStreamUrl(ref.id, maxVideoHeight()) }
+        } ?: throw TrackUnavailableException("This video isn't available right now.")
+        return cachedFactory.createDataSource() to dataSpec.buildUpon().setUri(Uri.parse(url)).setKey(key).build()
+    }
+
+    /** 720p on Wi-Fi, 480p on mobile data, 360p with Data Saver. */
+    private fun maxVideoHeight(): Int {
+        if (SettingsManager.getInstance(context).dataSaverMode.value == "On") return 360
+        val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+        return if (cm?.isActiveNetworkMetered == true) 480 else 720
+    }
+
     private fun route(ref: TrackMediaItems.TrackRef, dataSpec: DataSpec): Pair<DataSource, DataSpec> {
+        if (ref.videoOnly) return routeVideo(ref, dataSpec)
         MusicDownloadManager.getInstance(context).getDownloadedFile(ref.id)?.let { file ->
             return FileDataSource() to dataSpec.buildUpon().setUri(Uri.fromFile(file)).setKey(null).build()
         }

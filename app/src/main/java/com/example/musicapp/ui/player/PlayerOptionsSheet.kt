@@ -227,15 +227,18 @@ fun PlayerOptionsSheet(
                 )
             }
 
-            // 5. View artist
-            OptionItem(
-                icon = Icons.Default.Person,
-                title = "View artist",
-                onClick = {
-                    onDismiss()
-                    onViewArtist(song.artist)
-                }
-            )
+            // 5. View artist: one row per credited artist ("Pritam, Atif Aslam & Chinmayi").
+            val credited = remember(song.artist) { splitArtists(song.artist) }
+            credited.forEach { name ->
+                OptionItem(
+                    icon = Icons.Default.Person,
+                    title = if (credited.size > 1) "View $name" else "View artist",
+                    onClick = {
+                        onDismiss()
+                        onViewArtist(name)
+                    }
+                )
+            }
 
             // 6. View album
             OptionItem(
@@ -337,10 +340,17 @@ fun PlayerOptionsSheet(
                 Column {
                     Text(text = song.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Spacer(modifier = Modifier.height(12.dp))
-                    CreditRow(label = "Performed by", value = song.artist)
-                    CreditRow(label = "Written by", value = song.artist.split(",").firstOrNull() ?: song.artist)
-                    CreditRow(label = "Produced by", value = "High-Fidelity Studio")
-                    CreditRow(label = "Source", value = "Rivara Audio Catalog")
+                    splitArtists(song.artist).forEach { CreditRow(label = "Artist", value = it) }
+                    if (song.albumName.isNotBlank()) CreditRow(label = "Album", value = song.albumName)
+                    if (song.releaseDate.isNotBlank()) CreditRow(label = "Released", value = song.releaseDate)
+                    if (song.language.isNotBlank()) CreditRow(label = "Language", value = song.language.replaceFirstChar(Char::titlecase))
+                    CreditRow(label = "Source", value = when {
+                        song.videoId.startsWith("saavn_") -> "JioSaavn"
+                        song.videoId.startsWith("audius_") -> "Audius"
+                        song.videoId.startsWith("jamendo_") -> "Jamendo"
+                        song.isEpisode -> "Podcast feed"
+                        else -> "YouTube Music"
+                    })
                 }
             },
             confirmButton = {
@@ -428,3 +438,8 @@ private fun CreditRow(label: String, value: String) {
         Text(text = value, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
     }
 }
+
+
+/** "Pritam, Atif Aslam & Chinmayi" → [Pritam, Atif Aslam, Chinmayi]. */
+internal fun splitArtists(artist: String): List<String> =
+    artist.split(",", " & ", " feat. ", " ft. ", " x ").map { it.trim() }.filter { it.isNotBlank() }.distinct().ifEmpty { listOf(artist) }

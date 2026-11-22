@@ -119,6 +119,7 @@ class DesktopAudioPlayer(
 
     fun setOutputDevice(name: String) {
         targetDeviceName = name
+        DesktopSoundEngine.setOutputDevice(name)
         val song = _currentSong.value
         val pos = _progressMs.value
         if (song != null && _isPlaying.value) {
@@ -363,6 +364,8 @@ class DesktopAudioPlayer(
 
             val inputStream = proc.inputStream
             val buffer = ByteArray(4096)
+            var carry = 0 // bytes of an incomplete stereo frame kept for the next read
+            DesktopSoundEngine.reset()
             bytesWritten = 0L
             var lastUpdateMs = System.currentTimeMillis()
 
@@ -372,8 +375,12 @@ class DesktopAudioPlayer(
                     continue
                 }
 
-                val read = inputStream.read(buffer)
-                if (read <= 0) break
+                val got = inputStream.read(buffer, carry, buffer.size - carry)
+                if (got <= 0) break
+                val available = carry + got
+                // Process whole 4-byte stereo frames only; keep any remainder for next time.
+                val read = available - available % 4
+                if (read == 0) { carry = available; continue }
 
                 // Software volume adjustment directly on PCM 16-bit signed samples
                 val vol = _volume.value
@@ -388,11 +395,13 @@ class DesktopAudioPlayer(
                     }
                 }
 
-                // Apply DSP Equalizer adjustments
-                DesktopEqualizer.processPcm(buffer, read)
+                // Rivara Sound (3D space, surround, tone, limiter)
+                DesktopSoundEngine.processPcm(buffer, read)
 
                 line.write(buffer, 0, read)
                 bytesWritten += read
+                carry = available - read
+                if (carry > 0) System.arraycopy(buffer, read, buffer, 0, carry)
 
                 val now = System.currentTimeMillis()
                 if (now - lastUpdateMs >= 80) {

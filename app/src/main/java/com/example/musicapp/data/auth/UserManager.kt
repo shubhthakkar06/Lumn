@@ -31,7 +31,13 @@ data class UserProfile(
     val isGuest: Boolean = false,
     val selectedGenres: List<String> = emptyList(),
     val selectedArtists: List<String> = emptyList(),
-    val hasCompletedOnboarding: Boolean = false
+    val hasCompletedOnboarding: Boolean = false,
+    /** Profile photo: a local file the user picked, or the Google account photo URL. */
+    val photoUrl: String = "",
+    /** True once the user picked their own photo (a Google photo never overrides it). */
+    val hasCustomPhoto: Boolean = false,
+    /** Firebase account behind a Google sign-in; the cloud library is stored under it. */
+    val firebaseUid: String = ""
 )
 
 class UserManager private constructor(private val context: Context) {
@@ -276,7 +282,7 @@ class UserManager private constructor(private val context: Context) {
     }
 
     /** Creates or restores this device's Rivara profile after Firebase verifies the Google identity. */
-    fun loginWithGoogle(uid: String, email: String, displayName: String): UserProfile {
+    fun loginWithGoogle(uid: String, email: String, displayName: String, photoUrl: String = ""): UserProfile {
         require(uid.isNotBlank() || email.isNotBlank()) { "Google did not return a valid account." }
         val profileId = if (email.isNotBlank()) {
             "usr_" + email.lowercase().replace(Regex("[^a-z0-9]"), "_")
@@ -296,6 +302,8 @@ class UserManager private constructor(private val context: Context) {
             id = profileId,
             name = resolvedName,
             email = email,
+            photoUrl = if (existing.hasCustomPhoto) existing.photoUrl else photoUrl,
+            firebaseUid = uid,
             avatarLetter = resolvedName.firstOrNull()?.uppercaseChar()?.toString() ?: "L",
             isGuest = false
         ) ?: UserProfile(
@@ -305,6 +313,8 @@ class UserManager private constructor(private val context: Context) {
             email = email,
             avatarLetter = resolvedName.firstOrNull()?.uppercaseChar()?.toString() ?: "L",
             avatarColorHex = avatarColors[_allUsers.value.size % avatarColors.size],
+            photoUrl = photoUrl,
+            firebaseUid = uid,
             isGuest = false,
             hasCompletedOnboarding = false
         )
@@ -342,6 +352,67 @@ class UserManager private constructor(private val context: Context) {
             e.printStackTrace()
         }
         return guest
+    }
+
+    /** Updates the signed-in profile (and the saved account list) in one place. */
+    fun updateCurrent(change: (UserProfile) -> UserProfile) {
+        val updated = change(_currentUser.value)
+        _currentUser.value = updated
+        if (updated.isGuest) return
+        val updatedList = _allUsers.value.map { if (it.id == updated.id) updated else it }
+        _allUsers.value = updatedList
+        saveAccounts(updatedList)
+    }
+
+    /**
+     * Sets the profile photo from an image the user picked. The image is cropped to a square,
+     * scaled to 512 px and saved as a JPEG in app storage.
+     */
+    fun setProfilePhoto(uri: android.net.Uri): Result<Unit> = runCatching {
+        val user = _currentUser.value
+        val bitmap = decodeSquare(uri, 512) ?: error("That image could not be opened.")
+        val dir = java.io.File(context.filesDir, "avatars").apply { mkdirs() }
+        // A new file name each time, so image caches show the new photo right away.
+        val file = java.io.File(dir, "${user.id}_${System.currentTimeMillis()}.jpg")
+        file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, it) }
+        bitmap.recycle()
+        dir.listFiles()?.filter { it.name.startsWith(user.id + "_") && it != file }?.forEach { it.delete() }
+        updateCurrent { it.copy(photoUrl = file.absolutePath, hasCustomPhoto = true) }
+        com.example.musicapp.data.cloud.ProfilePhotoSync.photoChanged(context, file)
+    }
+
+    fun removeProfilePhoto() {
+        val user = _currentUser.value
+        java.io.File(context.filesDir, "avatars").listFiles()?.filter { it.name.startsWith(user.id + "_") }?.forEach { it.delete() }
+        updateCurrent { it.copy(photoUrl = "", hasCustomPhoto = false) }
+        com.example.musicapp.data.cloud.ProfilePhotoSync.photoChanged(context, null)
+    }
+
+    private fun decodeSquare(uri: android.net.Uri, size: Int): android.graphics.Bitmap? {
+        val resolver = context.contentResolver
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        resolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= size) sample *= 2
+        val decoded = resolver.openInputStream(uri)?.use {
+            android.graphics.BitmapFactory.decodeStream(it, null, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+        } ?: return null
+        // Respect the photo's EXIF rotation (camera photos are often stored sideways).
+        val rotation = runCatching {
+            resolver.openInputStream(uri)?.use { androidx.exifinterface.media.ExifInterface(it).rotationDegrees } ?: 0
+        }.getOrDefault(0)
+        val side = minOf(decoded.width, decoded.height)
+        val matrix = android.graphics.Matrix().apply {
+            val scale = size.toFloat() / side
+            postScale(scale, scale)
+            if (rotation != 0) postRotate(rotation.toFloat())
+        }
+        val cropped = android.graphics.Bitmap.createBitmap(
+            decoded, (decoded.width - side) / 2, (decoded.height - side) / 2, side, side, matrix, true
+        )
+        if (cropped != decoded) decoded.recycle()
+        return cropped
     }
 
     fun updateInterests(genres: List<String>, artists: List<String>) {

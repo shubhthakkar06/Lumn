@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.outlined.GraphicEq
@@ -59,6 +60,18 @@ fun ProfileDrawerContent(
         AuthDialog(onDismiss = { showAuthDialog = false })
     }
 
+    // Profile photo: pick from the gallery (no storage permission needed), or remove it.
+    var showPhotoMenu by remember { mutableStateOf(false) }
+    val pickPhoto = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            userManager.setProfilePhoto(uri)
+                .onSuccess { Toast.makeText(context, "Profile photo updated", Toast.LENGTH_SHORT).show() }
+                .onFailure { Toast.makeText(context, it.message ?: "Could not use that photo", Toast.LENGTH_SHORT).show() }
+        }
+    }
+
     ModalDrawerSheet(
         drawerContainerColor = Color(0xFF0F1520),
         drawerContentColor = Color.White,
@@ -85,19 +98,40 @@ fun ProfileDrawerContent(
                     .clickable { showAuthDialog = true }
                     .padding(bottom = 16.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(CircleShape)
-                        .background(avatarColor),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = currentUser.avatarLetter,
-                        color = Color.Black,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 24.sp
-                    )
+                Box {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(avatarColor)
+                            .clickable(enabled = !currentUser.isGuest) { showPhotoMenu = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        com.example.musicapp.ui.components.AvatarContent(currentUser, 24.sp)
+                    }
+                    if (!currentUser.isGuest) {
+                        Box(
+                            Modifier.align(Alignment.BottomEnd).size(20.dp).clip(CircleShape).background(themeAccent),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(androidx.compose.material.icons.Icons.Default.PhotoCamera, contentDescription = "Change profile photo", tint = Color.Black, modifier = Modifier.size(12.dp))
+                        }
+                    }
+                    DropdownMenu(expanded = showPhotoMenu, onDismissRequest = { showPhotoMenu = false }, modifier = Modifier.background(Color(0xFF161F2E))) {
+                        DropdownMenuItem(
+                            text = { Text(if (currentUser.photoUrl.isBlank()) "Add profile photo" else "Change photo", color = Color.White) },
+                            onClick = {
+                                showPhotoMenu = false
+                                pickPhoto.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            }
+                        )
+                        if (currentUser.photoUrl.isNotBlank()) {
+                            DropdownMenuItem(
+                                text = { Text("Remove photo", color = Color(0xFFFF8A9A)) },
+                                onClick = { showPhotoMenu = false; userManager.removeProfilePhoto() }
+                            )
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {

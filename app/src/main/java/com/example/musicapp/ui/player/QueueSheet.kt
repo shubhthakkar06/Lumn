@@ -2,7 +2,6 @@ package com.example.musicapp.ui.player
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,7 +15,6 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,6 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import sh.calvin.reorderable.ReorderableItem
 import com.example.musicapp.data.network.SongInfo
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -42,10 +41,8 @@ fun QueueSheet(
     onMoveItem: (fromIndex: Int, toIndex: Int) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var draggingIndex by remember { mutableIntStateOf(-1) }
-    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
     val listState = rememberLazyListState()
-    val latestQueue by rememberUpdatedState(queue)
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = Color(0xFF1E1E1E),
@@ -159,24 +156,45 @@ fun QueueSheet(
                         "${song.videoId}#$occurrence"
                     }
                 }
+                // Long-press anywhere on a track and drag; the move is sent to the player once,
+                // when the drag ends.
+                var ordered by remember(queue) { mutableStateOf(itemKeys.zip(queue)) }
+                var dragFrom by remember { mutableIntStateOf(-1) }
+                val reorderState = sh.calvin.reorderable.rememberReorderableLazyListState(listState) { from, to ->
+                    val a = ordered.indexOfFirst { it.first == from.key }
+                    val b = ordered.indexOfFirst { it.first == to.key }
+                    if (a >= 0 && b >= 0) {
+                        ordered = ordered.toMutableList().apply { add(b, removeAt(a)) }
+                        haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.SegmentFrequentTick)
+                    }
+                }
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 350.dp)
+                        .heightIn(max = 420.dp)
                 ) {
-                    itemsIndexed(queue, key = { index, _ -> itemKeys[index] }) { index, song ->
-                        val latestIndex = rememberUpdatedState(index)
-                        val isDragging = draggingIndex == index
+                    itemsIndexed(ordered, key = { _, entry -> entry.first }) { index, entry ->
+                        val song = entry.second
+                        ReorderableItem(reorderState, key = entry.first) { isDragging ->
                         Row(
                             modifier = Modifier
-                                .animateItem()
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(if (isDragging) Color(0xFF263640) else Color.Transparent)
-                                .graphicsLayer { translationY = if (isDragging) dragOffsetPx else 0f }
+                                .longPressDraggableHandle(
+                                    onDragStarted = {
+                                        dragFrom = itemKeys.indexOf(entry.first)
+                                        haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                    },
+                                    onDragStopped = {
+                                        val to = ordered.indexOfFirst { it.first == entry.first }
+                                        if (dragFrom >= 0 && to >= 0 && dragFrom != to) onMoveItem(dragFrom, to)
+                                        dragFrom = -1
+                                    }
+                                )
                                 .clickable {
-                                    onSongSelected(index, song)
+                                    onSongSelected(itemKeys.indexOf(entry.first), song)
                                     onDismiss()
                                 }
                                 .padding(vertical = 8.dp, horizontal = 4.dp),
@@ -213,41 +231,7 @@ fun QueueSheet(
                                 tint = Color(0xFF555555),
                                 modifier = Modifier.size(18.dp).padding(end = 0.dp)
                             )
-                            Icon(
-                                imageVector = Icons.Default.DragHandle,
-                                contentDescription = "Hold and drag to reorder ${song.title}",
-                                tint = if (isDragging) Color(0xFF00F59B) else Color(0xFF8793A2),
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .pointerInput(Unit) {
-                                        var activeIndex = 0
-                                        var draggedCenterY = 0f
-                                        detectDragGesturesAfterLongPress(
-                                            onDragStart = {
-                                                val startIndex = latestIndex.value
-                                                activeIndex = startIndex
-                                                draggingIndex = startIndex
-                                                dragOffsetPx = 0f
-                                                val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == startIndex }
-                                                draggedCenterY = (item?.offset ?: 0) + (item?.size ?: 0) / 2f
-                                            },
-                                            onDragEnd = { draggingIndex = -1; dragOffsetPx = 0f },
-                                            onDragCancel = { draggingIndex = -1; dragOffsetPx = 0f },
-                                            onDrag = { change, amount ->
-                                                change.consume()
-                                                draggedCenterY += amount.y
-                                                dragOffsetPx += amount.y
-                                                val target = listState.layoutInfo.visibleItemsInfo
-                                                    .minByOrNull { kotlin.math.abs(it.offset + it.size / 2f - draggedCenterY) }
-                                                    ?.index
-                                                if (target != null && target != activeIndex && target in latestQueue.indices) {
-                                                    onMoveItem(activeIndex, target)
-                                                    activeIndex = target
-                                                }
-                                            }
-                                        )
-                                    }
-                            )
+                        }
                         }
                     }
                 }

@@ -268,7 +268,10 @@ class PlaylistManager private constructor(private val context: Context) {
                 android.util.Log.e("PlaylistManager", "Could not save playlists", e)
             }
         }
-        if (notifySync) com.example.musicapp.data.sync.DeviceSyncManager.triggerSilentSync(context)
+        if (notifySync) {
+            com.example.musicapp.data.sync.DeviceSyncManager.triggerSilentSync(context)
+            com.example.musicapp.data.cloud.CloudSync.get(context).localChanged()
+        }
     }
 
     private fun saveLikedSongs(notifySync: Boolean = true) {
@@ -283,7 +286,10 @@ class PlaylistManager private constructor(private val context: Context) {
                 android.util.Log.e("PlaylistManager", "Could not save liked songs", e)
             }
         }
-        if (notifySync) com.example.musicapp.data.sync.DeviceSyncManager.triggerSilentSync(context)
+        if (notifySync) {
+            com.example.musicapp.data.sync.DeviceSyncManager.triggerSilentSync(context)
+            com.example.musicapp.data.cloud.CloudSync.get(context).localChanged()
+        }
     }
 
     /**
@@ -382,6 +388,21 @@ class PlaylistManager private constructor(private val context: Context) {
                     changed = true
                     pl.copy(songs = songs)
                 } else pl
+            }
+        }
+        if (changed) savePlaylists()
+    }
+
+    /** Saves a new song order (from drag-to-reorder). Ignored if the songs themselves changed. */
+    fun setSongOrder(playlistId: String, ordered: List<SongInfo>) {
+        var changed = false
+        _playlists.update { all ->
+            all.map { pl ->
+                if (pl.id != playlistId) return@map pl
+                val sameSongs = pl.songs.map { it.videoId }.sorted() == ordered.map { it.videoId }.sorted()
+                if (!sameSongs || pl.songs.map { it.videoId } == ordered.map { it.videoId }) return@map pl
+                changed = true
+                pl.copy(songs = ordered.map(::storable))
             }
         }
         if (changed) savePlaylists()

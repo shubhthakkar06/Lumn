@@ -30,7 +30,8 @@ import com.example.musicapp.desktop.data.DesktopUserManager
 @Composable
 fun DesktopAuthDialog(
     userManager: DesktopUserManager,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onSignInWithPhone: () -> Unit = {}
 ) {
     val currentUser by userManager.currentUser.collectAsState()
     val savedAccounts by userManager.savedAccounts.collectAsState()
@@ -61,8 +62,15 @@ fun DesktopAuthDialog(
         },
         text = {
             Column(modifier = Modifier.width(440.dp).padding(vertical = 4.dp)) {
+                Button(
+                    onClick = onSignInWithPhone,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1ED760), contentColor = Color.Black),
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.fillMaxWidth().height(46.dp)
+                ) { Text("Sign in with your phone", fontWeight = FontWeight.Bold) }
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "Profiles live on this Mac. To share your library with your phone, open Sync and pair the phone with the code shown there.",
+                    text = "Uses the Google account on your phone. Your likes and playlists then stay in sync live, both ways.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFA0AAB8)
                 )

@@ -52,6 +52,15 @@ sealed interface Screen {
         val coverUrl: String = ""
     ) : Screen
 
+    /** A podcast ("rss:<feed>") or YouTube channel ("yt:<channel id>"). */
+    @Serializable
+    data class Show(
+        val showId: String,
+        val title: String,
+        val author: String = "",
+        val imageUrl: String = ""
+    ) : Screen
+
     @Serializable
     data object Settings : Screen
 

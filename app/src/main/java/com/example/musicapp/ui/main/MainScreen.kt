@@ -213,6 +213,11 @@ fun MainScreen(
                         onBack = { popBack() },
                         onNavigate = { navigateTo(it) }
                     )
+                    is Screen.Show -> com.example.musicapp.ui.show.ShowScreen(
+                        screen = currentScreen,
+                        viewModel = viewModel,
+                        onBack = { popBack() }
+                    )
                     is Screen.Mix -> com.example.musicapp.ui.mix.MixScreen(
                         screen = currentScreen,
                         viewModel = viewModel,

@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class ArtistFollowManager private constructor(context: Context) {
+class ArtistFollowManager private constructor(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.IO)
     private val prefs: SharedPreferences =
@@ -73,6 +73,7 @@ class ArtistFollowManager private constructor(context: Context) {
         }
         _followedArtists.value = isNowFollowing
         prefs.edit().putStringSet(getFollowKey(activeUserId), isNowFollowing).apply()
+        com.example.musicapp.data.cloud.CloudSync.get(context).localChanged()
         return isNowFollowing.contains(cleanName)
     }
 
@@ -83,6 +84,7 @@ class ArtistFollowManager private constructor(context: Context) {
             val updated = current + cleanName
             _followedArtists.value = updated
             prefs.edit().putStringSet(getFollowKey(activeUserId), updated).apply()
+            com.example.musicapp.data.cloud.CloudSync.get(context).localChanged()
         }
     }
 
@@ -93,7 +95,15 @@ class ArtistFollowManager private constructor(context: Context) {
             val updated = current - cleanName
             _followedArtists.value = updated
             prefs.edit().putStringSet(getFollowKey(activeUserId), updated).apply()
+            com.example.musicapp.data.cloud.CloudSync.get(context).localChanged()
         }
+    }
+
+    /** Replaces the followed set with the merged cloud copy (does not echo back to the cloud). */
+    fun replaceFromSync(names: Set<String>) {
+        val clean = names.map { it.trim().lowercase() }.toSet()
+        _followedArtists.value = clean
+        prefs.edit().putStringSet(getFollowKey(activeUserId), clean).apply()
     }
 
     companion object {

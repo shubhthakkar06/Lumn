@@ -30,7 +30,7 @@ class DesktopMusicRepository {
     private val json = Json { ignoreUnknownKeys = true }
     private val router = ProviderRouter.shared
 
-    private fun SongInfo.toDesktop() = DesktopSong(
+    fun SongInfo.toDesktop() = DesktopSong(
         id = videoId,
         title = title,
         artist = artist,
@@ -69,9 +69,22 @@ class DesktopMusicRepository {
 
     /** Episodes of the best-matching podcast for [query] (real feeds, not hardcoded links). */
     suspend fun getPodcastEpisodes(query: String): List<DesktopSong> = withContext(Dispatchers.IO) {
-        val show = runCatching { Podcasts.search(query.ifBlank { "podcast" }, 5).firstOrNull() }.getOrNull() ?: return@withContext emptyList()
-        runCatching { Podcasts.episodes(show, 30) }.getOrDefault(emptyList()).map { it.toDesktop() }
+        val show = runCatching { com.example.musicapp.data.catalog.Shows.search(query.ifBlank { "podcast" }, 5).firstOrNull() }.getOrNull() ?: return@withContext emptyList()
+        showEpisodes(show)
     }
+
+    /** Podcasts and YouTube channels (talks, pravachans, episodes). */
+    suspend fun searchShows(query: String): List<com.example.musicapp.data.catalog.ShowRef> =
+        runCatching { com.example.musicapp.data.catalog.Shows.search(query, 10) }.getOrDefault(emptyList())
+
+    suspend fun showEpisodes(show: com.example.musicapp.data.catalog.ShowRef): List<DesktopSong> =
+        runCatching { com.example.musicapp.data.catalog.Shows.detail(show)?.episodes.orEmpty() }.getOrDefault(emptyList()).map { it.toDesktop() }
+
+    suspend fun playlistSongs(id: String): List<DesktopSong> =
+        runCatching { com.example.musicapp.data.catalog.SaavnCatalog.playlist(id)?.songs.orEmpty() }.getOrDefault(emptyList()).map { it.toDesktop() }
+
+    suspend fun albumSongs(id: String): List<DesktopSong> =
+        runCatching { com.example.musicapp.data.catalog.SaavnCatalog.album(id)?.songs.orEmpty() }.getOrDefault(emptyList()).map { it.toDesktop() }
 
     suspend fun fetchLyrics(title: String, artist: String): List<SyncedLyricLine> = withContext(Dispatchers.IO) {
         try {

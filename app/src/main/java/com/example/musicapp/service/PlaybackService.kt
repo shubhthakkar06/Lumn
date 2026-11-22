@@ -14,14 +14,13 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
-import com.example.musicapp.audio.AudioEffectManager
+import com.example.musicapp.audio.SoundEngine
 import com.example.musicapp.data.DefaultDataRepository
 import com.example.musicapp.data.auth.UserManager
 import com.example.musicapp.data.cache.MediaCacheProvider
@@ -52,7 +51,6 @@ import kotlinx.coroutines.withContext
 class PlaybackService : MediaLibraryService() {
     private var session: MediaLibrarySession? = null
     private var player: ExoPlayer? = null
-    private var audioEffectManager: AudioEffectManager? = null
     private lateinit var dataSourceFactory: TrackDataSource.Factory
     private lateinit var queueStore: QueueStore
     private lateinit var library: MediaLibraryTree
@@ -80,11 +78,12 @@ class PlaybackService : MediaLibraryService() {
 
     companion object {
         const val ACTION_SET_SHUFFLE = "rivara.SET_SHUFFLE"
+        /** Switches the current song between audio and its music video ([EXTRA_VIDEO_ID]). */
+        const val ACTION_SET_VIDEO = "rivara.SET_VIDEO"
+        const val EXTRA_VIDEO_ID = "video_id"
         const val EXTRA_ENABLED = "enabled"
         const val EXTRA_SHUFFLE = "rivara_shuffle"
 
-        var activeAudioEffectManager: AudioEffectManager? = null
-            private set
         private var currentInstance: PlaybackService? = null
 
         fun setPreferredAudioDevice(device: android.media.AudioDeviceInfo?) {
@@ -107,10 +106,21 @@ class PlaybackService : MediaLibraryService() {
         }
         dataSourceFactory = TrackDataSource.Factory(applicationContext, DefaultDataRepository(applicationContext), cache, cachedFactory)
 
-        val exo = ExoPlayer.Builder(this, DefaultRenderersFactory(this)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-            .setEnableAudioFloatOutput(android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S))
-            .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(dataSourceFactory))
+        // Rivara's sound engine runs inside the player's audio pipeline, so it works on every
+        // device and output (Bluetooth included), not only where Android ships system effects.
+        val soundProcessor = SoundEngine.get(this).newProcessor()
+        val renderers = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(
+                context: android.content.Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): androidx.media3.exoplayer.audio.AudioSink = androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                .setAudioProcessorChain(androidx.media3.exoplayer.audio.DefaultAudioSink.DefaultAudioProcessorChain(soundProcessor))
+                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                .build()
+        }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        val exo = ExoPlayer.Builder(this, renderers)
+            .setMediaSourceFactory(RivaraMediaSourceFactory(dataSourceFactory, this))
             .setLoadControl(MediaCacheProvider.createLoadControl())
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
@@ -121,10 +131,8 @@ class PlaybackService : MediaLibraryService() {
             .build()
         player = exo
 
-        audioEffectManager = runCatching { AudioEffectManager(this) }
-            .onFailure { android.util.Log.w("PlaybackService", "Audio effects could not initialize", it) }
-            .getOrNull()
-        activeAudioEffectManager = audioEffectManager
+        // Re-apply the output the user pinned in the device picker.
+        runCatching { exo.setPreferredAudioDevice(com.example.musicapp.ui.util.AudioDeviceManager.getInstance(this).preferredOutput()) }
 
         exo.addListener(playerListener)
 
@@ -171,6 +179,7 @@ class PlaybackService : MediaLibraryService() {
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
             val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
                 .add(SessionCommand(ACTION_SET_SHUFFLE, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_SET_VIDEO, Bundle.EMPTY))
                 .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(sessionCommands)
@@ -189,6 +198,10 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<SessionResult> {
             if (customCommand.customAction == ACTION_SET_SHUFFLE) {
                 setShuffle(args.getBoolean(EXTRA_ENABLED))
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+            if (customCommand.customAction == ACTION_SET_VIDEO) {
+                setVideo(args.getBoolean(EXTRA_ENABLED), args.getString(EXTRA_VIDEO_ID))
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
             return super.onCustomCommand(session, controller, customCommand, args)
@@ -271,19 +284,50 @@ class PlaybackService : MediaLibraryService() {
     private fun rebuild(item: MediaItem): MediaItem =
         if (item.localConfiguration != null) item else TrackMediaItems.toMediaItem(TrackMediaItems.toSong(item))
 
+    // ---------------------------------------------------------------- song / video switch
+
+    /** While on, each new song switches to its music video when one exists. */
+    private var videoMode = false
+    private var videoLookup: Job? = null
+
+    private fun setVideo(enabled: Boolean, videoId: String?) {
+        videoMode = enabled
+        val p = player ?: return
+        val item = p.currentMediaItem ?: return
+        val playingVideo = TrackMediaItems.videoIdOf(item)
+        when {
+            enabled && videoId != null && playingVideo != videoId -> swapCurrent(TrackMediaItems.toVideoItem(TrackMediaItems.toSong(item), videoId))
+            !enabled && playingVideo != null -> swapCurrent(TrackMediaItems.toMediaItem(TrackMediaItems.toSong(item)))
+        }
+    }
+
+    /** Replaces the current item in place, keeping position and play state. */
+    private fun swapCurrent(replacement: MediaItem) {
+        val p = player ?: return
+        val index = p.currentMediaItemIndex
+        val position = p.currentPosition
+        val wasPlaying = p.playWhenReady
+        p.replaceMediaItem(index, replacement)
+        p.seekTo(index, position)
+        p.playWhenReady = wasPlaying
+    }
+
+    /** In video mode, a new song switches to its video as soon as one is found. */
+    private fun followVideoMode(item: MediaItem?) {
+        videoLookup?.cancel()
+        if (!videoMode || item == null || TrackMediaItems.videoIdOf(item) != null) return
+        val song = TrackMediaItems.toSong(item)
+        videoLookup = scope.launch {
+            val id = withContext(Dispatchers.IO) { runCatching { com.example.musicapp.data.catalog.VideoMatch.find(song) }.getOrNull() } ?: return@launch
+            if (videoMode && player?.currentMediaItem?.mediaId == item.mediaId) setVideo(true, id)
+        }
+    }
+
     // ---------------------------------------------------------------- player listener
 
     private val playerListener = object : Player.Listener {
-        override fun onAudioSessionIdChanged(audioSessionId: Int) {
-            audioEffectManager?.attachToSession(audioSessionId)
-        }
-
         override fun onPlaybackStateChanged(playbackState: Int) {
-            val p = player ?: return
-            if (playbackState == Player.STATE_READY) {
-                consecutiveFailures = 0
-                if (p.audioSessionId > 0) audioEffectManager?.attachToSession(p.audioSessionId)
-            }
+            if (playbackState == Player.STATE_READY) consecutiveFailures = 0
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -298,6 +342,7 @@ class PlaybackService : MediaLibraryService() {
             player?.volume = if (fadeInStartedAtMs > 0 && crossfadeMs() > 0) 0f else 1f
             recordPlay(mediaItem)
             maybeExtendWithAutoplay()
+            followVideoMode(mediaItem)
             saveQueue()
         }
 
@@ -517,9 +562,6 @@ class PlaybackService : MediaLibraryService() {
         }
         session = null
         player = null
-        if (activeAudioEffectManager === audioEffectManager) activeAudioEffectManager = null
-        audioEffectManager?.release()
-        audioEffectManager = null
         super.onDestroy()
     }
 }

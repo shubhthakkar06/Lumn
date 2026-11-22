@@ -1,5 +1,9 @@
 package com.example.musicapp.desktop.ui
 
+import sh.calvin.reorderable.ReorderableItem
+
+import kotlinx.coroutines.launch
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -75,6 +79,16 @@ fun DesktopMainContent(
     var selectedCategory by remember { mutableStateOf("All") }
     var displayedSongs by remember { mutableStateOf<List<DesktopSong>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
+    // Real catalog results for the non-song tabs.
+    var showResults by remember { mutableStateOf<List<com.example.musicapp.data.catalog.ShowRef>>(emptyList()) }
+    var openedShow by remember { mutableStateOf<com.example.musicapp.data.catalog.ShowRef?>(null) }
+    var artistResults by remember { mutableStateOf<List<com.example.musicapp.data.catalog.ArtistRef>>(emptyList()) }
+    var playlistResults by remember { mutableStateOf<List<com.example.musicapp.data.catalog.PlaylistRef>>(emptyList()) }
+    var albumResults by remember { mutableStateOf<List<com.example.musicapp.data.catalog.AlbumRef>>(emptyList()) }
+    var moodResults by remember { mutableStateOf<List<com.example.musicapp.data.catalog.ChannelRef>>(emptyList()) }
+    var openedCollection by remember { mutableStateOf<String?>(null) }
+    val followedShows by com.example.musicapp.desktop.data.DesktopShowFollows.shows.collectAsState()
+    val desktopScope = rememberCoroutineScope()
 
     val likedSongs by libraryManager.likedSongs.collectAsState()
     val downloadedSongs by downloadManager.downloadedSongs.collectAsState()
@@ -106,13 +120,21 @@ fun DesktopMainContent(
     }
 
     // Live search query & filter execution
-    LaunchedEffect(searchQuery, selectedCategory) {
+    LaunchedEffect(searchQuery, selectedCategory, openedShow) {
         isLoading = true
+        openedCollection = null
         try {
             if (searchQuery.isNotBlank()) {
-                val results = if (selectedCategory == "Podcasts & Shows") emptyList() else musicRepository.searchSongs(searchQuery)
+                val q = searchQuery.trim()
+                when (selectedCategory) {
+                    "All", "Podcasts & Shows" -> showResults = musicRepository.searchShows(q)
+                    "Artists" -> artistResults = runCatching { com.example.musicapp.data.catalog.SaavnCatalog.searchArtists(q, 20) }.getOrDefault(emptyList())
+                    "Playlists" -> playlistResults = runCatching { com.example.musicapp.data.catalog.SaavnCatalog.searchPlaylists(q, 20) }.getOrDefault(emptyList())
+                    "Albums" -> albumResults = runCatching { com.example.musicapp.data.catalog.SaavnCatalog.searchAlbums(q, 20) }.getOrDefault(emptyList())
+                }
+                val results = if (selectedCategory == "Podcasts & Shows") emptyList() else musicRepository.searchSongs(q)
                 displayedSongs = when (selectedCategory) {
-                    "Podcasts & Shows" -> musicRepository.getPodcastEpisodes(searchQuery)
+                    "Podcasts & Shows" -> (openedShow ?: showResults.firstOrNull())?.let { musicRepository.showEpisodes(it) }.orEmpty()
                     "Songs" -> results.filter { !it.isEpisode }
                     else -> results
                 }
@@ -129,9 +151,22 @@ fun DesktopMainContent(
         }
     }
 
-    val isBapsQuery = searchQuery.contains("baps", ignoreCase = true) ||
-        searchQuery.contains("satsang", ignoreCase = true) ||
-        searchQuery.contains("gujarati", ignoreCase = true)
+    LaunchedEffect(selectedCategory) {
+        if (selectedCategory == "Genres & Moods" && moodResults.isEmpty()) {
+            moodResults = runCatching { com.example.musicapp.data.catalog.SaavnCatalog.moodChannels() }.getOrDefault(emptyList())
+        }
+        if (selectedCategory != "Podcasts & Shows") openedShow = null
+    }
+
+    /** Shows a playlist / album / mood as a song list in the results area. */
+    fun openCollection(title: String, load: suspend () -> List<DesktopSong>) {
+        desktopScope.launch {
+            isLoading = true
+            displayedSongs = runCatching { load() }.getOrDefault(emptyList())
+            openedCollection = title
+            isLoading = false
+        }
+    }
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -392,6 +427,7 @@ fun DesktopMainContent(
                             libraryManager.deletePlaylist(id)
                             onTabSelected("Home")
                         },
+                        onReorder = { id, ordered -> libraryManager.reorderSongs(id, ordered) },
                         onMoveUp = { id, songId -> libraryManager.moveSongUp(id, songId) },
                         onMoveDown = { id, songId -> libraryManager.moveSongDown(id, songId) },
                         onRemoveFromPlaylist = { id, songId -> libraryManager.removeSongFromPlaylist(id, songId) },
@@ -488,167 +524,36 @@ fun DesktopMainContent(
                             }
                         }
 
-                        // If searching BAPS / Satsang: Render Spotify-style Top Result Show Card + Artist Card (Image 1)
-                        if (isBapsQuery && (selectedCategory == "All" || selectedCategory == "Podcasts & Shows")) {
+                        // Shows (podcasts and YouTube channels such as BAPS Satsang Gujarati)
+                        if (searchQuery.isNotBlank() && openedCollection == null && (selectedCategory == "All" || selectedCategory == "Podcasts & Shows") && showResults.isNotEmpty()) {
                             item {
-                                Text("Top Result", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // BAPS Satsang Gujarati Top Show Card matching Image 1
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
-                                    shape = RoundedCornerShape(16.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(20.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Image(
-                                            painter = painterResource("assets/baps_podcast_logo.png"),
-                                            contentDescription = "BAPS Satsang Gujarati",
-                                            modifier = Modifier
-                                                .size(100.dp)
-                                                .clip(RoundedCornerShape(12.dp)),
-                                            contentScale = ContentScale.Crop
-                                        )
-
-                                        Spacer(modifier = Modifier.width(20.dp))
-
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "BAPS Satsang Gujarati",
-                                                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, fontSize = 24.sp),
-                                                color = Color.White
-                                            )
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                text = "Podcast • BAPS Swaminarayan Sanstha",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = Color(0xFFAAAAAA)
-                                            )
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            Text(
-                                                text = "Spiritual kathas, discourses, and life guidance in Gujarati by revered Swamis of BAPS Swaminarayan Sanstha.",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = Color.Gray,
-                                                maxLines = 2
-                                            )
-                                        }
-
-                                        Spacer(modifier = Modifier.width(16.dp))
-
-                                        // Following Button
-                                        Button(
-                                            onClick = {},
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.Gray),
-                                            shape = RoundedCornerShape(20.dp),
-                                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
-                                        ) {
-                                            Text("Following", color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-                                        }
-
-                                        Spacer(modifier = Modifier.width(14.dp))
-
-                                        // Big Play Button
-                                        Box(
-                                            modifier = Modifier
-                                                .size(52.dp)
-                                                .clip(CircleShape)
-                                                .background(themeAccent)
-                                                .clickable {
-                                                    val firstEp = displayedSongs.firstOrNull { it.isEpisode }
-                                                    if (firstEp != null) onPlaySong(firstEp)
-                                                },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Default.PlayArrow, contentDescription = "Play", tint = Color.Black, modifier = Modifier.size(32.dp))
-                                        }
-                                    }
-                                }
+                                Text(if (openedShow != null) "Episodes" else "Shows", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
                             }
-
-                            // Podcasts & Shows Row & Artist Row (Image 1)
+                            val list = when {
+                                openedShow != null -> listOf(openedShow!!)
+                                selectedCategory == "All" -> showResults.take(3)
+                                else -> showResults
+                            }
+                            items(list, key = { "show-" + it.id }) { show ->
+                                DesktopResultRow(
+                                    title = show.title,
+                                    subtitle = show.subtitle.ifBlank { show.author },
+                                    imageUrl = show.imageUrl,
+                                    accent = themeAccent,
+                                    circle = show.isYouTube,
+                                    following = followedShows.any { it.id == show.id },
+                                    onToggleFollow = { com.example.musicapp.desktop.data.DesktopShowFollows.toggle(show.toFollowed()) },
+                                    onClick = { openedShow = show; selectedCategory = "Podcasts & Shows" }
+                                )
+                            }
+                        }
+                        if (openedCollection != null) {
                             item {
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    // Row 1: Podcast Show
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(Color(0xFF161616))
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Image(
-                                            painter = painterResource("assets/baps_podcast_logo.png"),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(44.dp).clip(RoundedCornerShape(6.dp))
-                                        )
-                                        Spacer(modifier = Modifier.width(14.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text("BAPS Satsang Gujarati", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
-                                            Text("BAPS Satsang Gujarati", color = Color.Gray, fontSize = 12.sp)
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(Color(0xFF262626))
-                                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                                        ) {
-                                            Text("Podcast", color = Color(0xFFCCCCCC), fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                        }
-                                        Spacer(modifier = Modifier.width(14.dp))
-                                        Button(
-                                            onClick = {},
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.Gray),
-                                            shape = RoundedCornerShape(16.dp),
-                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)
-                                        ) {
-                                            Text("Follow", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-
-                                    // Row 2: Sadhus of BAPS Artist
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(Color(0xFF161616))
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Image(
-                                            painter = painterResource("assets/sadhus_of_baps.png"),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(44.dp).clip(CircleShape)
-                                        )
-                                        Spacer(modifier = Modifier.width(14.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text("Sadhus of BAPS", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
-                                            Text("Artist • BAPS Swaminarayan Sanstha", color = Color.Gray, fontSize = 12.sp)
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(Color(0xFF262626))
-                                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                                        ) {
-                                            Text("Artist", color = Color(0xFFCCCCCC), fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                        }
-                                        Spacer(modifier = Modifier.width(14.dp))
-                                        Button(
-                                            onClick = {},
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.Gray),
-                                            shape = RoundedCornerShape(16.dp),
-                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)
-                                        ) {
-                                            Text("Following", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(onClick = { openedCollection = null; searchQuery = searchQuery.trim() + " " }) { Text("← Back", color = themeAccent) }
+                                    Text(openedCollection!!, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
+                                    Spacer(Modifier.weight(1f))
+                                    Button(onClick = { onPlayAll(displayedSongs) }, colors = ButtonDefaults.buttonColors(containerColor = themeAccent, contentColor = Color.Black)) { Text("Play") }
                                 }
                             }
                         }
@@ -755,62 +660,43 @@ fun DesktopMainContent(
                                     CircularProgressIndicator(color = themeAccent)
                                 }
                             }
-                        } else if (selectedCategory == "Artists") {
-                            val distinctArtists = (if (isBapsQuery) listOf("Sadhus of BAPS") else emptyList()) +
-                                displayedSongs.flatMap { it.artist.split(",", "&", "•") }.map { it.trim() }.filter { it.isNotBlank() }.distinct()
-                            if (distinctArtists.isEmpty()) {
-                                item {
-                                    Text("No artists found for \"$searchQuery\".", color = Color.Gray, modifier = Modifier.padding(vertical = 24.dp))
-                                }
+                        } else if (selectedCategory == "Artists" && openedCollection == null) {
+                            if (artistResults.isEmpty()) {
+                                item { Text("No artists found for \"$searchQuery\".", color = Color.Gray, modifier = Modifier.padding(vertical = 24.dp)) }
                             } else {
-                                items(distinctArtists) { artistName ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable { searchQuery = artistName; selectedCategory = "All" }
-                                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier.size(52.dp).clip(CircleShape).background(Color(0xFF282828)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (artistName == "Sadhus of BAPS") {
-                                                Image(
-                                                    painter = painterResource("assets/sadhus_of_baps.png"),
-                                                    contentDescription = null,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    contentScale = ContentScale.Crop
-                                                )
-                                            } else {
-                                                Icon(Icons.Default.Person, contentDescription = null, tint = themeAccent, modifier = Modifier.size(28.dp))
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.width(16.dp))
-                                        Column {
-                                            Text(artistName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                            Text("Artist", color = Color.Gray, fontSize = 12.sp)
+                                items(artistResults, key = { "artist-" + it.id }) { a ->
+                                    DesktopResultRow(a.name, "Artist", a.imageUrl, themeAccent, circle = true) {
+                                        openCollection(a.name) {
+                                            com.example.musicapp.data.catalog.ArtistCatalog.page(a.name, a.id)?.topSongs.orEmpty().map { with(musicRepository) { it.toDesktop() } }
                                         }
                                     }
                                 }
                             }
-                        } else if (selectedCategory == "Playlists") {
-                            item {
-                                Text("Playlists matching \"$searchQuery\": Satsang & Katha, Chill Mix, Workout Beats", color = Color(0xFF909AAB), modifier = Modifier.padding(vertical = 24.dp))
+                        } else if (selectedCategory == "Playlists" && openedCollection == null) {
+                            items(playlistResults, key = { "pl-" + it.id }) { pl ->
+                                DesktopResultRow(pl.title, "Playlist • ${pl.subtitle}", pl.imageUrl, themeAccent) {
+                                    openCollection(pl.title) { musicRepository.playlistSongs(pl.id) }
+                                }
                             }
-                        } else if (selectedCategory == "Albums") {
-                            item {
-                                Text("Album search is coming from artist discographies.", color = Color(0xFF909AAB), modifier = Modifier.padding(vertical = 24.dp))
+                        } else if (selectedCategory == "Albums" && openedCollection == null) {
+                            items(albumResults, key = { "al-" + it.id }) { al ->
+                                DesktopResultRow(al.title, listOf("Album", al.subtitle, al.year).filter { it.isNotBlank() }.joinToString(" • "), al.imageUrl, themeAccent) {
+                                    openCollection(al.title) { musicRepository.albumSongs(al.id) }
+                                }
                             }
-                        } else if (selectedCategory == "Genres & Moods") {
-                            item {
-                                Text("Genres & Moods: Devotional, Satsang, Spiritual, Bollywood, Lo-Fi, Pop", color = Color(0xFF909AAB), modifier = Modifier.padding(vertical = 24.dp))
+                        } else if (selectedCategory == "Genres & Moods" && openedCollection == null) {
+                            items(moodResults, key = { "mood-" + it.id }) { ch ->
+                                DesktopResultRow(ch.title, ch.kind.ifBlank { "Mood" }.replaceFirstChar(Char::titlecase), ch.imageUrl, themeAccent) {
+                                    openCollection(ch.title) {
+                                        val first = com.example.musicapp.data.catalog.SaavnCatalog.channelPlaylists(ch.id).firstOrNull()
+                                        first?.let { musicRepository.playlistSongs(it.id) }.orEmpty()
+                                    }
+                                }
                             }
                         } else {
                             if (displayedSongs.isEmpty()) {
                                 item {
-                                    val emptyMsg = if (selectedCategory == "Podcasts & Shows") "No podcast or satsang episodes found." else "No tracks found for \"$searchQuery\"."
+                                    val emptyMsg = if (selectedCategory == "Podcasts & Shows") "No episodes found." else "No tracks found for \"$searchQuery\"."
                                     Text(emptyMsg, color = Color(0xFF909AAB), modifier = Modifier.padding(vertical = 24.dp))
                                 }
                             } else {
@@ -1144,6 +1030,7 @@ private fun PlaylistDetailView(
     onShufflePlay: () -> Unit,
     onRenamePlaylist: (String, String) -> Unit,
     onDeletePlaylist: (String) -> Unit,
+    onReorder: (String, List<DesktopSong>) -> Unit,
     onMoveUp: (String, String) -> Unit,
     onMoveDown: (String, String) -> Unit,
     onRemoveFromPlaylist: (String, String) -> Unit,
@@ -1310,6 +1197,8 @@ private fun PlaylistDetailView(
                 )
                 val subtitleText = buildString {
                     append("Created by ${playlist?.creator ?: "User"} • ${songs.size} tracks")
+                    val total = songs.sumOf { it.durationSeconds }
+                    if (total > 0) append(" • " + if (total >= 3600) "${total / 3600} hr ${(total % 3600) / 60} min" else "${total / 60} min ${total % 60} sec")
                     if (downloadedCount > 0) append(" • $downloadedCount downloaded")
                     if (isAnyDownloading) append(" • Downloading...")
                 }
@@ -1400,11 +1289,31 @@ private fun PlaylistDetailView(
                 Text("This playlist is empty. Add tracks from Home or Search!", color = Color.Gray)
             }
         } else {
+            // Drag any song to move it (the list scrolls by itself near the edges).
+            val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+            val keyed = remember(songs) {
+                val seen = mutableMapOf<String, Int>()
+                songs.map { s -> val n = seen.getOrDefault(s.id, 0); seen[s.id] = n + 1; "${s.id}#$n" to s }
+            }
+            var ordered by remember(keyed) { mutableStateOf(keyed) }
+            val reorderState = sh.calvin.reorderable.rememberReorderableLazyListState(listState) { from, to ->
+                val a = ordered.indexOfFirst { it.first == from.key }
+                val b = ordered.indexOfFirst { it.first == to.key }
+                if (a >= 0 && b >= 0) ordered = ordered.toMutableList().apply { add(b, removeAt(a)) }
+            }
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                itemsIndexed(songs, key = { index, s -> "${s.id}_$index" }) { index, song ->
+                itemsIndexed(ordered, key = { _, e -> e.first }) { index, entry ->
+                    val song = entry.second
+                    ReorderableItem(reorderState, key = entry.first, enabled = playlist != null) { isDragging ->
+                    Box(
+                        Modifier
+                            .then(if (isDragging) Modifier.background(Color(0xFF1B2433), RoundedCornerShape(8.dp)) else Modifier)
+                            .then(if (playlist != null) Modifier.draggableHandle(onDragStopped = { onReorder(playlist.id, ordered.map { it.second }) }) else Modifier)
+                    ) {
                     val isLiked = likedSongs.any { it.id == song.id }
                     val isDownloaded = downloadedIds.contains(song.id)
                     val isDownloading = downloadingIds.contains(song.id)
@@ -1428,6 +1337,8 @@ private fun PlaylistDetailView(
                         onMoveDown = if (playlist != null && index < songs.size - 1) { { onMoveDown(playlist.id, song.id) } } else null,
                         onRemoveFromPlaylist = if (playlist != null) { { onRemoveFromPlaylist(playlist.id, song.id) } } else null
                     )
+                    }
+                    }
                 }
             }
         }
