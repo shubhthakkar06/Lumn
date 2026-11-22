@@ -3,5 +3,5 @@
   "versionCode": 44,
   "minimumVersionCode": 44,
   "apkUrl": "https://github.com/shubhthakkar06/Lumn/releases/latest/download/Lumn.apk",
-  "releaseNotes": "Rivara 2.8.3: Seamless Google sign-in fallback sheet for devices with no saved credentials, multi-account isolation, and automatic playlist recovery."
+  "releaseNotes": "Rivara 3.0.2: Google sign-in fixed, live library sync across phone, Mac and watch, shows and episodes (follow YouTube channels like BAPS Satsang), Song/Video switch, new Rivara Sound engine, drag-to-reorder playlists, profile photos and better search for every artist."
 }
